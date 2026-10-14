@@ -23,7 +23,15 @@ function reason(e) {
   const name = e?.codeName || e?.name || 'Error';
   if (/auth/i.test(name) || /auth/i.test(e?.message ?? '')) return 'AUTH_FAILED';
   if (/ServerSelection|Timeout|ECONNREFUSED|ENOTFOUND|querySrv/i.test(`${name} ${e?.message ?? ''}`)) return 'UNREACHABLE';
-  if (/Parse|Invalid.*(uri|scheme|connection string)/i.test(`${name} ${e?.message ?? ''}`)) return 'BAD_URI';
+  const msg = String(e?.message ?? '');
+  if (/Invalid scheme/i.test(msg)) return 'BAD_URI: must start with mongodb+srv:// (no spaces or quotes)';
+  if (/unescaped/i.test(msg)) return 'BAD_URI: password has special characters (@ : / ? # %)';
+  if (/hostname|domain name|tld/i.test(msg)) return 'BAD_URI: host part is wrong';
+  if (/Parse|Invalid|URI|connection string/i.test(`${name} ${msg}`)) {
+    // لا نُظهر أي جزء قد يحوي كلمة المرور
+    const safe = msg.replace(/\/\/[^\s]*@/g, '//***@').replace(/["'`][^"'`]*["'`]/g, '"…"').slice(0, 120);
+    return `BAD_URI: ${safe}`;
+  }
   return name.replace(/[^A-Za-z]/g, '').slice(0, 40) || 'UNKNOWN';
 }
 
