@@ -1,0 +1,12 @@
+{
+  "name": "مور كاش",
+  "short_name": "مور كاش",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/#/pos",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#f2f0eb",
+  "theme_color": "#1e3932",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
