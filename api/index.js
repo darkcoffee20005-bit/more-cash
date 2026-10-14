@@ -11,7 +11,10 @@ export function cleanUri(raw) {
   let u = String(raw ?? '').trim();
   u = u.replace(/^MONGODB_URI\s*=\s*/i, '').trim();
   u = u.replace(/^["'`<]+|["'`>]+$/g, '').trim();
-  return u;
+  // إن نُسخ نص عربي أو غيره مع الرابط: خذ الرابط نفسه أينما كان، حتى أول مسافة
+  const at = u.search(/mongodb(\+srv)?:\/\//);
+  if (at > 0) u = u.slice(at);
+  return u.split(/\s/)[0].replace(/["'`>]+$/, '');
 }
 
 /** وصف شكل الرابط دون كشف أي جزء منه قد يكون سرياً */
