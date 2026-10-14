@@ -3,7 +3,7 @@ import { esc } from '../../shared/format.js';
 import { icon } from './icons.js';
 
 export const state = {
-  ready: false, setUp: true, employee: null, route: 'pos', params: {},
+  ready: false, shop: null, authPage: '', employee: null, route: 'pos', params: {},
   settings: null, catalog: null, shift: null, ticketsCount: 0,
   modal: null, busy: false, toasts: [],
   pos: null, view: {},
@@ -27,7 +27,15 @@ export function render() {
     const focusId = active?.id && root.contains(active) ? active.id : null;
     const sel = focusId && 'selectionStart' in active ? [active.selectionStart, active.selectionEnd] : null;
     const scrolls = [...root.querySelectorAll('[data-keep-scroll]')].map((el) => [el.dataset.keepScroll, el.scrollTop]);
+    // نماذج غير مرتبطة بالحالة (الدخول وإنشاء الحساب): لا يضيع ما كتبه المستخدم عند إعادة الرسم
+    const kept = [...root.querySelectorAll('form[data-keep] [id]')].filter((el) => 'value' in el)
+      .map((el) => [el.id, el.type === 'checkbox' ? el.checked : el.value, el.type]);
     root.innerHTML = views.app(state) + modalHtml() + toastsHtml();
+    for (const [id, v, type] of kept) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      if (type === 'checkbox') el.checked = v; else el.value = v;
+    }
     // الحركة عند الظهور الأول فقط؛ إعادة الرسم لا تعيد تشغيلها (لا وميض أثناء اختيار الإضافات)
     if (state.modal) state.modal.__shown = true;
     for (const t of state.toasts) t.shown = true;
@@ -79,7 +87,7 @@ const ERRORS = {
   NOT_AUTHENTICATED: 'انتهت الجلسة. أدخل رمزك مجدداً.',
   FORBIDDEN: 'لا تملك صلاحية هذه العملية.',
   WRONG_PIN: 'الرمز غير صحيح.',
-  TOO_MANY_ATTEMPTS: 'محاولات كثيرة. انتظر دقيقة ثم حاول.',
+  TOO_MANY_ATTEMPTS: 'محاولات كثيرة. انتظر قليلاً ثم حاول.',
   WEAK_PIN: 'الرمز من 4 إلى 6 أرقام، ولا يكون رقماً مكرراً مثل 1111.',
   PIN_IN_USE: 'هذا الرمز مستخدم لموظف آخر.',
   NO_OPEN_SHIFT: 'لا توجد وردية مفتوحة. افتح وردية أولاً.',
@@ -106,6 +114,13 @@ const ERRORS = {
   RECIPE_COMPONENT_INVALID: 'مكون الوصفة يجب أن يكون صنفاً بمخزون متتبَّع.',
   INVALID_RANGE: 'فترة غير صالحة.',
   ALREADY_SET_UP: 'النظام مُعدّ مسبقاً.',
+  INVALID_EMAIL: 'اكتب بريداً إلكترونياً صحيحاً.',
+  WEAK_PASSWORD: 'كلمة المرور 8 أحرف على الأقل، ولا تكون أرقاماً فقط.',
+  EMAIL_IN_USE: 'هذا البريد مسجّل لمقهى آخر. سجّل الدخول به بدلاً من ذلك.',
+  BAD_CREDENTIALS: 'البريد أو كلمة المرور غير صحيحة.',
+  ACCOUNT_LOCKED: 'محاولات خاطئة كثيرة. أُوقف الدخول لهذا الحساب 5 دقائق.',
+  WRONG_PASSWORD: 'كلمة المرور الحالية غير صحيحة.',
+  NO_SHOP: 'انتهى ربط هذا الجهاز بالمقهى. سجّل الدخول مجدداً.',
   ALLOCATION_EXCEEDS_BASE: 'الخصم أكبر من قيمة الفاتورة.',
   INTERNAL: 'خطأ غير متوقع في الخادم.',
   DB_NOT_CONFIGURED: 'قاعدة البيانات غير مهيأة: أضف MONGODB_URI في إعدادات الخادم (Vercel → Environment Variables).',
@@ -119,6 +134,11 @@ export function errorText(e) {
 
 export function fail(e) {
   if (!e?.code) console.error(e);
+  if (e?.code === 'NO_SHOP') {
+    // انتهى ربط الجهاز بالمقهى (أو سُجّل خروجه من جهاز آخر): العودة لتسجيل الدخول
+    Object.assign(state, { shop: null, employee: null, modal: null, view: {}, authPage: 'login' });
+    if (typeof history !== 'undefined') history.replaceState(null, '', '#/login');
+  }
   toast(errorText(e), 'bad');
 }
 

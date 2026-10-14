@@ -24,3 +24,27 @@ export async function pinLookup(secret, pin) {
 export function validPin(pin) {
   return typeof pin === 'string' && /^\d{4,6}$/.test(pin) && !/^(\d)\1+$/.test(pin);
 }
+
+// ---------------------------------------------------------------- كلمات مرور حسابات المقاهي
+const PBKDF2_ITER = 210_000;
+
+async function pbkdf2(password, saltHex, iterations) {
+  const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const salt = Uint8Array.from(saltHex.match(/../g).map((h) => parseInt(h, 16)));
+  return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256));
+}
+
+/** يعيد "pbkdf2$<iter>$<salt>$<hash>" */
+export async function hashPassword(password, { iterations = PBKDF2_ITER } = {}) {
+  const salt = randomToken(16);
+  return `pbkdf2$${iterations}$${salt}$${await pbkdf2(password, salt, iterations)}`;
+}
+
+export async function verifyPassword(password, stored) {
+  const [kind, iter, salt, expected] = String(stored ?? '').split('$');
+  if (kind !== 'pbkdf2' || !salt || !expected) return false;
+  const actual = await pbkdf2(password, salt, Number(iter));
+  let diff = actual.length ^ expected.length;
+  for (let i = 0; i < Math.min(actual.length, expected.length); i++) diff |= actual.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}

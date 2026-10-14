@@ -34,23 +34,36 @@ test('الواجهة والوحدات المشتركة تُخدم مع تروي�
   assert.equal((await fetch(`${base}/admin/items`)).status, 200, 'مسارات التطبيق تعيد الصفحة');
 });
 
-test('الإعداد والدخول بالكوكي وحماية CSRF', async () => {
-  assert.equal((await fetch(`${base}/api/setup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403, 'بلا ترويسة مخصصة');
-  assert.equal((await fetch(`${base}/api/setup`, { method: 'POST', headers: { 'X-Requested-With': 'morecash', 'Content-Type': 'text/plain' }, body: '{}' })).status, 415);
-  const big = await json('POST', '/api/setup', { x: 'a'.repeat(300 * 1024) });
-  assert.equal(big.status, 413);
-  assert.equal((await json('POST', '/api/setup', { storeName: 'مقهى', ownerName: 'أحمد', pin: '1357', seed: true })).status, 200);
-  const login = await json('POST', '/api/auth/pin', { pin: '1357' });
-  assert.equal(login.status, 200);
-  const cookie = login.headers.get('set-cookie');
-  assert.match(cookie, /mc_session=[0-9a-f]{64}; Path=\/; HttpOnly; SameSite=Strict/);
-  const session = cookie.split(';')[0];
-  const boot = await fetch(`${base}/api/pos/bootstrap`, { headers: { cookie: session } });
+test('إنشاء حساب، كوكي الجهاز والموظف، وحماية CSRF', async () => {
+  const signupBody = { shopName: 'مقهى', ownerName: 'أحمد', email: 'owner@cafe.iq', password: 'qahwa-2026!', pin: '1357', seed: true };
+  assert.equal((await fetch(`${base}/api/account/signup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403, 'بلا ترويسة مخصصة');
+  assert.equal((await fetch(`${base}/api/account/signup`, { method: 'POST', headers: { 'X-Requested-With': 'morecash', 'Content-Type': 'text/plain' }, body: '{}' })).status, 415);
+  assert.equal((await json('POST', '/api/account/signup', { x: 'a'.repeat(300 * 1024) })).status, 413);
+  const signup = await json('POST', '/api/account/signup', signupBody);
+  assert.equal(signup.status, 200);
+  const cookies = signup.headers.getSetCookie();
+  assert.equal(cookies.length, 2);
+  assert.match(cookies.find((c) => c.startsWith('mc_device=')), /^mc_device=[0-9a-f]{64}; Path=\/; HttpOnly; SameSite=Strict; Max-Age=7776000$/);
+  assert.match(cookies.find((c) => c.startsWith('mc_session=')), /^mc_session=[0-9a-f]{64}; Path=\/; HttpOnly; SameSite=Strict; Max-Age=43200$/);
+  const jar = cookies.map((c) => c.split(';')[0]).join('; ');
+  const device = cookies.find((c) => c.startsWith('mc_device=')).split(';')[0];
+
+  const boot = await fetch(`${base}/api/pos/bootstrap`, { headers: { cookie: jar } });
   assert.equal(boot.status, 200);
   assert.equal(boot.headers.get('cache-control'), 'no-store');
   assert.ok((await boot.json()).catalog.items.length > 10);
-  assert.equal((await fetch(`${base}/api/pos/bootstrap`)).status, 401);
-  const out = await json('POST', '/api/auth/logout', {}, { cookie: session });
-  assert.match(out.headers.get('set-cookie'), /Max-Age=0/);
-  assert.equal((await fetch(`${base}/api/pos/bootstrap`, { headers: { cookie: session } })).status, 401, 'الجلسة أُلغيت على الخادم');
+  assert.equal((await fetch(`${base}/api/pos/bootstrap`)).status, 401, 'بلا جهاز مرتبط');
+  assert.equal((await fetch(`${base}/api/pos/bootstrap`, { headers: { cookie: device } })).status, 401, 'الجهاز وحده لا يكفي: يلزم رمز موظف');
+
+  const out = await json('POST', '/api/auth/logout', {}, { cookie: jar });
+  assert.match(out.headers.get('set-cookie'), /mc_session=; .*Max-Age=0/);
+  assert.equal((await fetch(`${base}/api/pos/bootstrap`, { headers: { cookie: jar } })).status, 401, 'الجلسة أُلغيت على الخادم');
+  const state = await (await fetch(`${base}/api/state`, { headers: { cookie: device } })).json();
+  assert.equal(state.shop.name, 'مقهى');
+  const pin = await json('POST', '/api/auth/pin', { pin: '1357' }, { cookie: device });
+  assert.equal(pin.status, 200);
+
+  const leave = await json('POST', '/api/account/logout', {}, { cookie: device });
+  assert.equal(leave.headers.getSetCookie().length, 2);
+  assert.equal((await (await fetch(`${base}/api/state`, { headers: { cookie: device } })).json()).shop, null);
 });

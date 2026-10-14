@@ -61,7 +61,7 @@ const js = order.map((p) => {
 }).join('\n\n');
 
 const css = readFileSync(join(ROOT, 'public', 'css', 'app.css'), 'utf8');
-const fonts = 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@400;500;600;700&display=swap';
+const fonts = 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Lalezar&family=Readex+Pro:wght@400;500;600;700&display=swap';
 const icon = `data:image/svg+xml;base64,${Buffer.from(readFileSync(join(ROOT, 'public', 'icon.svg'))).toString('base64')}`;
 
 let html;

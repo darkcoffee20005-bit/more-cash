@@ -1,7 +1,7 @@
 // دالة Vercel: كل طلبات /api/* تمر هنا (انظر vercel.json). الاتصال بـ MongoDB يُحفظ بين الاستدعاءات.
 // متغيرات البيئة في Vercel: MONGODB_URI (إلزامي — Atlas)، MONGODB_DB، PIN_PEPPER.
 import { connectDb } from '../server/db/connect.js';
-import { createApp } from '../server/app/index.js';
+import { createPlatform } from '../server/app/platform.js';
 import { handleApiRequest } from '../server/http.js';
 
 let ready = null;
@@ -14,9 +14,7 @@ async function init() {
     throw e;
   }
   const { db } = await connectDb({ uri, dbName: process.env.MONGODB_DB ?? 'morecash', memoryFile: null, log: { info() {}, warn() {} }, maxPoolSize: 5 });
-  const app = createApp({ db, newId: () => crypto.randomUUID(), pepper: process.env.PIN_PEPPER || null });
-  await app.start();
-  return app;
+  return createPlatform({ db, newId: () => crypto.randomUUID(), pepper: process.env.PIN_PEPPER || null });
 }
 
 export default async function handler(req, res) {

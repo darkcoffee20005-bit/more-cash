@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { connectDb } from './db/connect.js';
-import { createApp } from './app/index.js';
+import { createPlatform } from './app/platform.js';
 import { createHttpServer } from './http.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,8 +35,7 @@ async function main() {
   if (env.MONGODB_URI && !env.PIN_PEPPER) console.warn('تنبيه: PIN_PEPPER غير محدد؛ سيُستخدم سر مخزّن في قاعدة البيانات.');
 
   const { db, kind, close } = await connectDb({ uri: env.MONGODB_URI, dbName: env.MONGODB_DB ?? 'morecash', memoryFile: env.MONGODB_URI ? null : dataFile });
-  const app = createApp({ db, newId: randomUUID, pepper: env.PIN_PEPPER || null });
-  await app.start();
+  const app = createPlatform({ db, newId: randomUUID, pepper: env.PIN_PEPPER || null });
 
   const server = createHttpServer(app, {
     publicDir: join(ROOT, 'public'), sharedDir: join(ROOT, 'shared'),

@@ -7,8 +7,10 @@ import * as pos from './views/pos.js';
 import * as receipts from './views/receipts.js';
 import * as ops from './views/ops.js';
 import * as admin from './views/admin.js';
+import * as account from './views/account.js';
+import { mark } from './brand.js';
 
-const modules = [pos, receipts, ops, admin];
+const modules = [pos, receipts, ops, admin, account];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
@@ -32,7 +34,7 @@ function parseHash() {
 
 export async function navigate() {
   const { route, sub, id } = parseHash();
-  if (!state.employee) return render();
+  if (!state.employee) { state.authPage = route; state.modal = null; return render(); }
   const name = route || defaultRoute();
   const allowed = NAV.find(([r]) => r === name);
   if (allowed && !can(allowed[3]) && !(name === 'admin' && can('admin.catalog'))) {
@@ -53,8 +55,7 @@ export const views = {
   app(s) {
     if (!s.ready) return '<div class="auth-panel" style="height:100%"><p class="muted">جارٍ التحميل…</p></div>';
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
-    if (!s.setUp) return setupView();
-    if (!s.employee) return pinView();
+    if (!s.employee) return account.gateView(s);
     const body = (routes[s.route] ?? routes.pos)(s);
     return `<div class="shell">${railView(s)}<main class="main" id="main">${body}</main></div>`;
   },
@@ -70,7 +71,7 @@ function railView(s) {
     return `<a href="#/${r}" class="${s.route === r ? 'on' : ''}" ${s.route === r ? 'aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge}</a>`;
   }).join('');
   return `<nav class="rail" aria-label="التنقل الرئيسي">
-    <div class="logo-mark" title="مور كاش">${icon('bean')}</div>
+    ${mark()}
     ${links}
     <div class="me">
       ${globalThis.MORECASH_BACKEND ? '<span class="demo-tag" title="البيانات في هذا المتصفح فقط">تجريبي</span>' : ''}
@@ -79,46 +80,6 @@ function railView(s) {
       <button data-action="lock" title="قفل الشاشة">${icon('lock', 'sm')}<span>قفل</span></button>
     </div>
   </nav>`;
-}
-
-function brandPanel() {
-  return `<section class="auth-brand">
-    <div class="logo"><div class="logo-mark">${icon('bean')}</div>مور كاش</div>
-    <div><h1>كاشير مصمم لإيقاع الكوفي شوب</h1>
-    <p>طلب بلمستين، إضافات الحليب والشوت بلمسة، مخزون البن والحليب يُخصم من الوصفة تلقائياً، وإغلاق وردية بلا أوراق.</p></div>
-    <div class="facts"><div><b>د.ع</b>أعداد صحيحة بلا كسور</div><div><b>MongoDB</b>بيانات مركزية</div><div><b>PIN</b>دخول سريع</div></div>
-  </section>`;
-}
-
-function pinView() {
-  const pin = state.view.pin ?? '';
-  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'];
-  return `<div class="auth">${brandPanel()}
-    <section class="auth-panel"><div class="auth-card">
-      <div><h2>أدخل رمزك</h2><p class="muted">رمز الموظف من 4 إلى 6 أرقام</p></div>
-      <div class="pin-dots ${state.view.pinShake ? 'shake' : ''}" aria-label="عدد الأرقام المدخلة ${pin.length}">
-        ${Array.from({ length: Math.max(4, pin.length) }, (_, i) => `<span class="${i < pin.length ? 'on' : ''}"></span>`).join('')}
-      </div>
-      <div class="keypad">${keys.map((k) => k === 'clear' ? '<button class="muted-key" data-action="pin-clear">مسح</button>'
-        : k === 'back' ? `<button class="muted-key" data-action="pin-back" aria-label="حذف رقم">${icon('back')}</button>`
-        : `<button data-action="pin-key" data-k="${k}">${k}</button>`).join('')}</div>
-      <button class="btn primary lg block" data-action="pin-submit" ${pin.length < 4 || state.busy ? 'disabled' : ''}>دخول</button>
-    </div></section></div>`;
-}
-
-function setupView() {
-  return `<div class="auth">${brandPanel()}
-    <section class="auth-panel"><form class="auth-card" data-form="setup" autocomplete="off">
-      <div><h2>إعداد المقهى</h2><p class="muted">مرة واحدة فقط. ستكون أنت المالك.</p></div>
-      ${field('اسم المقهى', '<input name="storeName" id="setup-store" required minlength="2" maxlength="60" placeholder="مقهى الزيتون">')}
-      ${field('اسمك', '<input name="ownerName" id="setup-owner" required minlength="2" maxlength="40">')}
-      <div class="grid-2">
-        ${field('رمز الدخول', '<input name="pin" id="setup-pin" required inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" type="password">')}
-        ${field('تأكيد الرمز', '<input name="pin2" id="setup-pin2" required inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" type="password">')}
-      </div>
-      <label class="check"><input type="checkbox" name="seed" checked> أضف قائمة كوفي جاهزة (مشروبات، إضافات، مكونات بوصفات)</label>
-      <button class="btn primary lg block" type="submit" ${state.busy ? 'disabled' : ''}>ابدأ</button>
-    </form></section></div>`;
 }
 
 // ---------------------------------------------------------------- الإجراءات العامة
@@ -139,20 +100,12 @@ on({
   'pin-clear': () => set({ view: { ...state.view, pin: '' } }),
   'pin-submit': () => submitPin(),
   keydown: (_el, e) => {
-    if (state.employee || !state.setUp || state.modal) return;
+    if (state.employee || !state.shop || state.modal) return;
     if (document.activeElement?.tagName === 'INPUT') return;
     if (/^\d$/.test(e.key)) { const pin = state.view.pin ?? ''; if (pin.length < 6) set({ view: { ...state.view, pin: pin + e.key } }); }
     else if (e.key === 'Backspace') set({ view: { ...state.view, pin: (state.view.pin ?? '').slice(0, -1) } });
     else if (e.key === 'Enter') submitPin();
   },
-  setup: (_el, _e, data) => busy(async () => {
-    if (data.pin !== data.pin2) { toast('الرمزان غير متطابقين', 'bad'); return; }
-    await post('/api/setup', { storeName: data.storeName, ownerName: data.ownerName, pin: data.pin, seed: data.seed });
-    const r = await post('/api/auth/pin', { pin: data.pin });
-    state.setUp = true;
-    toast('تم إعداد المقهى. أهلاً بك!', 'ok');
-    await loadSession(r.employee);
-  }),
   lock: async () => {
     await post('/api/auth/logout', {}).catch(() => {});
     state.employee = null;
@@ -179,13 +132,16 @@ async function submitPin() {
   });
 }
 
+account.initAccount({ loadSession });
+
 export async function boot() {
   setViews(views);
   bindEvents(document.getElementById('app'));
   window.addEventListener('hashchange', () => navigate());
   try {
     const s = await get('/api/state');
-    state.setUp = s.setUp;
+    state.shop = s.shop;
+    state.authPage = parseHash().route;
     state.ready = true;
     if (s.employee) await loadSession(s.employee);
     else render();

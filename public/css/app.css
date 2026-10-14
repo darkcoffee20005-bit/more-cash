@@ -1,29 +1,33 @@
-/* مور كاش — نظام تصميم أخضر المقاهي
+/* مور كاش — الهوية: «الإيصال هو العلامة»
+   الشعار حبة بن شقّها حافة إيصال ممزقة. أخضر القهوة للهيكل، أخضر الورقة للفعل، نحاسي للتمييز،
+   وأبيض الإيصال الحراري. خط Lalezar (خط لافتات المقاهي) للعلامة والعناوين الكبيرة فقط.
+   (السابق: نظام تصميم أخضر المقاهي
    أخضر عميق للهيكل (الشريط الجانبي ولوحة الدفع)، أخضر واضح للفعل الأساسي، ذهبي دافئ للتمييز،
-   وأرضية دافئة محايدة. الشاشة مقسمة كجهاز كاشير: شريط تنقل ← شبكة الأصناف ← التذكرة. */
+   وأرضية دافئة محايدة. الشاشة مقسمة كجهاز كاشير: شريط تنقل ← شبكة الأصناف ← التذكرة.) */
 
 :root {
   /* الهوية */
-  --brand-900: #1e3932;   /* أخضر داكن: الشريط الجانبي واللوحات */
-  --brand-800: #1a3a30;
-  --brand-700: #00754a;   /* أخضر الفعل الأساسي */
-  --brand-600: #006241;
-  --brand-100: #d4e9e2;   /* أخضر فاتح: التحديد */
-  --gold: #cba258;        /* ذهبي: لمسات التمييز */
-  --gold-soft: #f3ead7;
-  --gold-ink: #7a571a;
+  --brand-900: #0f3d31;   /* أخضر القهوة: الهيكل واللوحات */
+  --brand-800: #0c3329;
+  --brand-700: #0a7c55;   /* أخضر الورقة: الفعل الأساسي */
+  --brand-600: #086a48;
+  --brand-100: #d6ebe1;   /* أخضر فاتح: التحديد */
+  --gold: #c9a14a;        /* نحاسي: لمسات التمييز */
+  --gold-soft: #f2e9d3;
+  --gold-ink: #6f5014;
   --on-brand: #ffffff;
-  --on-brand-muted: #b9d3c8;
-  /* المحايدات (دافئة) */
-  --bg: #f2f0eb;
+  --heading: #0f3d31;
+  --on-brand-muted: #a9c8bb;
+  /* المحايدات: رمادي البخار المائل للأخضر (لا كريمي) */
+  --bg: #eef1ec;
   --surface: #ffffff;
-  --surface-2: #f9f8f5;
-  --surface-3: #edeae3;
-  --line: #e2ded5;
-  --line-strong: #cfc9bc;
-  --ink: #1e2a26;
-  --ink-2: #3b4743;
-  --muted: #6c716d;
+  --surface-2: #f7f9f6;
+  --surface-3: #e4e9e3;
+  --line: #dbe2db;
+  --line-strong: #c3cdc4;
+  --ink: #13231e;
+  --ink-2: #34453f;
+  --muted: #5f6c66;
   --primary: var(--brand-700);
   --primary-ink: #ffffff;
   --primary-hover: var(--brand-600);
@@ -39,8 +43,8 @@
   --shadow-2: 0 14px 44px rgb(30 57 50 / 22%);
   --scrim: rgb(14 30 25 / 55%);
   /* ألوان الأصناف */
-  --tile-olive: #00754a;
-  --tile-petrol: #1e3932;
+  --tile-olive: #0a7c55;
+  --tile-petrol: #0f3d31;
   --tile-sage: #6f8f80;
   --tile-teal: #2b8a75;
   --tile-sand: #b8893c;
@@ -48,6 +52,7 @@
   --tile-mocha: #6b4a3a;
   --tile-slate: #5f6b68;
   /* الخطوط */
+  --font-brand: "Lalezar", "Readex Pro", "IBM Plex Sans Arabic", sans-serif;
   --font-display: "Readex Pro", "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
   --font-body: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif;
   /* المقاسات */
@@ -64,7 +69,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0e1815; --surface: #14211d; --surface-2: #192a25; --surface-3: #20332d; --line: #2a3f38; --line-strong: #375049;
-    --ink: #e9efec; --ink-2: #c6d3ce; --muted: #93a39d;
+    --ink: #e9efec; --ink-2: #c6d3ce; --muted: #93a39d; --heading: #e6efe9;
     --brand-900: #0a1a15; --brand-100: #163a2e; --gold-soft: #33291a; --gold-ink: #e2c27d; --tile-petrol: #3f7a68; --tile-mocha: #8a6450; --tile-slate: #7b8784;
     --primary: #00a862; --primary-ink: #04150e; --primary-hover: #2bbd7e;
     --accent: #6fd3a8; --accent-soft: #163a2e;
@@ -75,7 +80,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #0e1815; --surface: #14211d; --surface-2: #192a25; --surface-3: #20332d; --line: #2a3f38; --line-strong: #375049;
-  --ink: #e9efec; --ink-2: #c6d3ce; --muted: #93a39d;
+  --ink: #e9efec; --ink-2: #c6d3ce; --muted: #93a39d; --heading: #e6efe9;
   --brand-900: #0a1a15; --brand-100: #163a2e; --gold-soft: #33291a; --gold-ink: #e2c27d; --tile-petrol: #3f7a68; --tile-mocha: #8a6450; --tile-slate: #7b8784;
   --primary: #00a862; --primary-ink: #04150e; --primary-hover: #2bbd7e;
   --accent: #6fd3a8; --accent-soft: #163a2e;
@@ -167,28 +172,7 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .empty { padding: 40px 16px; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .empty svg.i { width: 40px; height: 40px; stroke-width: 1.3; color: var(--line-strong); }
 
-/* ---------------------------------------------------------------- شاشة الدخول */
-.auth {
-  min-height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  padding-left: max(0px, env(safe-area-inset-left, 0px)); padding-right: max(0px, env(safe-area-inset-right, 0px));
-}
-.auth-brand {
-  background: var(--brand-900); color: var(--on-brand); padding: 48px; display: flex; flex-direction: column; justify-content: space-between;
-  position: relative; overflow: hidden;
-}
-.auth-brand::after {
-  content: ""; position: absolute; inset: auto -120px -160px auto; width: 460px; height: 460px; border-radius: 50%;
-  background: radial-gradient(circle at 40% 40%, #cba258 0 30%, transparent 31%), radial-gradient(circle, #00754a 0 60%, transparent 61%);
-  opacity: .55;
-}
-.logo { display: flex; align-items: center; gap: 12px; font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; }
-.logo-mark { width: 44px; height: 44px; border-radius: 14px; background: var(--brand-700); display: grid; place-items: center; color: #fff; }
-.auth-brand h1 { font-size: 2.4rem; max-width: 12ch; color: #fff; position: relative; z-index: 1; }
-.auth-brand p { color: var(--on-brand-muted); max-width: 36ch; position: relative; z-index: 1; margin-top: 12px; }
-.auth-brand .facts { display: flex; gap: 28px; position: relative; z-index: 1; color: var(--on-brand-muted); font-size: .9rem; }
-.auth-brand .facts b { display: block; color: #fff; font-family: var(--font-display); font-size: 1.3rem; }
-.auth-panel { display: grid; place-items: center; padding: 32px 16px; }
-.auth-card { width: min(380px, 100%); display: flex; flex-direction: column; gap: 18px; }
+/* ---------------------------------------------------------------- رمز الموظف */
 .pin-dots { display: flex; gap: 14px; justify-content: center; margin: 6px 0 4px; direction: ltr; }
 .pin-dots span { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-strong); transition: .12s; }
 .pin-dots span.on { background: var(--primary); border-color: var(--primary); }
@@ -208,7 +192,7 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
   background: var(--brand-900); color: var(--on-brand-muted); display: flex; flex-direction: column; align-items: stretch; gap: 4px;
   padding: 12px 8px max(12px, env(safe-area-inset-bottom, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px));
 }
-.rail .logo-mark { margin: 0 auto 14px; background: var(--gold); color: var(--brand-900); }
+.rail .mark { margin: 0 auto 14px; width: 46px; height: 46px; }
 .rail a {
   display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 2px; border-radius: var(--r-md);
   color: inherit; text-decoration: none; font-size: .72rem; font-weight: 500; position: relative;
@@ -403,17 +387,13 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
 @media (max-width: 860px) {
   .pos { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .ticket { border-inline-start: none; border-top: 1px solid var(--line); max-height: 52vh; }
-  .auth { grid-template-columns: 1fr; }
-  .auth-brand { padding: 28px max(16px, env(safe-area-inset-left, 0px)) 28px max(16px, env(safe-area-inset-right, 0px)); }
-  .auth-brand h1 { font-size: 1.7rem; }
-  .auth-brand .facts { display: none; }
   .pay { grid-template-columns: 1fr; }
   .grid-3 { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 600px) {
   .shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .rail { flex-direction: row; order: 2; padding: 6px max(8px, env(safe-area-inset-left, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-right, 0px)); overflow-x: auto; }
-  .rail .logo-mark, .rail .me span, .rail .me .avatar { display: none; }
+  .rail .mark, .rail .me span, .rail .me .avatar { display: none; }
   .ticket.is-empty .lines, .ticket.is-empty .totals { display: none; }
   .rail a { flex: 1; min-width: 60px; }
   .rail a.on::before { display: none; }
@@ -440,3 +420,126 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
 .pay-summary { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow: auto; font-size: .9rem; color: var(--on-brand-muted); }
 .pay-summary div { display: flex; justify-content: space-between; gap: 10px; }
 .kds-card .who { padding: 8px 14px 0; font-weight: 600; }
+
+/* ================================================================ الهوية: العلامة، الصفحة الرئيسية، الحساب */
+.mark { display: block; flex: none; }
+.wordmark { display: inline-flex; align-items: center; gap: 12px; font-family: var(--font-brand); font-weight: 400; font-size: 1.9rem; line-height: 1; color: inherit; text-decoration: none; }
+.wordmark .mark { width: 44px; height: 44px; }
+.btn.brass { background: var(--gold); border-color: var(--gold); color: #1d1806; }
+.btn.brass:hover:not(:disabled) { background: #d8b45f; border-color: #d8b45f; }
+.btn.on-dark { background: transparent; color: #fff; border-color: rgb(255 255 255 / 32%); }
+.btn.on-dark:hover:not(:disabled) { border-color: #fff; background: rgb(255 255 255 / 6%); }
+.btn.on-dark.ghost { border-color: transparent; }
+
+/* ---- الصفحة الرئيسية */
+.lp { min-height: 100%; overflow-x: hidden; }
+.lp-dark { background: var(--brand-900); color: #fff; }
+.lp-top { max-width: 1180px; margin: 0 auto; padding: 20px 24px; display: flex; align-items: center; gap: 10px; }
+.lp-top nav { margin-inline-start: auto; display: flex; gap: 8px; }
+.lp-hero { max-width: 1180px; margin: 0 auto; padding: 36px 24px 0; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: 48px; align-items: end; }
+.lp-copy { padding-bottom: 80px; }
+.lp-copy h1 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(3.2rem, 7.4vw, 6rem); line-height: 1.02; color: #fff; text-wrap: balance; }
+.lp-copy p { margin-top: 22px; font-size: 1.15rem; line-height: 1.8; color: var(--on-brand-muted); max-width: 46ch; }
+.lp-copy .row { margin-top: 32px; gap: 12px; flex-wrap: wrap; }
+
+/* الطابعة والإيصال: اللحظة المتحركة الوحيدة */
+.printer { width: min(330px, 100%); justify-self: center; }
+.printer-slot { height: 20px; border-radius: 12px 12px 0 0; background: #072a20; box-shadow: inset 0 -7px 0 #041b15; position: relative; z-index: 1; }
+.paper { overflow: hidden; margin: 0 16px; padding-bottom: 10px; }
+.receipt {
+  position: relative; background: #fff; color: #1c1c1c; padding: 22px 20px 26px; font-size: .92rem; line-height: 1.65;
+  animation: print 2.4s steps(24, end) .5s both;
+}
+.receipt::after {
+  content: ""; position: absolute; inset: 100% 0 auto; height: 9px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9'%3E%3Cpath d='M0 0h14L7 9z' fill='%23fff'/%3E%3C/svg%3E") repeat-x;
+}
+@keyframes print { from { transform: translateY(-100%); } }
+.rc-shop { font-family: var(--font-brand); font-size: 1.55rem; text-align: center; line-height: 1.2; }
+.rc-meta { display: flex; justify-content: space-between; color: #6b6b6b; font-size: .8rem; margin-top: 6px; }
+.rc-rule { border-top: 1.5px dashed #c4c4c4; margin: 12px 0; }
+.rc-line { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+.rc-line.sub { color: #6b6b6b; font-size: .84rem; padding-inline-start: 12px; }
+.rc-line.total { font-weight: 700; font-size: 1.12rem; }
+.rc-thanks { text-align: center; margin-top: 14px; color: #555; font-size: .85rem; }
+
+.lp-section { max-width: 1180px; margin: 0 auto; padding: 96px 24px 0; }
+.lp-section h2 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(2.1rem, 4.2vw, 3rem); line-height: 1.15; max-width: 22ch; color: var(--heading); }
+.lp-section > p { color: var(--muted); margin-top: 12px; max-width: 60ch; line-height: 1.8; font-size: 1.05rem; }
+
+/* شريط يوم المقهى: تسلسل حقيقي من الطلب إلى إغلاق الوردية */
+.tape { list-style: none; margin: 44px 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 2px dashed var(--line-strong); }
+.tape li { position: relative; padding: 26px 0 0; padding-inline-end: 22px; }
+.tape li::before { content: ""; position: absolute; top: -9px; inset-inline-start: 0; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); border: 3px solid var(--brand-700); }
+.tape .n { font-family: var(--font-brand); color: var(--gold-ink); font-size: 1.25rem; line-height: 1; }
+.tape b { display: block; font-size: 1.1rem; color: var(--ink); margin-top: 8px; }
+.tape p { color: var(--muted); margin-top: 6px; font-size: .95rem; line-height: 1.7; }
+
+.iq { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 64px; margin: 32px 0 0; }
+.iq div { padding: 22px 0 24px; border-top: 1px solid var(--line-strong); }
+.iq dt { font-weight: 700; font-size: 1.1rem; }
+.iq dd { margin: 6px 0 0; color: var(--muted); line-height: 1.75; max-width: 52ch; }
+
+.lp-cta { max-width: 1180px; margin: 104px auto 0; padding: 0 24px; }
+.lp-cta > div { background: var(--brand-900); color: #fff; border-radius: 28px; padding: 44px 48px; display: flex; align-items: center; gap: 20px 32px; flex-wrap: wrap; }
+.lp-cta h2 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.15; margin-inline-end: auto; color: #fff; }
+.lp-foot { max-width: 1180px; margin: 0 auto; padding: 36px 24px 44px; color: var(--muted); font-size: .9rem; display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.lp-foot .wordmark { font-size: 1.3rem; color: var(--heading); }
+.lp-foot .wordmark .mark { width: 30px; height: 30px; }
+
+/* ---- شاشات الحساب ورمز الموظف */
+.acc { min-height: 100%; display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
+.acc-side { background: var(--brand-900); color: #fff; padding: 28px 48px 40px; display: flex; flex-direction: column; gap: 44px; }
+.acc-side .wordmark { color: #fff; align-self: flex-start; }
+.acc-side h2 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(2.3rem, 4.2vw, 3.6rem); line-height: 1.08; color: #fff; text-wrap: balance; }
+.acc-side .lead { color: var(--on-brand-muted); margin-top: 14px; line-height: 1.8; max-width: 40ch; }
+.acc-side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; color: var(--on-brand-muted); }
+.acc-side li { display: flex; gap: 12px; align-items: flex-start; line-height: 1.6; }
+.acc-side li svg { color: var(--gold); margin-top: 2px; }
+.acc-side .foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.link-btn { background: none; border: 0; padding: 6px 0; color: inherit; text-decoration: underline; text-underline-offset: 4px; font: inherit; }
+.acc-side .link-btn { color: var(--on-brand-muted); }
+.acc-side .link-btn:hover { color: #fff; }
+.acc-main { display: grid; place-items: center; padding: 40px 20px; }
+.acc-form { width: min(460px, 100%); display: flex; flex-direction: column; gap: 20px; }
+.acc-form h1 { font-family: var(--font-brand); font-weight: 400; font-size: 2.6rem; line-height: 1.1; color: var(--heading); }
+.acc-form .sub { color: var(--muted); margin-top: 4px; }
+.acc-form a { color: var(--primary); font-weight: 600; }
+.acc-form fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.acc-form legend { font-weight: 700; color: var(--ink-2); padding: 0; margin-bottom: 4px; }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-inline-end: 64px; }
+.pw-wrap button { position: absolute; inset-inline-end: 6px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--muted); font-size: .85rem; padding: 8px; }
+.demo-note { background: var(--gold-soft); color: var(--gold-ink); border-radius: var(--r-md); padding: 12px 14px; font-size: .9rem; line-height: 1.7; }
+.demo-note b { font-variant-numeric: tabular-nums; }
+.shop-name { font-family: var(--font-brand); font-weight: 400; font-size: clamp(2.6rem, 5vw, 4.2rem); line-height: 1.05; color: #fff; text-wrap: balance; }
+.pin-card { width: min(380px, 100%); display: flex; flex-direction: column; gap: 18px; }
+.pin-card h1 { font-size: 1.5rem; }
+.account-card .grid-2 { align-items: end; }
+
+@media (prefers-reduced-motion: reduce) {
+  .receipt { animation: none; }
+}
+@media (max-width: 900px) {
+  .lp-hero { grid-template-columns: 1fr; gap: 8px; padding-top: 20px; }
+  .lp-copy { padding-bottom: 28px; }
+  .printer { width: min(300px, 100%); }
+  .tape { grid-template-columns: 1fr; border-top: 0; border-inline-start: 2px dashed var(--line-strong); margin-inline-start: 8px; }
+  .tape li { padding: 0 0 26px; padding-inline-start: 26px; }
+  .tape li::before { top: 2px; inset-inline-start: -9px; }
+  .iq { grid-template-columns: 1fr; }
+  .acc { grid-template-columns: 1fr; }
+  .acc-side { padding: 20px 16px 28px; gap: 22px; }
+  .acc-side ul, .acc-side .lead { display: none; }
+  .acc-main { padding: 28px 16px 40px; align-items: start; }
+}
+@media (max-width: 600px) {
+  .lp-top, .lp-hero, .lp-section, .lp-cta, .lp-foot { padding-left: 16px; padding-right: 16px; }
+  .lp-top .wordmark { font-size: 1.5rem; }
+  .lp-top .wordmark .mark { width: 36px; height: 36px; }
+  .lp-top nav .btn { padding: 0 12px; min-height: 42px; }
+  .lp-top nav .hide-sm { display: none; }
+  .lp-section { padding-top: 64px; }
+  .lp-cta > div { padding: 32px 20px; border-radius: 22px; }
+  .lp-cta { margin-top: 72px; }
+}

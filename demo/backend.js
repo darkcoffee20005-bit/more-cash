@@ -2,10 +2,11 @@
 // يُستخدم للنسخة التجريبية المنشورة ولاختبارات الواجهة. لا يرسل شيئاً لأي شبكة.
 import { MemoryDb } from '../server/db/memory.js';
 import { ensureIndexes } from '../server/db/indexes.js';
-import { createApp } from '../server/app/index.js';
+import { createPlatform } from '../server/app/platform.js';
 import { calculateTicket, unitPrice } from '../shared/calc.js';
 
 export const DEMO_PINS = { owner: '1234', manager: '2580', cashier: '1470', barista: '3690' };
+export const DEMO_ACCOUNT = { email: 'demo@morecash.app', password: 'morecash-demo' };
 
 function rng(seed) {
   let s = seed >>> 0;
@@ -16,17 +17,23 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
   const db = new MemoryDb({ newId: () => crypto.randomUUID() });
   await ensureIndexes(db);
   let offset = 0; // إزاحة الساعة لتوليد التاريخ
-  const app = createApp({ db, now: () => new Date(Date.now() + offset), log: { error: console.error, warn() {}, info() {} } });
+  // تكرارات PBKDF2 أقل في النسخة التجريبية فقط (لا كلمات مرور حقيقية هنا) كي تفتح بسرعة على الهاتف
+  const app = createPlatform({ db, now: () => new Date(Date.now() + offset), passwordIterations: 2000, log: { error: console.error, warn() {}, info() {} } });
   let token = null;
-  const call = async (method, path, body, query) => {
-    const r = await app.handle({ method, path, body, query, token, ip: 'demo' });
+  let deviceToken = null;
+  const handle = async (req) => {
+    const r = await app.handle({ ...req, token, deviceToken, ip: 'demo' });
     if (r.setToken !== undefined) token = r.setToken;
+    if (r.setDevice !== undefined) deviceToken = r.setDevice;
+    return r;
+  };
+  const call = async (method, path, body, query) => {
+    const r = await handle({ method, path, body, query });
     if (r.status !== 200) throw new Error(`${method} ${path}: ${JSON.stringify(r.body)}`);
     return r.body;
   };
 
-  await call('POST', '/api/setup', { storeName: 'مقهى مور', ownerName: 'أحمد', pin: DEMO_PINS.owner, seed: true });
-  await call('POST', '/api/auth/pin', { pin: DEMO_PINS.owner });
+  await call('POST', '/api/account/signup', { shopName: 'مقهى مور', ownerName: 'أحمد', ...DEMO_ACCOUNT, pin: DEMO_PINS.owner, seed: true });
   await call('POST', '/api/admin/employees', { name: 'زينب', role: 'manager', pin: DEMO_PINS.manager });
   await call('POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: DEMO_PINS.cashier });
   await call('POST', '/api/admin/employees', { name: 'حيدر', role: 'barista', pin: DEMO_PINS.barista });
@@ -118,14 +125,10 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
     await call('POST', '/api/tickets', { name: 'طاولة 5', lines: [{ variantId: tea.variants[0].id, qty: 4 }], displayTotal: 4000 });
   }
   offset = 0;
-  await call('POST', '/api/auth/logout', {});
-  token = null;
+  // تبدأ النسخة التجريبية من الصفحة الرئيسية: الجهاز غير مرتبط بأي مقهى
+  await call('POST', '/api/account/logout', {});
 
   /** يُسند إلى globalThis.MORECASH_BACKEND */
-  const backend = async ({ method, path, body, query }) => {
-    const r = await app.handle({ method, path, body, query, token, ip: 'demo' });
-    if (r.setToken !== undefined) token = r.setToken;
-    return r;
-  };
+  const backend = ({ method, path, body, query }) => handle({ method, path, body, query });
   return { backend, app, db };
 }

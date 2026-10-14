@@ -12,9 +12,10 @@ export function createAuth(ctx) {
   const { db, now, newId, pepper } = ctx;
   const failures = new Map(); // ip → {count, until}
 
+  // سر بصمات الرموز: سر المقهى (عشوائي لكل مقهى) + PIN_PEPPER من بيئة الخادم إن وُجد
+  const mix = (storeSecret) => (pepper ? `${pepper}:${storeSecret}` : storeSecret);
   async function secret() {
-    if (pepper) return pepper;
-    return (await getSettings(db)).secret;
+    return mix((await getSettings(db)).secret);
   }
 
   async function isSetUp() {
@@ -34,7 +35,7 @@ export function createAuth(ctx) {
       throw e;
     }
     await db.collection('employees').insertOne({
-      _id: newId(), name: owner, role: 'owner', pinLookup: await pinLookup(pepper ?? settings.secret, pin), active: true, createdAt: now(),
+      _id: newId(), name: owner, role: 'owner', pinLookup: await pinLookup(mix(settings.secret), pin), active: true, createdAt: now(),
     });
     if (seed) await seedMenu(ctx);
     return { ok: true };

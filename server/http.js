@@ -10,6 +10,8 @@ const TYPES = {
 };
 const MAX_BODY = 256 * 1024;
 const COOKIE = 'mc_session';
+const DEVICE_COOKIE = 'mc_device';
+const DEVICE_DAYS = 90;
 
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
@@ -63,15 +65,18 @@ export async function handleApiRequest(app, req, res, { secureCookie = false, tr
       const ip = trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket.remoteAddress : req.socket.remoteAddress;
       const result = await app.handle({
         method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body,
-        token: readCookie(req.headers.cookie, COOKIE), ip,
+        token: readCookie(req.headers.cookie, COOKIE), deviceToken: readCookie(req.headers.cookie, DEVICE_COOKIE), ip,
       });
       const headers = { 'Cache-Control': 'no-store' };
+      const attrs = `Path=/; HttpOnly; SameSite=Strict${secureCookie ? '; Secure' : ''}`;
+      const cookies = [];
       if (result.setToken !== undefined) {
-        const attrs = `Path=/; HttpOnly; SameSite=Strict${secureCookie ? '; Secure' : ''}`;
-        headers['Set-Cookie'] = result.setToken
-          ? `${COOKIE}=${result.setToken}; ${attrs}; Max-Age=${12 * 3600}`
-          : `${COOKIE}=; ${attrs}; Max-Age=0`;
+        cookies.push(result.setToken ? `${COOKIE}=${result.setToken}; ${attrs}; Max-Age=${12 * 3600}` : `${COOKIE}=; ${attrs}; Max-Age=0`);
       }
+      if (result.setDevice !== undefined) {
+        cookies.push(result.setDevice ? `${DEVICE_COOKIE}=${result.setDevice}; ${attrs}; Max-Age=${DEVICE_DAYS * 86400}` : `${DEVICE_COOKIE}=; ${attrs}; Max-Age=0`);
+      }
+      if (cookies.length) headers['Set-Cookie'] = cookies;
       return send(result.status, 'application/json; charset=utf-8', JSON.stringify(result.body), headers);
   } catch (e) {
     if (!e.status) log.error?.(e);

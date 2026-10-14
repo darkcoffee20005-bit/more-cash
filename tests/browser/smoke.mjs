@@ -31,13 +31,23 @@ try {
   const shot = async (name) => { await page.waitForTimeout(260); await page.screenshot({ path: join(shots, `${name}.png`) }); };
 
   await page.goto(`http://127.0.0.1:${PORT}/`);
-  await page.waitForSelector('form[data-form="setup"]');
-  await shot('01-setup');
-  await page.fill('#setup-store', 'مقهى الزيتون');
-  await page.fill('#setup-owner', 'أحمد');
-  await page.fill('#setup-pin', '1357');
-  await page.fill('#setup-pin2', '1357');
-  await page.click('form[data-form="setup"] button[type=submit]');
+  await page.waitForSelector('.lp-hero');
+  await page.waitForTimeout(3200); // الإيصال يُطبع
+  await shot('00-landing');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await shot('00-landing-phone');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) errors.push('landing overflow at 390px');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.click('.lp-copy a[href="#/signup"]');
+  await page.waitForSelector('form[data-form="signup"]');
+  await shot('01-signup');
+  await page.fill('#su-shop', 'مقهى الزيتون');
+  await page.fill('#su-owner', 'أحمد');
+  await page.fill('#su-email', 'ahmed@zaytoon.iq');
+  await page.fill('#su-pass', 'qahwa-2026!');
+  await page.fill('#su-pin', '1357');
+  await page.fill('#su-pin2', '1357');
+  await page.click('form[data-form="signup"] button[type=submit]');
   await page.waitForSelector('#shift-start');
   await shot('02-open-shift');
   await page.fill('#shift-start', '50000');
@@ -113,6 +123,26 @@ try {
   await page.waitForSelector('.keypad');
   await page.setViewportSize({ width: 1280, height: 800 });
   await shot('17-pin');
+  // جهاز جديد: الدخول بالبريد وكلمة المرور ثم رمز الموظف
+  const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'ar-IQ' });
+  const p2 = await ctx2.newPage();
+  p2.on('pageerror', (e) => errors.push(`pageerror(2): ${e.message}`));
+  await p2.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  await p2.goto(`http://127.0.0.1:${PORT}/#/login`);
+  await p2.waitForSelector('form[data-form="login"]');
+  await p2.fill('#li-email', 'ahmed@zaytoon.iq');
+  await p2.fill('#li-pass', 'wrong-password');
+  await p2.click('form[data-form="login"] button[type=submit]');
+  await p2.waitForSelector('.toast.bad');
+  await p2.waitForTimeout(200);
+  await p2.screenshot({ path: join(shots, '18-login-error.png') });
+  await p2.fill('#li-pass', 'qahwa-2026!');
+  await p2.click('form[data-form="login"] button[type=submit]');
+  await p2.waitForSelector('.keypad');
+  for (const k of '1357') await p2.click(`[data-k="${k}"]`);
+  await p2.click('[data-action="pin-submit"]');
+  await p2.waitForSelector('.tile');
+  await p2.screenshot({ path: join(shots, '19-second-device.png') });
   console.log(`charged ${due}; screenshots in ${shots}`);
 } finally {
   await browser.close();

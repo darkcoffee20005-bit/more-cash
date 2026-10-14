@@ -32,7 +32,7 @@ const P = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13 7 4 4"/>',
   alert: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/>',
   download: '<path d="M12 4v11M7 10l5 5 5-5M4 20h16"/>',
-  bean: '<ellipse cx="12" cy="12" rx="6" ry="9" transform="rotate(30 12 12)"/><path d="M9 6c3 3 3 9 6 12"/>',
+  bean: '<g transform="rotate(32 12 12)"><ellipse cx="12" cy="12" rx="6" ry="9"/><path d="M12 3.5l1.3 2-2.6 2 2.6 2-2.6 2 2.6 2-2.6 2 2.6 2-1.3 1"/></g>',
 };
 
 export const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[name] ?? ''}</svg>`;

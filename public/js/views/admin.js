@@ -4,6 +4,7 @@ import { dateTime, esc, localDate, money, parseAmount, pct } from '../../../shar
 import { ROLES } from '../../../shared/perms.js';
 import { del, get, post, put, uid } from '../api.js';
 import { icon } from '../icons.js';
+import { accountCard, loadAccount } from './account.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 
 const COLORS = { olive: 'أخضر', petrol: 'أخضر داكن', sage: 'مريمية', teal: 'نعناعي', sand: 'ذهبي', clay: 'طيني', mocha: 'موكا', slate: 'رمادي' };
@@ -220,7 +221,8 @@ const PAGES = {
           <label class="check"><input type="checkbox" name="kds" ${st.features.kds ? 'checked' : ''}> شاشة التحضير للباريستا</label>
           <label class="check"><input type="checkbox" name="openTickets" ${st.features.openTickets ? 'checked' : ''}> التذاكر المفتوحة (حفظ الطلبات للطاولات)</label></section>
         <div><button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ الإعدادات</button></div>
-      </form>`;
+      </form>
+      ${accountCard(s, a.account)}`;
   },
 };
 
@@ -386,7 +388,7 @@ async function loadSection(sub) {
     discounts: async () => { a.discounts = await get('/api/admin/discounts'); },
     inventory: async () => { a.inventory = await get('/api/admin/inventory'); a.lowCount = a.inventory.lowCount; },
     employees: async () => { a.employees = await get('/api/admin/employees'); },
-    settings: async () => { a.settings = await get('/api/admin/settings'); },
+    settings: async () => { [a.settings, a.account] = await Promise.all([get('/api/admin/settings'), loadAccount()]); },
   };
   await loaders[sub]?.();
   render();
@@ -546,6 +548,7 @@ on({
     };
     A().settings = await put('/api/admin/settings', body);
     state.settings = A().settings;
+    if (state.shop) state.shop.name = A().settings.name;
     toast('حُفظت الإعدادات', 'ok');
   }),
 });

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createDemoBackend, DEMO_PINS } from '../demo/backend.js';
 
 globalThis.location = { hash: '' };
+globalThis.history = { replaceState: (_s, _t, url) => { location.hash = url; } };
 const { views, navigate } = await import('../public/js/app.js');
 const { state, runAction } = await import('../public/js/ui.js');
 
@@ -26,6 +27,36 @@ async function login(pin) {
 const { backend } = await createDemoBackend();
 globalThis.MORECASH_BACKEND = backend;
 state.ready = true;
+
+test('الصفحة الرئيسية، إنشاء حساب مقهى جديد، ثم الدخول للمقهى التجريبي', async () => {
+  let html = screen();
+  assert.match(text(html), /كاشير يعرف القهوة/);
+  assert.match(html, /href="#\/signup"/);
+  clean(html, 'الرئيسية');
+  await go('#/login'); html = screen(); clean(html, 'الدخول'); assert.match(text(html), /تسجيل الدخول/);
+  await go('#/signup'); html = screen(); clean(html, 'إنشاء حساب'); assert.match(text(html), /إنشاء الحساب وفتح المقهى/);
+
+  await runAction('signup', el(), {}, { shopName: 'قهوة دجلة', ownerName: 'زهراء', email: 'zahraa@dijla.iq', password: 'dijla-coffee-1', pin: '4826', pin2: '4826', seed: true });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(state.shop.name, 'قهوة دجلة');
+  assert.equal(state.employee.name, 'زهراء');
+  assert.ok(state.catalog.items.length > 10, 'قائمة جاهزة للمقهى الجديد');
+  await go('#/admin/settings');
+  html = screen(); clean(html, 'إعدادات المالك');
+  assert.match(text(html), /حساب المقهى/);
+  assert.match(text(html), /zahraa@dijla\.iq/);
+
+  await runAction('leave-ask');
+  assert.equal(state.modal.type, 'leave-device');
+  clean(screen(), 'نافذة الخروج');
+  await runAction('leave-confirm');
+  assert.equal(state.shop, null);
+  assert.match(text(screen()), /كاشير يعرف القهوة/);
+
+  await runAction('demo-enter');
+  assert.equal(state.shop.name, 'مقهى مور');
+  assert.equal(state.employee, null);
+});
 
 test('شاشة الرمز ثم الكاشير: طلب بإضافات وخصم وعميل ودفع مقسّم', async () => {
   let html = screen();

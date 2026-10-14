@@ -3,10 +3,10 @@
   "short_name": "مور كاش",
   "lang": "ar",
   "dir": "rtl",
-  "start_url": "/#/pos",
+  "start_url": "/",
   "display": "standalone",
-  "orientation": "landscape",
-  "background_color": "#f2f0eb",
-  "theme_color": "#1e3932",
+  "orientation": "any",
+  "background_color": "#0f3d31",
+  "theme_color": "#0f3d31",
   "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
 }
