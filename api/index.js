@@ -37,7 +37,7 @@ function reason(e) {
 
 export default async function handler(req, res) {
   // فحص الحالة: يرد دائماً 200 ليُقرأ بسهولة من المتصفح وأدوات المراقبة
-  if (req.method === 'GET' && String(req.url).split('?')[0] === '/api/health') {
+  if (req.method === 'GET' && /^\/api\/health(\/[a-z0-9-]*)?$/.test(String(req.url).split('?')[0])) {
     let body;
     try { ready ??= init(); await ready; body = { ok: true, db: 'connected' }; } catch (e) { ready = null; body = { ok: false, db: reason(e) }; }
     res.statusCode = 200;
