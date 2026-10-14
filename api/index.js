@@ -6,8 +6,26 @@ import { handleApiRequest } from '../server/http.js';
 
 let ready = null;
 
+/** يصحح أخطاء اللصق الشائعة: مسافات، علامات تنصيص، أو لصق "MONGODB_URI=" مع الرابط */
+export function cleanUri(raw) {
+  let u = String(raw ?? '').trim();
+  u = u.replace(/^MONGODB_URI\s*=\s*/i, '').trim();
+  u = u.replace(/^["'`<]+|["'`>]+$/g, '').trim();
+  return u;
+}
+
+/** وصف شكل الرابط دون كشف أي جزء منه قد يكون سرياً */
+function uriShape(u) {
+  if (!u) return 'empty';
+  if (u.startsWith('mongodb+srv://')) return 'srv';
+  if (u.startsWith('mongodb://')) return 'standard (mongodb://)';
+  if (/^https?:\/\//i.test(u)) return 'a web link (https://), not a connection string';
+  if (/^[a-z0-9]+$/i.test(u)) return 'looks like only a password or a word';
+  return `starts with an unexpected character (code ${u.charCodeAt(0)})`;
+}
+
 async function init() {
-  const uri = process.env.MONGODB_URI;
+  const uri = cleanUri(process.env.MONGODB_URI);
   if (!uri && process.env.MORECASH_ALLOW_MEMORY !== '1') {
     const e = new Error('MONGODB_URI is not configured');
     e.code = 'DB_NOT_CONFIGURED';
@@ -24,7 +42,7 @@ function reason(e) {
   if (/auth/i.test(name) || /auth/i.test(e?.message ?? '')) return 'AUTH_FAILED';
   if (/ServerSelection|Timeout|ECONNREFUSED|ENOTFOUND|querySrv/i.test(`${name} ${e?.message ?? ''}`)) return 'UNREACHABLE';
   const msg = String(e?.message ?? '');
-  if (/Invalid scheme/i.test(msg)) return 'BAD_URI: must start with mongodb+srv:// (no spaces or quotes)';
+  if (/Invalid scheme/i.test(msg)) return `BAD_URI: must start with mongodb+srv:// — saved value is ${uriShape(cleanUri(process.env.MONGODB_URI))}`;
   if (/unescaped/i.test(msg)) return 'BAD_URI: password has special characters (@ : / ? # %)';
   if (/hostname|domain name|tld/i.test(msg)) return 'BAD_URI: host part is wrong';
   if (/Parse|Invalid|URI|connection string/i.test(`${name} ${msg}`)) {
