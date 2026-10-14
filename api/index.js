@@ -17,7 +17,26 @@ async function init() {
   return createPlatform({ db, newId: () => crypto.randomUUID(), pepper: process.env.PIN_PEPPER || null });
 }
 
+/** سبب الفشل بلا أي سر (لا الرابط ولا كلمة المرور) */
+function reason(e) {
+  if (e?.code === 'DB_NOT_CONFIGURED') return 'MONGODB_URI_MISSING';
+  const name = e?.codeName || e?.name || 'Error';
+  if (/auth/i.test(name) || /auth/i.test(e?.message ?? '')) return 'AUTH_FAILED';
+  if (/ServerSelection|Timeout|ECONNREFUSED|ENOTFOUND|querySrv/i.test(`${name} ${e?.message ?? ''}`)) return 'UNREACHABLE';
+  if (/Parse|Invalid.*(uri|scheme|connection string)/i.test(`${name} ${e?.message ?? ''}`)) return 'BAD_URI';
+  return name.replace(/[^A-Za-z]/g, '').slice(0, 40) || 'UNKNOWN';
+}
+
 export default async function handler(req, res) {
+  // فحص الحالة: يرد دائماً 200 ليُقرأ بسهولة من المتصفح وأدوات المراقبة
+  if (req.method === 'GET' && String(req.url).split('?')[0] === '/api/health') {
+    let body;
+    try { ready ??= init(); await ready; body = { ok: true, db: 'connected' }; } catch (e) { ready = null; body = { ok: false, db: reason(e) }; }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.end(JSON.stringify(body));
+  }
   try {
     ready ??= init();
     const app = await ready;
