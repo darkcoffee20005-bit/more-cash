@@ -28,6 +28,8 @@
 - MongoDB Atlas: Cluster0 (AP_EAST_1)، مستخدم التطبيق morecash_app، الوصول 0.0.0.0/0.
 
 ## الوضع الحالي
-- الموقع منشور على https://more-cash.vercel.app لكن `/api/health` يرد `AUTH_FAILED`:
-  كلمة المرور في MONGODB_URI لا تطابق مستخدم morecash_app. يجب ضبطها في Atlas ثم تحديث المتغير في Vercel وإعادة النشر.
-- بعد نجاح الاتصال: أنشئ حساب مقهى تجريبياً على الموقع للتأكد، ثم احذف بياناته.
+- الموقع منشور على https://more-cash.vercel.app و `/api/health` يرد `{"ok":true,"db":"connected"}` (منذ 2026-10-15).
+- جُرّب إنشاء حساب مقهى على الموقع الحي (signup ← state ← logout) ونجح، والبيانات تُكتب في Atlas.
+- متبقٍّ: بيانات مقهى الاختبار لم تُحذف بعد (أدوات الكتابة في Atlas MCP تنتهي مهلتها).
+  احذف من كل مجموعات قاعدة morecash المستندات ذات `tenantId: "2706a670-8d80-4e3e-84c8-856cb4565771"`،
+  ومن `tenants` المستند ذا `_id` نفسه. البريد يبدأ بـ `claude-test-` على example.com.
