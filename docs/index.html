@@ -5296,6 +5296,14 @@ const { busy, can, field, modalFrame, on, openModal, render, set, state, toast }
 
 const DEMO = () => !!globalThis.MORECASH_BACKEND;
 const DEMO_ACCOUNT = { email: 'demo@morecash.app', password: 'morecash-demo' };
+// النسخة التجريبية تعمل في ذاكرة المتصفح فقط: أي حساب يُنشأ فيها يضيع عند التحديث،
+// لذا روابط "إنشاء حساب" فيها تذهب للموقع الحقيقي (نفس النطاق على Vercel، أو الرابط الكامل من GitHub Pages)
+const LIVE_URL = 'https://more-cash.vercel.app';
+const DEMO_PAGE = () => !!globalThis.MORECASH_DEMO_PAGE; // تضبطه صفحة التجربة المنشورة فقط (demo/main.js)
+const signupHref = () => {
+  if (!DEMO_PAGE()) return '#/signup';
+  return globalThis.location?.hostname?.endsWith('vercel.app') ? '/#/signup' : `${LIVE_URL}/#/signup`;
+};
 const DEMO_PINS = [['المالك', '1234'], ['المدير', '2580'], ['الكاشير', '1470'], ['الباريستا', '3690']];
 
 // ---------------------------------------------------------------- الإيصال المطبوع (رمز الهوية)
@@ -5331,13 +5339,13 @@ function landing() {
   return `<div class="lp">
     <div class="lp-dark">
       <header class="lp-top">${wordmark()}
-        <nav aria-label="الحساب"><a class="btn on-dark ghost" href="#/login">تسجيل الدخول</a><a class="btn brass hide-sm" href="#/signup">إنشاء حساب</a></nav>
+        <nav aria-label="الحساب"><a class="btn on-dark ghost" href="#/login">تسجيل الدخول</a><a class="btn brass hide-sm" href="${signupHref()}">إنشاء حساب</a></nav>
       </header>
       <section class="lp-hero">
         <div class="lp-copy">
           <h1>كاشير يعرف القهوة.</h1>
           <p>اطلب، حضّر، اقبض، وأغلق الوردية من شاشة واحدة. مور كاش مصمم لإيقاع الكوفي شوب: الإضافات بلمسة، والمخزون يُخصم من الوصفة، والحساب بالدينار بلا كسور.</p>
-          <div class="row"><a class="btn brass lg" href="#/signup">أنشئ حساب مقهاك</a>${demoBtn}</div>
+          <div class="row"><a class="btn brass lg" href="${signupHref()}">أنشئ حساب مقهاك</a>${demoBtn}</div>
         </div>
         ${receipt()}
       </section>
@@ -5355,7 +5363,7 @@ function landing() {
         <div><dt>بيانات مقهاك لك وحدك</dt><dd>كل حساب معزول عن غيره. تدخل بالبريد وكلمة المرور مرة واحدة على كل جهاز، وبعدها يكفي رمز الموظف.</dd></div>
       </dl>
     </section>
-    <section class="lp-cta"><div><h2>جاهز تفتح الدرج؟</h2><a class="btn brass lg" href="#/signup">أنشئ حساب مقهاك</a></div></section>
+    <section class="lp-cta"><div><h2>جاهز تفتح الدرج؟</h2><a class="btn brass lg" href="${signupHref()}">أنشئ حساب مقهاك</a></div></section>
     <footer class="lp-foot">${wordmark()}<span>كاشير وإدارة للكوفي شوب</span></footer>
   </div>`;
 }
@@ -5368,6 +5376,15 @@ function side(title, lead, points) {
     <div><h2>${title}</h2><p class="lead">${lead}</p></div>
     <ul>${points.map((p) => `<li>${icon('check', 'sm')}<span>${p}</span></li>`).join('')}</ul>
   </aside>`;
+}
+
+function demoSignupNotice() {
+  return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">
+    <h1>إنشاء حساب مقهاك</h1>
+    <p>هذه <b>نسخة تجريبية</b> تعمل داخل المتصفح فقط، وأي حساب يُنشأ فيها يضيع عند تحديث الصفحة.</p>
+    <p>لإنشاء حساب حقيقي تُحفظ فيه مبيعاتك افتح الموقع الرسمي:</p>
+    <a class="btn primary lg block" href="${signupHref()}">أنشئ حسابك على ${LIVE_URL.replace('https://', '')}</a>
+    <a class="btn ghost block" href="#/">العودة للتجربة</a></div></div>`;
 }
 
 function signup(s) {
@@ -5403,7 +5420,7 @@ function login(s) {
     'كلمة المرور للمالك فقط، والموظفون لا يحتاجونها.',
   ])}
     <main class="acc-main"><form class="acc-form" data-form="login" data-keep>
-      <div><h1>تسجيل الدخول</h1><p class="sub">ليس لديك حساب؟ <a href="#/signup">أنشئ حساب مقهاك</a></p></div>
+      <div><h1>تسجيل الدخول</h1><p class="sub">ليس لديك حساب؟ <a href="${signupHref()}">أنشئ حساب مقهاك</a></p></div>
       ${DEMO() ? `<div class="demo-note">للتجربة: <b dir="ltr">${DEMO_ACCOUNT.email}</b> وكلمة المرور <b dir="ltr">${DEMO_ACCOUNT.password}</b></div>` : ''}
       ${field('البريد الإلكتروني', '<input name="email" id="li-email" type="email" required dir="ltr" autocomplete="username" inputmode="email">')}
       ${field('كلمة المرور', pw('password', 'li-pass', 'current-password'))}
@@ -5436,7 +5453,7 @@ function pin(s) {
 /** شاشة ما قبل دخول الموظف: الرئيسية/إنشاء حساب/دخول، أو رمز الموظف إن كان الجهاز مرتبطاً بمقهى */
 function gateView(s) {
   if (s.shop) return pin(s);
-  if (s.authPage === 'signup') return signup(s);
+  if (s.authPage === 'signup') return DEMO_PAGE() ? demoSignupNotice() : signup(s);
   if (s.authPage === 'login') return login(s);
   return landing();
 }
@@ -6486,6 +6503,7 @@ const root = document.getElementById('app');
 root.innerHTML = '<div style="height:100%;display:grid;place-items:center;font-family:sans-serif;color:#6a776f">جارٍ تجهيز المقهى التجريبي…</div>';
 createDemoBackend().then(({ backend }) => {
   globalThis.MORECASH_BACKEND = backend;
+  globalThis.MORECASH_DEMO_PAGE = true; // التسجيل في التجربة يوجّه للموقع الحقيقي (الحساب هنا لا يُحفظ)
   return boot();
 }).catch((e) => { root.textContent = `تعذر التشغيل: ${e.message}`; console.error(e); });
 

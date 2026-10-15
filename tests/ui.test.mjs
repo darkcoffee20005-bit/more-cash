@@ -58,6 +58,20 @@ test('الصفحة الرئيسية، إنشاء حساب مقهى جديد، ث
   assert.equal(state.employee, null);
 });
 
+test('النسخة التجريبية لا تنشئ حسابات تضيع: التسجيل يوجّه للموقع الحقيقي', async () => {
+  const shop = state.shop;
+  globalThis.MORECASH_DEMO_PAGE = true;
+  Object.assign(state, { shop: null, authPage: 'signup' });
+  const html = screen();
+  assert.match(text(html), /نسخة تجريبية/);
+  assert.match(html, /href="https:\/\/more-cash\.vercel\.app\/#\/signup"/);
+  assert.doesNotMatch(html, /data-form="signup"/, 'لا نموذج تسجيل في التجربة');
+  state.authPage = '';
+  assert.doesNotMatch(screen(), /href="#\/signup"/, 'روابط الصفحة الرئيسية تذهب للموقع الحقيقي');
+  Object.assign(state, { shop, authPage: '' });
+  delete globalThis.MORECASH_DEMO_PAGE;
+});
+
 test('شاشة الرمز ثم الكاشير: طلب بإضافات وخصم وعميل ودفع مقسّم', async () => {
   let html = screen();
   assert.match(text(html), /أدخل رمزك/);
