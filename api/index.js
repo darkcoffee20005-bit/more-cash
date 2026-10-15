@@ -38,7 +38,8 @@ async function init() {
   const { db } = await connectDb({ uri, dbName: process.env.MONGODB_DB ?? 'morecash', memoryFile: null, log: { info() {}, warn() {} }, maxPoolSize: 5 });
   // قراءة صور الفواتير تعمل فقط عند ضبط ANTHROPIC_API_KEY في متغيرات Vercel؛ الإدخال اليدوي يعمل دائماً
   const readInvoice = process.env.ANTHROPIC_API_KEY ? createInvoiceReader({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
-  return createPlatform({ db, newId: () => crypto.randomUUID(), pepper: process.env.PIN_PEPPER || null, readInvoice });
+  return createPlatform({ db, newId: () => crypto.randomUUID(), pepper: process.env.PIN_PEPPER || null, readInvoice,
+    admins: (process.env.PLATFORM_ADMINS ?? '').split(','), support: process.env.SUPPORT_WHATSAPP || null });
 }
 
 /** سبب الفشل بلا أي سر (لا الرابط ولا كلمة المرور) */

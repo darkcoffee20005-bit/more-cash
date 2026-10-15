@@ -8,9 +8,10 @@ import * as receipts from './views/receipts.js';
 import * as ops from './views/ops.js';
 import * as admin from './views/admin.js';
 import * as account from './views/account.js';
+import * as platform from './views/platform.js';
 import { mark } from './brand.js';
 
-const modules = [pos, receipts, ops, admin, account];
+const modules = [pos, receipts, ops, admin, account, platform];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
@@ -34,6 +35,7 @@ function parseHash() {
 
 export async function navigate() {
   const { route, sub, id } = parseHash();
+  if (route === 'platform') { state.modal = null; render(); return platform.enterPlatform(); }
   if (!state.employee) { state.authPage = route; state.modal = null; return render(); }
   const name = route || defaultRoute();
   const allowed = NAV.find(([r]) => r === name);
@@ -55,6 +57,8 @@ export const views = {
   app(s) {
     if (!s.ready) return '<div class="auth-panel" style="height:100%"><p class="muted">جارٍ التحميل…</p></div>';
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
+    if (parseHash().route === 'platform') return platform.platformView(s);
+    if (s.shop?.disabled) return account.disabledView(s);
     if (!s.employee) return account.gateView(s);
     const body = (routes[s.route] ?? routes.pos)(s);
     return `<div class="shell">${railView(s)}<main class="main" id="main">${body}</main></div>`;
@@ -162,7 +166,8 @@ export async function boot() {
     state.shop = s.shop;
     state.authPage = parseHash().route;
     state.ready = true;
-    if (s.employee) await loadSession(s.employee);
+    if (parseHash().route === 'platform') await navigate();
+    else if (s.employee) await loadSession(s.employee);
     else render();
   } catch (e) {
     state.ready = true;

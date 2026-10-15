@@ -5,16 +5,17 @@ import { MemoryDb } from '../server/db/memory.js';
 import { ensureIndexes } from '../server/db/indexes.js';
 import { createPlatform } from '../server/app/platform.js';
 
-async function setup() {
+async function setup(opts = {}) {
   const db = new MemoryDb({ newId: () => crypto.randomUUID() });
   await ensureIndexes(db);
   let clock = new Date('2026-10-14T09:00:00Z');
-  const p = createPlatform({ db, now: () => clock, passwordIterations: 1000, log: { error() {}, warn() {}, info() {} } });
+  const p = createPlatform({ db, now: () => clock, passwordIterations: 1000, log: { error() {}, warn() {}, info() {} }, ...opts });
   const jar = {}; // جهاز → {token, deviceToken}
   const call = async (dev, method, path, body, query) => {
     const c = (jar[dev] ??= {});
-    const r = await p.handle({ method, path, body, query, token: c.token ?? null, deviceToken: c.deviceToken ?? null, ip: dev });
+    const r = await p.handle({ method, path, body, query, token: c.token ?? null, deviceToken: c.deviceToken ?? null, platformToken: c.platformToken ?? null, ip: dev });
     if (r.setToken !== undefined) c.token = r.setToken;
+    if (r.setPlatform !== undefined) c.platformToken = r.setPlatform;
     if (r.setDevice !== undefined) c.deviceToken = r.setDevice;
     return r;
   };
@@ -174,4 +175,52 @@ test('لوحة مفاتيح عربية: رمز بأرقام ٠-٩ يُقبل ع�
   assert.equal((await ok('ar', 'POST', '/api/auth/pin', { pin: '5582' })).employee.name, 'سارة');
   // الدخول من جهاز جديد بكلمة المرور كما كُتبت
   assert.equal((await ok('ar2', 'POST', '/api/account/login', { email: 'ALI@sahm.iq ', password: 'qahwa-١٢٣٤!' })).shop.name, 'مقهى السهم');
+});
+
+test('لوحة المزوّد: قائمة المقاهي، الإيقاف والتفعيل، وكلمة مرور مؤقتة', async () => {
+  const { ok, call } = await setup({ admins: ['Boss@MoreCash.iq'], support: '9647700000000' });
+  await ok('boss', 'POST', '/api/account/signup', { shopName: 'مقهى المزوّد', ownerName: 'المدير', email: 'boss@morecash.iq', password: 'boss-pass-2026', pin: '9087' });
+  await ok('a', 'POST', '/api/account/signup', { ...SHOP_A, seed: false });
+  await ok('b', 'POST', '/api/account/signup', { ...SHOP_B, seed: false });
+
+  // الدخول: صاحب مقهى عادي لا يدخل اللوحة حتى بكلمة مروره الصحيحة
+  assert.equal((await call('x', 'POST', '/api/platform/login', { email: SHOP_A.email, password: SHOP_A.password })).status, 401);
+  assert.equal((await call('x', 'POST', '/api/platform/login', { email: 'boss@morecash.iq', password: 'wrong' })).status, 401);
+  assert.equal((await call('x', 'GET', '/api/platform/shops')).status, 401, 'بلا جلسة لا بيانات');
+  assert.equal((await ok('x', 'GET', '/api/support')).whatsapp, '9647700000000');
+  await ok('admin', 'POST', '/api/platform/login', { email: ' boss@morecash.iq', password: 'boss-pass-2026' });
+  assert.equal((await ok('admin', 'GET', '/api/platform/me')).email, 'boss@morecash.iq');
+  const list = await ok('admin', 'GET', '/api/platform/shops');
+  assert.equal(list.totals.shops, 3);
+  const a = list.rows.find((r) => r.email === 'ahmed@zaytoon.iq');
+  assert.equal(a.name, 'مقهى الزيتون');
+  assert.equal((await ok('admin', 'GET', '/api/platform/shops', null, { search: 'رافدين' })).rows.length, 1);
+
+  // الإيقاف: كل طلبات المقهى تُرفض، والحالة تعرض أنه موقوف؛ المقاهي الأخرى لا تتأثر
+  assert.equal((await call('admin', 'POST', `/api/platform/shops/${a.id}/disable`, {})).body.error, 'REQUIRED', 'السبب مطلوب');
+  await ok('admin', 'POST', `/api/platform/shops/${a.id}/disable`, { reason: 'لم يُدفع الاشتراك' });
+  assert.equal((await call('a', 'GET', '/api/pos/bootstrap')).body.error, 'SHOP_DISABLED');
+  assert.equal((await ok('a', 'GET', '/api/state')).shop.disabled, true);
+  assert.equal((await call('b', 'GET', '/api/pos/bootstrap')).status, 200);
+  await ok('admin', 'POST', `/api/platform/shops/${a.id}/enable`, {});
+  assert.equal((await call('a', 'GET', '/api/pos/bootstrap')).status, 200, 'عاد للعمل بعد التفعيل');
+
+  // كلمة مرور مؤقتة: القديمة تبطل، أجهزة المقهى تُفصل، والجديدة تعمل مع طلب تغييرها
+  const reset = await ok('admin', 'POST', `/api/platform/shops/${a.id}/reset-password`, {});
+  assert.match(reset.tempPassword, /^[a-z2-9]{5}-[a-z2-9]{5}$/);
+  assert.equal((await call('a', 'GET', '/api/pos/bootstrap')).body.error, 'NO_SHOP', 'الأجهزة القديمة فُصلت');
+  assert.equal((await call('a2', 'POST', '/api/account/login', { email: SHOP_A.email, password: SHOP_A.password })).status, 401);
+  const login = await ok('a2', 'POST', '/api/account/login', { email: SHOP_A.email, password: reset.tempPassword });
+  assert.equal(login.mustChangePassword, true);
+  await ok('a2', 'POST', '/api/auth/pin', { pin: SHOP_A.pin });
+  await ok('a2', 'POST', '/api/account/password', { current: reset.tempPassword, next: 'new-pass-2026' });
+  assert.equal((await ok('a3', 'POST', '/api/account/login', { email: SHOP_A.email, password: 'new-pass-2026' })).mustChangePassword, false);
+
+  await ok('admin', 'POST', '/api/platform/logout', {});
+  assert.equal((await call('admin', 'GET', '/api/platform/shops')).status, 401);
+});
+
+test('لوحة المزوّد معطلة إن لم يُضبط PLATFORM_ADMINS', async () => {
+  const { call } = await setup();
+  assert.equal((await call('x', 'POST', '/api/platform/login', { email: 'a@b.iq', password: 'x' })).status, 404);
 });

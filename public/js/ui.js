@@ -125,6 +125,7 @@ const ERRORS = {
   INVALID_RANGE: 'فترة غير صالحة.',
   ALREADY_SET_UP: 'النظام مُعدّ مسبقاً.',
   INVALID_EMAIL: 'اكتب بريداً إلكترونياً صحيحاً.',
+  PLATFORM_AUTH: 'انتهت جلسة لوحة المزوّد. ادخل مجدداً.',
   INVALID_PHONE: 'رقم الهاتف غير صحيح. مثال: 07701234567',
   WEAK_PASSWORD: 'كلمة المرور 8 أحرف على الأقل، ولا تكون أرقاماً فقط.',
   EMAIL_IN_USE: 'هذا البريد مسجّل لمقهى آخر. سجّل الدخول به بدلاً من ذلك.',
@@ -145,6 +146,12 @@ export function errorText(e) {
 
 export function fail(e) {
   if (!e?.code) console.error(e);
+  if (e?.code === 'SHOP_DISABLED') {
+    // أوقف المزوّد هذا المقهى: شاشة توضيح بدل أخطاء متكررة
+    Object.assign(state, { shop: { ...(state.shop ?? {}), disabled: true }, employee: null, modal: null });
+    render();
+    return;
+  }
   if (e?.code === 'NO_SHOP') {
     // انتهى ربط الجهاز بالمقهى (أو سُجّل خروجه من جهاز آخر): العودة لتسجيل الدخول
     Object.assign(state, { shop: null, employee: null, modal: null, view: {}, authPage: 'login' });

@@ -16,7 +16,7 @@ const PORT = 40500 + Math.floor(Math.random() * 400);
 const dir = mkdtempSync(join(tmpdir(), 'mcb-'));
 // --vercel: يختبر نسخة النشر على Vercel (out/ + api/index.js) بدل خادم Node
 const VERCEL = process.argv.includes('--vercel');
-const server = spawn(process.execPath, [VERCEL ? 'scripts/vercel_dev.mjs' : 'server/index.js'], { env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', DATA_FILE: join(dir, 'db.json'), MONGODB_URI: '', MORECASH_ALLOW_MEMORY: '1' }, stdio: 'pipe' });
+const server = spawn(process.execPath, [VERCEL ? 'scripts/vercel_dev.mjs' : 'server/index.js'], { env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', DATA_FILE: join(dir, 'db.json'), MONGODB_URI: '', MORECASH_ALLOW_MEMORY: '1', PLATFORM_ADMINS: 'ahmed@zaytoon.iq', SUPPORT_WHATSAPP: '9647700000000' }, stdio: 'pipe' });
 await new Promise((r, j) => { server.stdout.on('data', (d) => String(d).includes('يعمل') && r()); setTimeout(() => j(new Error('server timeout')), 8000); });
 
 const browser = await playwright.chromium.launch();
@@ -194,6 +194,25 @@ try {
     await page.waitForLoadState('networkidle');
   }
   await page.setViewportSize({ width: 1280, height: 800 });
+
+  // لوحة المزوّد في سياق منفصل (جلسة مستقلة)
+  {
+    const pc = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const pp = await pc.newPage();
+    pp.on('pageerror', (e) => errors.push(`pageerror(platform): ${e.message}`));
+    await pp.route(/fonts\.(googleapis|gstatic)/, (r) => r.abort());
+    await pp.goto(`http://127.0.0.1:${PORT}/#/platform`);
+    await pp.waitForSelector('form[data-form="platform-login"]');
+    await pp.fill('#pf-email', 'ahmed@zaytoon.iq');
+    await pp.fill('#pf-pass', 'qahwa-2026!');
+    await pp.click('form[data-form="platform-login"] button[type=submit]');
+    await pp.waitForSelector('td:has-text("مقهى الزيتون")');
+    await pp.waitForTimeout(200);
+    await pp.screenshot({ path: join(shots, '25-platform.png') });
+    await pp.goto(`http://127.0.0.1:${PORT}/#/forgot`);
+    await pp.waitForSelector('a[href^="https://wa.me/9647700000000"]');
+    await pc.close();
+  }
 
   await page.goto(`http://127.0.0.1:${PORT}/#/admin/daily`);
   await page.waitForSelector('.kpis');

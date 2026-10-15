@@ -18,6 +18,8 @@
 - الوصفات: كل حجم يحمل `recipe` (كميات تقريبية من المكونات) تُطرح من المخزون مع كل بيع؛ `GET /api/admin/reports/daily` يجمع مبيعات اليوم والموارد المصروفة (طباعة 80 مم + مشاركة).
 - الواجهة مصممة للآيباد: لوحة الطلب يمين وأضيق قليلاً من الأصناف، بلا تمرير (100dvh)، وبألوان فاتحة دائماً.
 - استلام المشتريات: يدوياً أو بتصوير فاتورة (`server/app/invoice.js`، نموذج claude-opus-5-5، يعمل فقط إن وُجد ANTHROPIC_API_KEY). القراءة لا تكتب شيئاً؛ المستخدم يراجع ثم `POST /api/admin/inventory/receive`. لا تستورد invoice.js من خدمات المقهى (النسخة التجريبية تُبنى منها للمتصفح) — يُمرَّر `readInvoice` من نقاط الدخول.
+- لوحة المزوّد `#/platform` (`server/app/platform-admin.js`): للبريد في PLATFORM_ADMINS فقط؛ كل المقاهي ونشاطها، إيقاف/تفعيل (`tenants.disabled` → SHOP_DISABLED)، وكلمة مرور مؤقتة (`mustChangePassword`). هي الطبقة الوحيدة التي تقرأ عبر المقاهي.
+- المصروفات (`server/app/expenses.js`) تُطرح من الربح الإجمالي → `netProfit` في التقارير. سجل العمليات `GET /api/admin/audit` للمالك.
 - طرق الدفع الافتراضية: نقد أو كي. الكوكيز SameSite=Lax (Strict يكسر Safari عند الفتح من رابط).
 
 ## قواعد لا تُكسر
@@ -28,7 +30,7 @@
 
 ## النشر
 - GitHub: darkcoffee20005-bit/more-cash (فرع main). Vercel ينشر تلقائياً مع كل push (مشروع more-cash، منطقة hkg1).
-- متغيرات Vercel: MONGODB_URI (Production)، MONGODB_DB=morecash، و PIN_PEPPER اختياري، و ANTHROPIC_API_KEY لقراءة الفواتير.
+- متغيرات Vercel: MONGODB_URI (Production)، MONGODB_DB=morecash، و PIN_PEPPER اختياري، و ANTHROPIC_API_KEY لقراءة الفواتير، و PLATFORM_ADMINS (بريد المزوّد)، و SUPPORT_WHATSAPP (رقم الدعم بصيغة 964…).
 - MongoDB Atlas: Cluster0 (AP_EAST_1)، مستخدم التطبيق morecash_app، الوصول 0.0.0.0/0.
 
 ## الوضع الحالي

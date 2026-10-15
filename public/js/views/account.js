@@ -90,6 +90,37 @@ function side(title, lead, points) {
   </aside>`;
 }
 
+// ---------------------------------------------------------------- نسيت كلمة المرور / مقهى موقوف
+let support = undefined; // رقم واتساب الدعم من الخادم (SUPPORT_WHATSAPP)
+async function loadSupport() {
+  if (support !== undefined) return support;
+  try { support = (await get('/api/support')).whatsapp ?? null; } catch { support = null; }
+  render();
+  return support;
+}
+const waLink = (text) => (support ? `https://wa.me/${support}?text=${encodeURIComponent(text)}` : null);
+
+function forgot() {
+  loadSupport();
+  const wa = waLink('مرحباً، نسيت كلمة مرور حساب مقهاي في مور كاش. البريد المسجّل: ');
+  return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">
+    <h1>نسيت كلمة المرور؟</h1>
+    <p>لا تحتاج كلمة المرور على الأجهزة المربوطة بمقهاك: شاشة الرمز تكفي. تُطلب كلمة المرور فقط لربط جهاز جديد.</p>
+    <p>لاستعادتها تواصل مع مزوّد الخدمة: يعطيك كلمة مرور مؤقتة تدخل بها ثم تغيّرها من الإدارة ← الإعدادات.</p>
+    ${wa ? `<a class="btn primary lg block" href="${wa}" target="_blank" rel="noopener">تواصل مع الدعم على واتساب</a>` : support === undefined ? '<p class="muted small">…</p>' : '<p class="muted small">تواصل مع الجهة التي زوّدتك بالبرنامج.</p>'}
+    <a class="btn ghost block" href="#/login">العودة لتسجيل الدخول</a></div></div>`;
+}
+
+export function disabledView(s) {
+  loadSupport();
+  const wa = waLink(`مرحباً، حساب مقهى "${s.shop?.name ?? ''}" في مور كاش موقوف. أرجو المساعدة.`);
+  return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">
+    <div class="row">${icon('alert')}<h1 style="font-size:1.4rem">الحساب موقوف مؤقتاً</h1></div>
+    <p>حساب <b>${esc(s.shop?.name ?? '')}</b> موقوف من مزوّد الخدمة، فلا يمكن البيع حالياً. بياناتك ومبيعاتك محفوظة كما هي.</p>
+    ${wa ? `<a class="btn primary lg block" href="${wa}" target="_blank" rel="noopener">تواصل مع الدعم على واتساب</a>` : '<p class="muted small">تواصل مع الجهة التي زوّدتك بالبرنامج لإعادة التفعيل.</p>'}
+    <button class="btn block" data-action="reload">إعادة المحاولة</button></div></div>`;
+}
+
 function demoSignupNotice() {
   return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">
     <h1>إنشاء حساب مقهاك</h1>
@@ -137,6 +168,7 @@ function login(s) {
       ${field('البريد الإلكتروني', '<input name="email" id="li-email" type="email" required dir="ltr" autocomplete="username" inputmode="email">')}
       ${field('كلمة المرور', pw('password', 'li-pass', 'current-password'))}
       <button class="btn primary lg block" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل الدخول</button>
+      <a class="small" href="#/forgot" style="text-align:center">نسيت كلمة المرور؟</a>
     </form></main></div>`;
 }
 
@@ -167,6 +199,7 @@ export function gateView(s) {
   if (s.shop) return pin(s);
   if (s.authPage === 'signup') return DEMO_PAGE() ? demoSignupNotice() : signup(s);
   if (s.authPage === 'login') return login(s);
+  if (s.authPage === 'forgot') return forgot(s);
   return landing();
 }
 
@@ -220,6 +253,7 @@ export function initAccount({ loadSession }) {
     login: (_el, _e, d) => busy(async () => {
       const r = await post('/api/account/login', { email: d.email, password: d.password });
       afterShopReady(() => set({ shop: r.shop, employee: null, view: { pin: '' } }));
+      if (r.mustChangePassword) toast('دخلت بكلمة مرور مؤقتة. غيّرها من الإدارة ← الإعدادات بعد إدخال رمزك.', 'bad');
     }),
     'demo-enter': () => busy(async () => {
       const r = await post('/api/account/login', DEMO_ACCOUNT);

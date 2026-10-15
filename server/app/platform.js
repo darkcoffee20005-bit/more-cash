@@ -8,6 +8,7 @@ import { createApp } from './index.js';
 import { AppError, bad, conflict, isDup, str } from './core.js';
 import { hashPassword, normalizePin, randomToken, sha256, validPin, verifyPassword } from './security.js';
 import { scopeDb } from '../db/scoped.js';
+import { createPlatformAdmin } from './platform-admin.js';
 
 const DEVICE_DAYS = 90;
 const MAX_FAILS = 5;
@@ -17,7 +18,7 @@ const IP_MAX = 20;
 const MAX_CACHED_APPS = 300;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null } = {}) {
+export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null } = {}) {
   const apps = new Map(); // tenantId → {app, ready}
   const ipFails = new Map(); // ip → {count, since}
 
@@ -32,6 +33,18 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     apps.set(tenantId, entry);
     if (apps.size > MAX_CACHED_APPS) apps.delete(apps.keys().next().value);
     return entry;
+  }
+
+  // مقهى موقوف من لوحة المزوّد: يُرفض كل طلب له. الحالة تُخزَّن 30 ثانية لتقليل القراءات
+  const disabledCache = new Map(); // tenantId → {disabled, at}
+  async function isDisabled(tenantId) {
+    const c = disabledCache.get(tenantId);
+    if (c && Date.now() - c.at < 30_000) return c.disabled;
+    const t = await db.collection('tenants').findOne({ _id: tenantId }, { projection: { disabled: 1 } });
+    const disabled = !!t?.disabled;
+    disabledCache.set(tenantId, { disabled, at: Date.now() });
+    if (disabledCache.size > 5000) disabledCache.clear();
+    return disabled;
   }
 
   async function appFor(tenantId) {
@@ -84,7 +97,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     const t = await db.collection('tenants').findOne({ _id: tenantId });
     if (!t) return null;
     const s = await db.collection('settings').findOne({ _id: `${tenantId}:store` }, { projection: { name: 1 } });
-    return { id: t._id, name: s?.name ?? t.name };
+    return { id: t._id, name: s?.name ?? t.name, ...(t.disabled ? { disabled: true } : {}) };
   }
 
   // ---------------------------------------------------------------- الحساب
@@ -150,7 +163,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     }
     await db.collection('accounts').updateOne({ _id: acc._id }, { $set: { failedLogins: 0, lockedUntil: null, lastLoginAt: now() } });
     const device = await createDevice(acc);
-    return { status: 200, body: { shop: await shopInfo(acc.tenantId) }, setDevice: device, setToken: null };
+    return { status: 200, body: { shop: await shopInfo(acc.tenantId), mustChangePassword: !!acc.mustChangePassword }, setDevice: device, setToken: null };
   }
 
   async function changePassword(device, actor, body = {}) {
@@ -159,7 +172,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     if (!acc || !(await verifyPassword(String(body.current ?? ''), acc.passwordHash))) throw new AppError(400, 'WRONG_PASSWORD');
     const next = password(body.next);
     await db.collection('accounts').updateOne({ _id: acc._id }, { $set: {
-      passwordHash: await hashPassword(next, passwordIterations ? { iterations: passwordIterations } : undefined), passwordChangedAt: now(),
+      passwordHash: await hashPassword(next, passwordIterations ? { iterations: passwordIterations } : undefined), passwordChangedAt: now(), mustChangePassword: false,
     } });
     // تسجيل خروج كل الأجهزة الأخرى
     await db.collection('devices').deleteMany({ accountId: acc._id, _id: { $ne: device._id } });
@@ -175,6 +188,8 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     const ip = req.ip ?? 'local';
     const key = `${req.method} ${req.path}`;
     try {
+      if (req.path.startsWith('/api/platform/')) return await platformAdmin.handle({ ...req, ip });
+      if (key === 'GET /api/support') return { status: 200, body: { whatsapp: support } };
       if (key === 'POST /api/account/signup') return await signup(req.body, ip);
       if (key === 'POST /api/account/login') return await login(req.body, ip);
 
@@ -196,6 +211,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
       }
 
       if (!device) return { status: 401, body: { error: 'NO_SHOP' }, ...(req.deviceToken ? { setDevice: null } : {}) };
+      if (await isDisabled(device.tenantId)) return { status: 403, body: { error: 'SHOP_DISABLED' } };
       const app = await appFor(device.tenantId);
 
       if (key === 'POST /api/account/password') {
@@ -216,6 +232,9 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
       return { status: 500, body: { error: 'INTERNAL' } };
     }
   }
+
+  // الإيقاف يسري فوراً على هذه النسخة من الخادم، وخلال 30 ثانية على غيرها
+  const platformAdmin = createPlatformAdmin({ db, now, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log });
 
   return { handle, appFor };
 }

@@ -1035,6 +1035,8 @@ async function ensureIndexes(db) {
     ix('accounts', { tenantId: 1 }, { name: 'by_tenant' }),
     ix('devices', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
     ix('devices', { tenantId: 1 }, { name: 'by_tenant' }),
+    ix('devices', { accountId: 1 }, { name: 'by_account' }),
+    ix('platform_sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
 
     // ---- بيانات كل مقهى
     ix('receipts', t({ number: 1 }), { unique: true, name: 'uniq_number' }),
@@ -3606,18 +3608,141 @@ class ScopedCursor {
 return { scopeDb };
 })();
 
+// ---- server/app/platform-admin.js
+const __m_server_app_platform_admin_js = await (async () => {
+const { AppError, bad, id: checkId, str } = __m_server_app_core_js;
+const { hashPassword, randomToken, sha256, verifyPassword } = __m_server_app_security_js;
+// لوحة مزوّد الخدمة (أنت): ترى كل المقاهي ونشاطها، توقف حساباً أو تفعّله، وتنشئ كلمة مرور مؤقتة لصاحب مقهى نسيها.
+// الدخول: بريد وكلمة مرور حساب مقهى موجود، بشرط أن يكون البريد ضمن PLATFORM_ADMINS (متغير بيئة).
+// هذه الطبقة الوحيدة التي تقرأ بيانات كل المقاهي معاً — للقراءة الإجمالية فقط، ولا تمسّ بيانات البيع.
+
+
+
+const SESSION_HOURS = 4;
+const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
+
+function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp, failIp, onTenantChange = () => {}, log = console }) {
+  const allowed = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
+  const sessions = () => db.collection('platform_sessions');
+  const hashOpts = passwordIterations ? { iterations: passwordIterations } : undefined;
+
+  async function login(body = {}, ip) {
+    checkIp(ip);
+    const mail = String(body.email ?? '').trim().toLowerCase().replace(/\s/g, '');
+    const pass = typeof body.password === 'string' ? body.password.slice(0, 128) : '';
+    const acc = allowed.has(mail) ? await db.collection('accounts').findOne({ email: mail }) : null;
+    // نفس زمن الاستجابة سواء كان البريد مسموحاً أم لا
+    const okPass = await verifyPassword(pass, acc?.passwordHash ?? DUMMY_HASH);
+    if (!acc || !okPass) { failIp(ip); throw new AppError(401, 'BAD_CREDENTIALS'); }
+    const token = randomToken(32);
+    await sessions().insertOne({ _id: await sha256(token), email: mail, createdAt: now(), expiresAt: new Date(now().getTime() + SESSION_HOURS * 3600_000) });
+    log.warn?.(`platform login: ${mail}`);
+    return { status: 200, body: { email: mail }, setPlatform: token };
+  }
+
+  async function resolve(token) {
+    if (typeof token !== 'string' || token.length !== 64) return null;
+    const s = await sessions().findOne({ _id: await sha256(token) });
+    if (!s || s.expiresAt <= now() || !allowed.has(s.email)) return null;
+    return s;
+  }
+
+  async function shops({ search = '' } = {}) {
+    const tenants = await db.collection('tenants').find({}).sort({ createdAt: -1 }).limit(2000).toArray();
+    const accounts = await db.collection('accounts').find({ tenantId: { $in: tenants.map((t) => t._id) } }).project({ email: 1, name: 1, tenantId: 1, lastLoginAt: 1 }).toArray();
+    const byTenant = new Map(accounts.map((a) => [a.tenantId, a]));
+    const since = new Date(now().getTime() - 30 * 86400_000);
+    const q = String(search).trim().toLowerCase();
+    const rows = [];
+    for (const t of tenants) {
+      const acc = byTenant.get(t._id);
+      if (q && !`${t.name} ${acc?.email ?? ''} ${acc?.name ?? ''}`.toLowerCase().includes(q)) continue;
+      const [last, sales30, devices] = await Promise.all([
+        db.collection('receipts').find({ tenantId: t._id, type: 'sale' }).sort({ createdAt: -1 }).limit(1).project({ createdAt: 1 }).toArray(),
+        db.collection('receipts').countDocuments({ tenantId: t._id, type: 'sale', createdAt: { $gte: since } }),
+        db.collection('devices').countDocuments({ tenantId: t._id }),
+      ]);
+      rows.push({
+        id: t._id, name: t.name, ownerName: acc?.name ?? null, email: acc?.email ?? null, createdAt: t.createdAt,
+        lastLoginAt: acc?.lastLoginAt ?? null, lastSaleAt: last[0]?.createdAt ?? null, sales30, devices,
+        disabled: !!t.disabled, disabledReason: t.disabledReason ?? null,
+      });
+    }
+    const weekAgo = now().getTime() - 7 * 86400_000;
+    return {
+      rows,
+      totals: { shops: rows.length, active7: rows.filter((r) => r.lastSaleAt && new Date(r.lastSaleAt).getTime() >= weekAgo).length, disabled: rows.filter((r) => r.disabled).length },
+    };
+  }
+
+  async function setDisabled(tenantId, disabled, reason, admin) {
+    const id = checkId(tenantId);
+    const r = await db.collection('tenants').updateOne({ _id: id }, disabled
+      ? { $set: { disabled: true, disabledReason: str(reason, { field: 'reason', max: 120, optional: true }), disabledAt: now(), disabledBy: admin.email } }
+      : { $set: { disabled: false, disabledReason: null, enabledAt: now(), enabledBy: admin.email } });
+    if (!r.matchedCount) throw new AppError(404, 'NOT_FOUND');
+    onTenantChange(id);
+    return { ok: true };
+  }
+
+  /** كلمة مرور مؤقتة تُعطى لصاحب المقهى؛ تُسجّل خروج كل أجهزته، ويُطلب منه تغييرها */
+  async function resetPassword(tenantId, admin) {
+    const acc = await db.collection('accounts').findOne({ tenantId: checkId(tenantId) });
+    if (!acc) throw new AppError(404, 'NOT_FOUND');
+    // سهلة القراءة على الهاتف: بلا حروف ملتبسة (0/O، 1/l)
+    const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
+    const bytes = crypto.getRandomValues(new Uint8Array(10));
+    const temp = [...bytes].map((b) => alphabet[b % alphabet.length]).join('').replace(/(.{5})/, '$1-');
+    await db.collection('accounts').updateOne({ _id: acc._id }, { $set: {
+      passwordHash: await hashPassword(temp, hashOpts), mustChangePassword: true, failedLogins: 0, lockedUntil: null, passwordResetAt: now(), passwordResetBy: admin.email,
+    } });
+    await db.collection('devices').deleteMany({ accountId: acc._id });
+    return { email: acc.email, tempPassword: temp };
+  }
+
+  async function handle(req) {
+    const key = `${req.method} ${req.path}`;
+    if (key === 'POST /api/platform/login') {
+      if (!allowed.size) throw new AppError(404, 'NOT_FOUND');
+      return login(req.body, req.ip);
+    }
+    if (key === 'POST /api/platform/logout') {
+      if (req.platformToken) await sessions().deleteOne({ _id: await sha256(req.platformToken) }).catch(() => {});
+      return { status: 200, body: { ok: true }, setPlatform: null };
+    }
+    const admin = await resolve(req.platformToken);
+    if (key === 'GET /api/platform/me') return { status: 200, body: { email: admin?.email ?? null, enabled: allowed.size > 0 } };
+    if (!admin) throw new AppError(401, 'PLATFORM_AUTH');
+    if (key === 'GET /api/platform/shops') return { status: 200, body: await shops(req.query ?? {}) };
+    const m = /^\/api\/platform\/shops\/([A-Za-z0-9_-]{1,64})\/(disable|enable|reset-password)$/.exec(req.path);
+    if (m && req.method === 'POST') {
+      if (m[2] === 'reset-password') return { status: 200, body: await resetPassword(m[1], admin) };
+      if (m[2] === 'disable' && !String(req.body?.reason ?? '').trim()) throw bad('REQUIRED', 'reason');
+      return { status: 200, body: await setDisabled(m[1], m[2] === 'disable', req.body?.reason, admin) };
+    }
+    throw new AppError(404, 'NOT_FOUND');
+  }
+
+  return { handle };
+}
+
+return { createPlatformAdmin };
+})();
+
 // ---- server/app/platform.js
 const __m_server_app_platform_js = await (async () => {
 const { createApp } = __m_server_app_index_js;
 const { AppError, bad, conflict, isDup, str } = __m_server_app_core_js;
 const { hashPassword, normalizePin, randomToken, sha256, validPin, verifyPassword } = __m_server_app_security_js;
 const { scopeDb } = __m_server_db_scoped_js;
+const { createPlatformAdmin } = __m_server_app_platform_admin_js;
 // المنصة: حسابات المقاهي، ربط الجهاز بمقهى، وتوجيه كل طلب إلى تطبيق ذلك المقهى فقط.
 //
 // طبقتا دخول:
 //   1) حساب المقهى (بريد + كلمة مرور) — مرة واحدة على كل جهاز. ينشئ "جلسة جهاز" طويلة (كوكي mc_device).
 //   2) رمز الموظف (PIN) — سريع، لكل وردية/موظف، داخل المقهى المرتبط بالجهاز فقط (كوكي mc_session).
 // لذلك لا يمكن تجربة رموز PIN إلا من جهاز سجّل صاحبه الدخول بكلمة المرور.
+
 
 
 
@@ -3631,7 +3756,7 @@ const IP_MAX = 20;
 const MAX_CACHED_APPS = 300;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null } = {}) {
+function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null } = {}) {
   const apps = new Map(); // tenantId → {app, ready}
   const ipFails = new Map(); // ip → {count, since}
 
@@ -3646,6 +3771,18 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     apps.set(tenantId, entry);
     if (apps.size > MAX_CACHED_APPS) apps.delete(apps.keys().next().value);
     return entry;
+  }
+
+  // مقهى موقوف من لوحة المزوّد: يُرفض كل طلب له. الحالة تُخزَّن 30 ثانية لتقليل القراءات
+  const disabledCache = new Map(); // tenantId → {disabled, at}
+  async function isDisabled(tenantId) {
+    const c = disabledCache.get(tenantId);
+    if (c && Date.now() - c.at < 30_000) return c.disabled;
+    const t = await db.collection('tenants').findOne({ _id: tenantId }, { projection: { disabled: 1 } });
+    const disabled = !!t?.disabled;
+    disabledCache.set(tenantId, { disabled, at: Date.now() });
+    if (disabledCache.size > 5000) disabledCache.clear();
+    return disabled;
   }
 
   async function appFor(tenantId) {
@@ -3698,7 +3835,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     const t = await db.collection('tenants').findOne({ _id: tenantId });
     if (!t) return null;
     const s = await db.collection('settings').findOne({ _id: `${tenantId}:store` }, { projection: { name: 1 } });
-    return { id: t._id, name: s?.name ?? t.name };
+    return { id: t._id, name: s?.name ?? t.name, ...(t.disabled ? { disabled: true } : {}) };
   }
 
   // ---------------------------------------------------------------- الحساب
@@ -3764,7 +3901,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     }
     await db.collection('accounts').updateOne({ _id: acc._id }, { $set: { failedLogins: 0, lockedUntil: null, lastLoginAt: now() } });
     const device = await createDevice(acc);
-    return { status: 200, body: { shop: await shopInfo(acc.tenantId) }, setDevice: device, setToken: null };
+    return { status: 200, body: { shop: await shopInfo(acc.tenantId), mustChangePassword: !!acc.mustChangePassword }, setDevice: device, setToken: null };
   }
 
   async function changePassword(device, actor, body = {}) {
@@ -3773,7 +3910,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     if (!acc || !(await verifyPassword(String(body.current ?? ''), acc.passwordHash))) throw new AppError(400, 'WRONG_PASSWORD');
     const next = password(body.next);
     await db.collection('accounts').updateOne({ _id: acc._id }, { $set: {
-      passwordHash: await hashPassword(next, passwordIterations ? { iterations: passwordIterations } : undefined), passwordChangedAt: now(),
+      passwordHash: await hashPassword(next, passwordIterations ? { iterations: passwordIterations } : undefined), passwordChangedAt: now(), mustChangePassword: false,
     } });
     // تسجيل خروج كل الأجهزة الأخرى
     await db.collection('devices').deleteMany({ accountId: acc._id, _id: { $ne: device._id } });
@@ -3789,6 +3926,8 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     const ip = req.ip ?? 'local';
     const key = `${req.method} ${req.path}`;
     try {
+      if (req.path.startsWith('/api/platform/')) return await platformAdmin.handle({ ...req, ip });
+      if (key === 'GET /api/support') return { status: 200, body: { whatsapp: support } };
       if (key === 'POST /api/account/signup') return await signup(req.body, ip);
       if (key === 'POST /api/account/login') return await login(req.body, ip);
 
@@ -3810,6 +3949,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
       }
 
       if (!device) return { status: 401, body: { error: 'NO_SHOP' }, ...(req.deviceToken ? { setDevice: null } : {}) };
+      if (await isDisabled(device.tenantId)) return { status: 403, body: { error: 'SHOP_DISABLED' } };
       const app = await appFor(device.tenantId);
 
       if (key === 'POST /api/account/password') {
@@ -3830,6 +3970,9 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
       return { status: 500, body: { error: 'INTERNAL' } };
     }
   }
+
+  // الإيقاف يسري فوراً على هذه النسخة من الخادم، وخلال 30 ثانية على غيرها
+  const platformAdmin = createPlatformAdmin({ db, now, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log });
 
   return { handle, appFor };
 }
@@ -4214,6 +4357,7 @@ const ERRORS = {
   INVALID_RANGE: 'فترة غير صالحة.',
   ALREADY_SET_UP: 'النظام مُعدّ مسبقاً.',
   INVALID_EMAIL: 'اكتب بريداً إلكترونياً صحيحاً.',
+  PLATFORM_AUTH: 'انتهت جلسة لوحة المزوّد. ادخل مجدداً.',
   INVALID_PHONE: 'رقم الهاتف غير صحيح. مثال: 07701234567',
   WEAK_PASSWORD: 'كلمة المرور 8 أحرف على الأقل، ولا تكون أرقاماً فقط.',
   EMAIL_IN_USE: 'هذا البريد مسجّل لمقهى آخر. سجّل الدخول به بدلاً من ذلك.',
@@ -4234,6 +4378,12 @@ function errorText(e) {
 
 function fail(e) {
   if (!e?.code) console.error(e);
+  if (e?.code === 'SHOP_DISABLED') {
+    // أوقف المزوّد هذا المقهى: شاشة توضيح بدل أخطاء متكررة
+    Object.assign(state, { shop: { ...(state.shop ?? {}), disabled: true }, employee: null, modal: null });
+    render();
+    return;
+  }
   if (e?.code === 'NO_SHOP') {
     // انتهى ربط الجهاز بالمقهى (أو سُجّل خروجه من جهاز آخر): العودة لتسجيل الدخول
     Object.assign(state, { shop: null, employee: null, modal: null, view: {}, authPage: 'login' });
@@ -5576,6 +5726,37 @@ function side(title, lead, points) {
   </aside>`;
 }
 
+// ---------------------------------------------------------------- نسيت كلمة المرور / مقهى موقوف
+let support = undefined; // رقم واتساب الدعم من الخادم (SUPPORT_WHATSAPP)
+async function loadSupport() {
+  if (support !== undefined) return support;
+  try { support = (await get('/api/support')).whatsapp ?? null; } catch { support = null; }
+  render();
+  return support;
+}
+const waLink = (text) => (support ? `https://wa.me/${support}?text=${encodeURIComponent(text)}` : null);
+
+function forgot() {
+  loadSupport();
+  const wa = waLink('مرحباً، نسيت كلمة مرور حساب مقهاي في مور كاش. البريد المسجّل: ');
+  return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">
+    <h1>نسيت كلمة المرور؟</h1>
+    <p>لا تحتاج كلمة المرور على الأجهزة المربوطة بمقهاك: شاشة الرمز تكفي. تُطلب كلمة المرور فقط لربط جهاز جديد.</p>
+    <p>لاستعادتها تواصل مع مزوّد الخدمة: يعطيك كلمة مرور مؤقتة تدخل بها ثم تغيّرها من الإدارة ← الإعدادات.</p>
+    ${wa ? `<a class="btn primary lg block" href="${wa}" target="_blank" rel="noopener">تواصل مع الدعم على واتساب</a>` : support === undefined ? '<p class="muted small">…</p>' : '<p class="muted small">تواصل مع الجهة التي زوّدتك بالبرنامج.</p>'}
+    <a class="btn ghost block" href="#/login">العودة لتسجيل الدخول</a></div></div>`;
+}
+
+function disabledView(s) {
+  loadSupport();
+  const wa = waLink(`مرحباً، حساب مقهى "${s.shop?.name ?? ''}" في مور كاش موقوف. أرجو المساعدة.`);
+  return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">
+    <div class="row">${icon('alert')}<h1 style="font-size:1.4rem">الحساب موقوف مؤقتاً</h1></div>
+    <p>حساب <b>${esc(s.shop?.name ?? '')}</b> موقوف من مزوّد الخدمة، فلا يمكن البيع حالياً. بياناتك ومبيعاتك محفوظة كما هي.</p>
+    ${wa ? `<a class="btn primary lg block" href="${wa}" target="_blank" rel="noopener">تواصل مع الدعم على واتساب</a>` : '<p class="muted small">تواصل مع الجهة التي زوّدتك بالبرنامج لإعادة التفعيل.</p>'}
+    <button class="btn block" data-action="reload">إعادة المحاولة</button></div></div>`;
+}
+
 function demoSignupNotice() {
   return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">
     <h1>إنشاء حساب مقهاك</h1>
@@ -5623,6 +5804,7 @@ function login(s) {
       ${field('البريد الإلكتروني', '<input name="email" id="li-email" type="email" required dir="ltr" autocomplete="username" inputmode="email">')}
       ${field('كلمة المرور', pw('password', 'li-pass', 'current-password'))}
       <button class="btn primary lg block" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل الدخول</button>
+      <a class="small" href="#/forgot" style="text-align:center">نسيت كلمة المرور؟</a>
     </form></main></div>`;
 }
 
@@ -5653,6 +5835,7 @@ function gateView(s) {
   if (s.shop) return pin(s);
   if (s.authPage === 'signup') return DEMO_PAGE() ? demoSignupNotice() : signup(s);
   if (s.authPage === 'login') return login(s);
+  if (s.authPage === 'forgot') return forgot(s);
   return landing();
 }
 
@@ -5706,6 +5889,7 @@ function initAccount({ loadSession }) {
     login: (_el, _e, d) => busy(async () => {
       const r = await post('/api/account/login', { email: d.email, password: d.password });
       afterShopReady(() => set({ shop: r.shop, employee: null, view: { pin: '' } }));
+      if (r.mustChangePassword) toast('دخلت بكلمة مرور مؤقتة. غيّرها من الإدارة ← الإعدادات بعد إدخال رمزك.', 'bad');
     }),
     'demo-enter': () => busy(async () => {
       const r = await post('/api/account/login', DEMO_ACCOUNT);
@@ -5731,7 +5915,7 @@ async function loadAccount() {
 }
 
 
-return { DEMO_ACCOUNT, gateView, accountCard, modals, initAccount, loadAccount, mark };
+return { DEMO_ACCOUNT, disabledView, gateView, accountCard, modals, initAccount, loadAccount, mark };
 })();
 
 // ---- public/js/views/admin.js
@@ -6620,6 +6804,123 @@ on({
 return { routes, modals, enter, currentAdminSection: sub };
 })();
 
+// ---- public/js/views/platform.js
+const __m_public_js_views_platform_js = await (async () => {
+const { dateTime, esc } = __m_shared_format_js;
+const { get, post } = __m_public_js_api_js;
+const { icon } = __m_public_js_icons_js;
+const { busy, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
+// لوحة مزوّد الخدمة (#/platform): كل المقاهي، النشاط، الإيقاف/التفعيل، وكلمة مرور مؤقتة لمن نسيها.
+
+
+
+
+
+const P = () => state.platform ?? (state.platform = { me: undefined, list: null, search: '' });
+const ago = (d) => {
+  if (!d) return '—';
+  const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400_000);
+  return days <= 0 ? 'اليوم' : days === 1 ? 'أمس' : `قبل ${days} يوم`;
+};
+
+async function enterPlatform() {
+  const p = P();
+  try {
+    const me = await get('/api/platform/me');
+    p.me = me;
+    if (me.email) p.list = await get('/api/platform/shops', { search: p.search || undefined });
+  } catch (e) { p.me = { email: null, enabled: false }; fail(e); }
+  render();
+}
+
+function platformView() {
+  const p = P();
+  if (p.me === undefined) return '<div class="auth-panel" style="height:100%"><p class="muted">جارٍ التحميل…</p></div>';
+  if (!p.me.email) {
+    return `<div class="auth-panel" style="height:100%"><form class="card pad stack" style="width:min(420px,100%)" data-form="platform-login">
+      <div class="row">${icon('gear')}<h1 style="font-size:1.3rem">لوحة مزوّد الخدمة</h1></div>
+      ${p.me.enabled === false ? '<p class="muted">اللوحة غير مفعّلة على هذا الخادم (PLATFORM_ADMINS).</p>' : '<p class="muted small">للمزوّد فقط. ادخل ببريد وكلمة مرور حسابك المسجّل كمزوّد.</p>'}
+      ${field('البريد', '<input name="email" id="pf-email" type="email" dir="ltr" required autocomplete="username">')}
+      ${field('كلمة المرور', '<input name="password" id="pf-pass" type="password" required autocomplete="current-password">')}
+      <button class="btn primary lg" type="submit" ${state.busy ? 'disabled' : ''}>دخول</button>
+      <a class="btn ghost" href="#/">العودة للبرنامج</a></form></div>`;
+  }
+  const l = p.list;
+  return `<div class="page" style="max-width:1200px;height:100%;overflow:auto">
+    <div class="page-head"><h1>المقاهي المشتركة</h1><span class="muted small" dir="ltr">${esc(p.me.email)}</span>
+      <span class="spacer"></span><button class="btn sm" data-action="platform-refresh">${icon('check', 'sm')} تحديث</button>
+      <button class="btn sm ghost" data-action="platform-logout">${icon('lock', 'sm')} خروج</button></div>
+    ${l ? `<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="kpi lead"><span class="label">كل المقاهي</span><b>${l.totals.shops}</b></div>
+      <div class="kpi"><span class="label">نشطة آخر 7 أيام</span><b>${l.totals.active7}</b></div>
+      <div class="kpi"><span class="label">موقوفة</span><b>${l.totals.disabled}</b></div></div>` : ''}
+    <div class="search-box">${icon('search', 'sm')}<input type="search" id="pf-search" placeholder="ابحث باسم المقهى أو البريد" value="${esc(p.search)}" data-input="platform-search" autocomplete="off"></div>
+    <div class="table-wrap"><table><thead><tr><th>المقهى</th><th>المالك</th><th>التسجيل</th><th>آخر بيع</th><th class="num">مبيعات 30 يوم</th><th class="num">أجهزة</th><th>الحالة</th><th></th></tr></thead>
+    <tbody>${!l ? '<tr><td colspan="8" class="muted">جارٍ التحميل…</td></tr>' : l.rows.length ? l.rows.map((r) => `<tr>
+      <td><b>${esc(r.name)}</b></td><td><div>${esc(r.ownerName ?? '')}</div><div class="muted small" dir="ltr">${esc(r.email ?? '')}</div></td>
+      <td class="small">${r.createdAt ? dateTime(r.createdAt, 180) : '—'}</td><td class="small">${ago(r.lastSaleAt)}</td>
+      <td class="num">${r.sales30}</td><td class="num">${r.devices}</td>
+      <td>${r.disabled ? `<span class="pill bad" title="${esc(r.disabledReason ?? '')}">موقوف</span>` : '<span class="pill ok">فعّال</span>'}</td>
+      <td><div class="row" style="justify-content:flex-end;gap:6px">
+        ${r.disabled ? `<button class="btn sm" data-action="platform-enable" data-id="${r.id}">تفعيل</button>` : `<button class="btn sm danger" data-action="platform-disable" data-id="${r.id}">إيقاف</button>`}
+        <button class="btn sm" data-action="platform-reset" data-id="${r.id}">كلمة مرور مؤقتة</button></div></td></tr>`).join('')
+      : '<tr><td colspan="8" class="muted">لا مقاهي</td></tr>'}</tbody></table></div></div>`;
+}
+
+const modals = {
+  'platform-disable'(s) {
+    const r = P().list?.rows.find((x) => x.id === s.modal.id);
+    return modalFrame({ title: `إيقاف ${r?.name ?? ''}`, body: `<form class="stack" data-form="platform-disable-submit">
+      <p>لن يستطيع المقهى البيع أو الدخول حتى تعيد تفعيله. البيانات تبقى محفوظة.</p>
+      ${field('السبب (يظهر لك فقط)', '<input name="reason" id="pf-reason" required maxlength="120" placeholder="مثلاً: لم يُدفع اشتراك الشهر">')}
+      <button class="btn danger solid lg" type="submit" ${s.busy ? 'disabled' : ''}>إيقاف المقهى</button></form>` });
+  },
+  'platform-temp'(s) {
+    const m = s.modal;
+    return modalFrame({ title: 'كلمة مرور مؤقتة', body: `
+      <p>أعطِ صاحب المقهى (<b dir="ltr">${esc(m.email)}</b>) هذه الكلمة. ستُطلب منه تغييرها، وقد سُجّل خروج كل أجهزته.</p>
+      <div class="card pad" style="text-align:center;font-family:var(--font-display);font-size:1.8rem;letter-spacing:.08em" dir="ltr">${esc(m.temp)}</div>
+      <p class="muted small">لن تظهر مرة أخرى. انسخها الآن.</p>`,
+    foot: '<button class="btn primary" data-action="platform-copy">نسخ</button><button class="btn" data-action="close-modal">تم</button>' });
+  },
+};
+
+on({
+  'platform-login': (_el, _e, d) => busy(async () => {
+    await post('/api/platform/login', { email: d.email, password: d.password });
+    await enterPlatform();
+  }),
+  'platform-logout': () => busy(async () => { await post('/api/platform/logout', {}); state.platform = null; await enterPlatform(); }),
+  'platform-refresh': () => enterPlatform(),
+  'platform-search': (el) => {
+    const p = P();
+    p.search = el.value;
+    clearTimeout(p.timer);
+    p.timer = setTimeout(() => enterPlatform(), 300);
+  },
+  'platform-enable': (el) => busy(async () => { await post(`/api/platform/shops/${el.dataset.id}/enable`, {}); toast('فُعّل المقهى', 'ok'); await enterPlatform(); }),
+  'platform-disable': (el) => openModal({ type: 'platform-disable', id: el.dataset.id }),
+  'platform-disable-submit': (_el, _e, d) => busy(async () => {
+    await post(`/api/platform/shops/${state.modal.id}/disable`, { reason: d.reason });
+    state.modal = null;
+    toast('أُوقف المقهى', 'ok');
+    await enterPlatform();
+  }),
+  'platform-reset': (el) => busy(async () => {
+    const p = P();
+    if (p.confirmReset !== el.dataset.id) { p.confirmReset = el.dataset.id; toast('اضغط مرة أخرى: ستُستبدل كلمة المرور الحالية ويُسجَّل خروج أجهزة المقهى'); return; }
+    p.confirmReset = null;
+    const r = await post(`/api/platform/shops/${el.dataset.id}/reset-password`, {});
+    openModal({ type: 'platform-temp', email: r.email, temp: r.tempPassword });
+  }),
+  'platform-copy': async () => {
+    try { await navigator.clipboard.writeText(state.modal.temp); toast('نُسخت', 'ok'); } catch { toast('انسخها يدوياً', 'bad'); }
+  },
+});
+
+return { enterPlatform, platformView, modals };
+})();
+
 // ---- public/js/app.js
 const __m_public_js_app_js = await (async () => {
 const { esc } = __m_shared_format_js;
@@ -6632,6 +6933,7 @@ const receipts = __m_public_js_views_receipts_js;
 const ops = __m_public_js_views_ops_js;
 const admin = __m_public_js_views_admin_js;
 const account = __m_public_js_views_account_js;
+const platform = __m_public_js_views_platform_js;
 // التشغيل، التوجيه، شاشتا الإعداد والدخول، والهيكل العام.
 
 
@@ -6644,7 +6946,8 @@ const account = __m_public_js_views_account_js;
 
 
 
-const modules = [pos, receipts, ops, admin, account];
+
+const modules = [pos, receipts, ops, admin, account, platform];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
@@ -6668,6 +6971,7 @@ function parseHash() {
 
 async function navigate() {
   const { route, sub, id } = parseHash();
+  if (route === 'platform') { state.modal = null; render(); return platform.enterPlatform(); }
   if (!state.employee) { state.authPage = route; state.modal = null; return render(); }
   const name = route || defaultRoute();
   const allowed = NAV.find(([r]) => r === name);
@@ -6689,6 +6993,8 @@ const views = {
   app(s) {
     if (!s.ready) return '<div class="auth-panel" style="height:100%"><p class="muted">جارٍ التحميل…</p></div>';
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
+    if (parseHash().route === 'platform') return platform.platformView(s);
+    if (s.shop?.disabled) return account.disabledView(s);
     if (!s.employee) return account.gateView(s);
     const body = (routes[s.route] ?? routes.pos)(s);
     return `<div class="shell">${railView(s)}<main class="main" id="main">${body}</main></div>`;
@@ -6796,7 +7102,8 @@ async function boot() {
     state.shop = s.shop;
     state.authPage = parseHash().route;
     state.ready = true;
-    if (s.employee) await loadSession(s.employee);
+    if (parseHash().route === 'platform') await navigate();
+    else if (s.employee) await loadSession(s.employee);
     else render();
   } catch (e) {
     state.ready = true;

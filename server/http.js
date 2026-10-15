@@ -12,6 +12,7 @@ const MAX_BODY = 256 * 1024;
 const MAX_SCAN_BODY = 4 * 1024 * 1024; // صورة فاتورة مضغوطة (Vercel يقبل حتى 4.5 م.ب)
 const COOKIE = 'mc_session';
 const DEVICE_COOKIE = 'mc_device';
+const PLATFORM_COOKIE = 'mc_platform';
 const DEVICE_DAYS = 90;
 
 const SECURITY_HEADERS = {
@@ -66,7 +67,7 @@ export async function handleApiRequest(app, req, res, { secureCookie = false, tr
       const ip = trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket.remoteAddress : req.socket.remoteAddress;
       const result = await app.handle({
         method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body,
-        token: readCookie(req.headers.cookie, COOKIE), deviceToken: readCookie(req.headers.cookie, DEVICE_COOKIE), ip,
+        token: readCookie(req.headers.cookie, COOKIE), deviceToken: readCookie(req.headers.cookie, DEVICE_COOKIE), platformToken: readCookie(req.headers.cookie, PLATFORM_COOKIE), ip,
       });
       const headers = { 'Cache-Control': 'no-store' };
       // Lax لا Strict: Safari لا يرسل كوكي Strict إن فُتح الموقع من رابط في تطبيق آخر (حتى بعد التحديث)،
@@ -78,6 +79,11 @@ export async function handleApiRequest(app, req, res, { secureCookie = false, tr
       }
       if (result.setDevice !== undefined) {
         cookies.push(result.setDevice ? `${DEVICE_COOKIE}=${result.setDevice}; ${attrs}; Max-Age=${DEVICE_DAYS * 86400}` : `${DEVICE_COOKIE}=; ${attrs}; Max-Age=0`);
+      }
+      if (result.setPlatform !== undefined) {
+        // جلسة لوحة المزوّد: قصيرة ومحصورة بمسار /api/platform
+        const pattrs = `Path=/api/platform; HttpOnly; SameSite=Strict${secureCookie ? '; Secure' : ''}`;
+        cookies.push(result.setPlatform ? `${PLATFORM_COOKIE}=${result.setPlatform}; ${pattrs}; Max-Age=${4 * 3600}` : `${PLATFORM_COOKIE}=; ${pattrs}; Max-Age=0`);
       }
       if (cookies.length) headers['Set-Cookie'] = cookies;
       return send(result.status, 'application/json; charset=utf-8', JSON.stringify(result.body), headers);

@@ -37,7 +37,7 @@ async function main() {
 
   const { db, kind, close } = await connectDb({ uri: env.MONGODB_URI, dbName: env.MONGODB_DB ?? 'morecash', memoryFile: env.MONGODB_URI ? null : dataFile });
   const readInvoice = env.ANTHROPIC_API_KEY ? createInvoiceReader({ apiKey: env.ANTHROPIC_API_KEY }) : null;
-  const app = createPlatform({ db, newId: randomUUID, pepper: env.PIN_PEPPER || null, readInvoice });
+  const app = createPlatform({ db, newId: randomUUID, pepper: env.PIN_PEPPER || null, readInvoice, admins: (env.PLATFORM_ADMINS ?? '').split(','), support: env.SUPPORT_WHATSAPP || null });
 
   const server = createHttpServer(app, {
     publicDir: join(ROOT, 'public'), sharedDir: join(ROOT, 'shared'),
