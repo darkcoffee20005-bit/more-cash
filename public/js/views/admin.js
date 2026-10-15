@@ -13,6 +13,7 @@ const SECTIONS = [
   ['dashboard', 'المتابعة', 'chart', 'admin.reports'],
   ['daily', 'التقرير اليومي', 'receipt', 'admin.reports'],
   ['reports', 'التقارير', 'list', 'admin.reports'],
+  ['expenses', 'المصروفات', 'cash', 'admin.reports'],
   ['shifts', 'الورديات', 'clock', 'admin.reports'],
   ['audit', 'سجل العمليات', 'list', 'admin.settings'],
   ['items', 'الأصناف', 'cup', 'admin.catalog'],
@@ -67,6 +68,24 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  expenses(s, a) {
+    const e = a.expenses;
+    const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر'], ['lastmonth', 'الشهر الماضي']];
+    const head = `<div class="page-head"><h1>المصروفات</h1><button class="btn primary" data-action="exp-new">${icon('plus', 'sm')} مصروف</button></div>
+      <div class="toolbar"><div class="seg">${presets.map(([k, l]) => `<button class="${a.expPreset === k ? 'on' : ''}" data-action="exp-preset" data-k="${k}">${l}</button>`).join('')}</div></div>`;
+    if (!e) return `${head}<p class="muted">جارٍ التحميل…</p>`;
+    const cats = Object.entries(e.byCategory).sort((x, y) => y[1] - x[1]);
+    return `${head}
+      <div class="kpis"><div class="kpi lead"><span class="label">مجموع المصروفات</span><b>${money(e.total)}</b><span class="muted small">${e.rows.length} مصروف</span></div>
+        ${cats.slice(0, 3).map(([k, v]) => `<div class="kpi"><span class="label">${esc(EXPENSE_CATS[k] ?? k)}</span><b>${money(v)}</b></div>`).join('')}</div>
+      <div class="table-wrap"><table><thead><tr><th>اليوم</th><th>البند</th><th>ملاحظة</th><th>بواسطة</th><th class="num">المبلغ</th><th></th></tr></thead>
+      <tbody>${e.rows.map((x) => `<tr><td class="small">${esc(x.day)}</td><td><b>${esc(x.categoryName)}</b>${x.fromDrawer ? ' <span class="pill">من الدرج</span>' : ''}</td>
+        <td class="small">${esc(x.note ?? '')}</td><td class="small">${esc(x.byName ?? '')}</td><td class="num">${money(x.amount)}</td>
+        <td><button class="icon-btn" data-action="exp-delete" data-id="${x.id}" aria-label="حذف">${icon('trash', 'sm')}</button></td></tr>`).join('')
+        || '<tr><td colspan="6" class="muted">لا مصروفات في هذه الفترة</td></tr>'}</tbody></table></div>
+      <p class="muted small">المصروفات تُطرح من الربح الإجمالي في التقرير اليومي والتقارير ليظهر صافي الربح. المصروف المدفوع من الدرج يُسجَّل أيضاً كسحب من الوردية.</p>`;
+  },
+
   audit(s, a) {
     const groups = [['', 'الكل'], ['receipt', 'الاسترجاع'], ['discount', 'الخصومات'], ['inventory', 'المخزون'], ['item', 'الأصناف والأسعار'], ['shift', 'الورديات والنقد'], ['ticket', 'التذاكر'], ['employee', 'الموظفون'], ['settings', 'الإعدادات']];
     const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر']];
@@ -92,10 +111,10 @@ const PAGES = {
     const kpi = (label, value, sub = '') => `<div class="kpi"><span class="muted small">${label}</span><b>${value}</b>${sub ? `<span class="muted small">${sub}</span>` : ''}</div>`;
     return `${head}
       <div class="kpis">
-        ${kpi('صافي المبيعات', money(sm.net), `${sm.salesCount} إيصال`)}
-        ${kpi('متوسط الفاتورة', money(sm.avgSale))}
-        ${kpi('الربح الإجمالي', money(sm.profit), sm.net ? `هامش ${Math.round((sm.profit / sm.net) * 100)}%` : '')}
-        ${kpi('تكلفة الموارد المصروفة', money(d.consumptionCost))}
+        ${kpi('صافي المبيعات', money(sm.net), `${sm.salesCount} إيصال · متوسط ${money(sm.avgSale)}`)}
+        ${kpi('الربح الإجمالي', money(sm.profit), `تكلفة الموارد ${money(d.consumptionCost)}`)}
+        ${kpi('المصروفات', money(sm.expenses), d.expenses.length ? d.expenses.map((x) => esc(EXPENSE_CATS[x.category] ?? x.category)).join('، ') : 'لا مصروفات')}
+        ${kpi('صافي الربح', `<span style="color:${sm.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sm.netProfit)}</span>`, 'بعد المصروفات')}
       </div>
       <div class="grid-2" style="align-items:start">
         <section class="card pad stack"><h2>طرق الدفع</h2>
@@ -168,6 +187,7 @@ const PAGES = {
       <tr><td><b>صافي المبيعات</b></td><td class="num"><b>${money(sm.net)}</b></td><td>صافي النقد</td><td class="num">${money(sm.cashNet)}</td></tr>
       <tr><td>تكلفة البضاعة</td><td class="num">${neg(sm.cogs)}</td><td>الضريبة</td><td class="num">${money(sm.tax)}</td></tr>
       <tr><td><b>الربح الإجمالي</b></td><td class="num"><b>${money(sm.profit)}</b></td><td>هامش الربح</td><td class="num">${sm.net ? `${Math.round((sm.profit / sm.net) * 100)}%` : '—'}</td></tr>
+      <tr><td>المصروفات</td><td class="num">${neg(sm.expenses ?? 0)}</td><td><b>صافي الربح</b></td><td class="num"><b>${money(sm.netProfit ?? sm.profit)}</b></td></tr>
     </tbody></table></div>`;
     const table = reportTable(tab, r);
     return `${head}${summary}
@@ -284,6 +304,8 @@ const PAGES = {
 };
 
 const neg = (v) => (v ? `−${money(v)}` : money(0));
+const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', other: 'أخرى' };
+
 // ---------------------------------------------------------------- سجل العمليات
 const AUDIT_LABELS = {
   'receipt.refund': 'استرجاع', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
@@ -327,6 +349,7 @@ function dailyText(d) {
   const lines = [
     `📊 التقرير اليومي — ${d.shopName}`, `📅 ${d.date}`, '',
     `صافي المبيعات: ${money(sm.net)}`, `عدد الإيصالات: ${sm.salesCount}`, `متوسط الفاتورة: ${money(sm.avgSale)}`, `الربح الإجمالي: ${money(sm.profit)}`,
+    ...(sm.expenses ? [`المصروفات: ${money(sm.expenses)}`] : []), `💰 صافي الربح: ${money(sm.netProfit)}`,
     ...(sm.refundsCount ? [`المرتجعات: ${money(sm.refunds)} (${sm.refundsCount})`] : []),
     ...(sm.discounts ? [`الخصومات: ${money(sm.discounts)}`] : []),
     '', '💳 طرق الدفع:', ...d.byPayment.map((p) => `• ${p.label}: ${money(p.net)} (${p.count})`),
@@ -347,6 +370,7 @@ function dailyHtml(d) {
   return `<div class="paper80">
     <div class="c big">${esc(d.shopName)}</div><div class="c">التقرير اليومي · ${esc(d.date)}</div><hr>
     ${row('<b>صافي المبيعات د.ع</b>', `<b>${m(sm.net)}</b>`)}${row('الإيصالات', sm.salesCount)}${row('متوسط الفاتورة', m(sm.avgSale))}${row('الربح الإجمالي', m(sm.profit))}
+    ${sm.expenses ? row('المصروفات', `-${m(sm.expenses)}`) : ''}${row('<b>صافي الربح</b>', `<b>${m(sm.netProfit)}</b>`)}
     ${sm.refundsCount ? row(`المرتجعات (${sm.refundsCount})`, `-${m(sm.refunds)}`) : ''}${sm.discounts ? row('الخصومات', `-${m(sm.discounts)}`) : ''}
     <hr><b>طرق الدفع</b>${d.byPayment.map((p) => row(`${esc(p.label)} (${p.count})`, m(p.net))).join('')}
     <hr><b>الأصناف المباعة</b>${d.byItem.map((i) => row(`${i.qty - i.refundedQty}× ${esc(i.label)}`, m(i.net))).join('')}
@@ -484,6 +508,18 @@ export const modals = {
         <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
   },
 
+  expense(s) {
+    const m = s.modal;
+    const today = localDate(Date.now(), tz());
+    return modalFrame({ title: 'مصروف جديد', body: `<form class="stack" data-form="exp-save" id="exp-form">
+      <div class="opt-group"><h3>البند</h3><div class="opts">${Object.entries(EXPENSE_CATS).map(([k, l]) => `<button type="button" class="opt ${m.category === k ? 'on' : ''}" data-action="exp-cat" data-k="${k}"><span>${l}</span></button>`).join('')}</div></div>
+      <div class="grid-2">${field('المبلغ (د.ع)', '<input class="amount-input" name="amount" id="exp-amount" inputmode="numeric" required autocomplete="off">')}
+        ${field('اليوم', `<input type="date" name="date" id="exp-date" value="${today}" max="${today}">`)}</div>
+      ${field('ملاحظة', '<input name="note" id="exp-note" maxlength="120" placeholder="مثلاً: راتب حيدر لشهر 10، فاتورة كهرباء">')}
+      ${s.shift && can('shift.cash') ? `<label class="check"><input type="checkbox" data-change="exp-drawer" ${m.fromDrawer ? 'checked' : ''}> دُفع نقداً من درج الوردية الحالية (يُسجَّل سحباً من الدرج)</label>` : ''}
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ المصروف</button></form>` });
+  },
+
   receive(s) {
     const m = s.modal;
     const items = A().stockItems ?? [];
@@ -567,6 +603,12 @@ async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
+    expenses: async () => {
+      if (!a.expPreset) a.expPreset = 'month';
+      const [from, to] = presetRange(a.expPreset);
+      a.expenses = null; render();
+      a.expenses = await get('/api/admin/expenses', { from, to });
+    },
     audit: async () => {
       if (!a.auditPreset) a.auditPreset = 'today';
       const [from, to] = presetRange(a.auditPreset);
@@ -608,6 +650,23 @@ const percentToBp = (v) => { const s = String(v ?? '').trim(); if (!/^\d+(\.\d{1
 
 on({
   // التقارير
+  'exp-preset': (el) => { A().expPreset = el.dataset.k; loadSection('expenses').catch(fail); },
+  'exp-new': () => openModal({ type: 'expense', clientId: uid(), category: 'supplies', fromDrawer: false }),
+  'exp-cat': (el) => { state.modal.category = el.dataset.k; render(); },
+  'exp-drawer': (el) => { state.modal.fromDrawer = el.checked; },
+  'exp-save': (_el, _e, d) => busy(async () => {
+    const m = state.modal;
+    await post('/api/admin/expenses', { clientId: m.clientId, amount: num(d.amount, 'المبلغ'), category: m.category, note: d.note || null, date: d.date || undefined, fromDrawer: m.fromDrawer });
+    state.modal = null;
+    toast('سُجّل المصروف', 'ok');
+    await loadSection('expenses');
+  }),
+  'exp-delete': (el) => busy(async () => {
+    if (A().expConfirm !== el.dataset.id) { A().expConfirm = el.dataset.id; toast('اضغط مرة أخرى لتأكيد الحذف'); return; }
+    await del(`/api/admin/expenses/${el.dataset.id}`);
+    A().expConfirm = null;
+    await loadSection('expenses');
+  }),
   'audit-preset': (el) => { A().auditPreset = el.dataset.k; loadSection('audit').catch(fail); },
   'audit-group': (el) => { A().auditGroup = el.dataset.k; loadSection('audit').catch(fail); },
   'daily-date': (el) => { if (!el.value) return; A().dailyDate = el.value; loadSection('daily').catch(fail); },

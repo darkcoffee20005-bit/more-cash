@@ -231,18 +231,29 @@ test('المدير: استرجاع جزئي، إغلاق وردية، ولوحة
   assert.equal(state.modal, null);
   assert.equal(state.view.receipts.detail.refunds.length, 1);
 
-  for (const sub of ['dashboard', 'daily', 'reports', 'shifts', 'audit', 'items', 'categories', 'modifiers', 'discounts', 'inventory', 'employees', 'settings']) {
+  for (const sub of ['dashboard', 'daily', 'reports', 'expenses', 'shifts', 'audit', 'items', 'categories', 'modifiers', 'discounts', 'inventory', 'employees', 'settings']) {
     await go(`#/admin/${sub}`);
     const html = screen();
     clean(html, `الإدارة/${sub}`);
     assert.ok(html.length > 1500, `قسم ${sub} مرسوم`);
   }
+  // مصروف جديد يظهر في القائمة ويُطرح في التقرير اليومي
+  await go('#/admin/expenses');
+  await runAction('exp-new');
+  clean(screen(), 'نافذة المصروف');
+  await runAction('exp-cat', el({ k: 'utilities' }));
+  await runAction('exp-save', el(), {}, { amount: '25000', note: 'كهرباء', date: '' });
+  assert.equal(state.view.admin.expenses.rows[0].categoryName, 'كهرباء وماء');
+  assert.ok(state.view.admin.expenses.total >= 25000);
+
   // التقرير اليومي: مبيعات اليوم + الموارد المصروفة، معاينة الطباعة، والمشاركة (نسخ عند غياب navigator.share)
   await go('#/admin/daily');
   const daily = state.view.admin.daily;
   assert.ok(daily.summary.salesCount > 0, 'مبيعات اليوم في التقرير');
   assert.ok(daily.consumption.some((c) => c.ingredient && c.used > 0), 'موارد مصروفة من الوصفات');
   assert.match(text(screen()), /الموارد المصروفة اليوم/);
+  assert.equal(daily.summary.netProfit, daily.summary.profit - daily.summary.expenses);
+  assert.match(text(screen()), /صافي الربح/);
   await runAction('daily-print');
   assert.equal(state.modal.type, 'receipt-preview');
   assert.match(text(screen()), /التقرير اليومي/);

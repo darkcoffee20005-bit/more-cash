@@ -6,6 +6,7 @@ import { createAuth, createSettings, publicEmployee } from './auth.js';
 import { createCatalog } from './catalog.js';
 import { createInventory } from './inventory.js';
 import { createReports } from './reports.js';
+import { createExpenses } from './expenses.js';
 import { createSales } from './sales.js';
 import { createShifts } from './shifts.js';
 
@@ -13,6 +14,7 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
   const ctx = { db, now, newId, pepper, log, readInvoice };
   ctx.inventory = createInventory(ctx);
   ctx.shifts = createShifts(ctx);
+  ctx.expenses = createExpenses(ctx);
   const auth = createAuth(ctx);
   const settings = createSettings(ctx);
   const catalog = createCatalog(ctx);
@@ -62,6 +64,9 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['GET', '/api/admin/dashboard', (actor) => reports.dashboard(actor)],
     ['GET', '/api/admin/reports', (actor, req) => reports.report(actor, req.query)],
     ['GET', '/api/admin/reports/daily', (actor, req) => reports.daily(actor, req.query)],
+    ['GET', '/api/admin/expenses', (actor, req) => ctx.expenses.list(actor, req.query)],
+    ['POST', '/api/admin/expenses', (actor, req) => ctx.expenses.create(actor, req.body)],
+    ['DELETE', '/api/admin/expenses/:id', (actor, req, p) => ctx.expenses.remove(actor, p.id)],
     // سجل العمليات الحساسة: للمالك فقط
     ['GET', '/api/admin/audit', async (actor, req) => {
       requirePerm(actor, 'admin.settings');

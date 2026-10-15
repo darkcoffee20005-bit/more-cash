@@ -27,7 +27,12 @@ export function createReports(ctx) {
     requirePerm(actor, 'admin.reports');
     const r = await range(from, to);
     const receipts = await receiptsIn(r.from, r.to);
-    return { from, to, ...buildReport(receipts, { tzOffsetMin: r.settings.tzOffsetMin }) };
+    const rep = buildReport(receipts, { tzOffsetMin: r.settings.tzOffsetMin });
+    const exp = await ctx.expenses.totalBetween(from, to);
+    // صافي الربح = الربح الإجمالي − المصروفات
+    rep.summary.expenses = exp.total;
+    rep.summary.netProfit = rep.summary.profit - exp.total;
+    return { from, to, ...rep };
   }
 
   /** تقرير يوم واحد للمشاركة أو الطباعة: المبيعات + الموارد المصروفة (من دفتر المخزون) + النواقص */
@@ -56,8 +61,12 @@ export function createReports(ctx) {
     });
     const consumption = rows.filter((x) => x.used || x.loss)
       .sort((a, b) => Number(b.ingredient) - Number(a.ingredient) || b.cost - a.cost || a.name.localeCompare(b.name, 'ar'));
+    const exp = await ctx.expenses.totalBetween(date, date);
+    rep.summary.expenses = exp.total;
+    rep.summary.netProfit = rep.summary.profit - exp.total;
     return {
       date, shopName: r.settings.name, summary: rep.summary, byPayment: rep.byPayment, byItem: rep.byItem,
+      expenses: exp.rows.map((x) => ({ amount: x.amount, category: x.category, note: x.note ?? null })),
       consumption, consumptionCost: consumption.reduce((a, x) => a + x.cost, 0),
       lowStock: rows.filter((x) => x.low).sort((a, b) => a.name.localeCompare(b.name, 'ar')),
     };

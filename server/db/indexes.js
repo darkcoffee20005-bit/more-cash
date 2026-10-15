@@ -38,5 +38,7 @@ export async function ensureIndexes(db) {
     ix('tickets', t({ updatedAt: -1 }), { name: 'by_updated' }),
     ix('sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
     ix('audit', t({ at: -1 }), { name: 'by_date' }),
+    ix('expenses', t({ day: -1 }), { name: 'by_day' }),
+    ix('expenses', t({ clientId: 1 }), { unique: true, name: 'uniq_client_id' }),
   ]);
 }

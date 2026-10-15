@@ -425,3 +425,41 @@ test('سجل العمليات: الاسترجاع وتغيير السعر يظه
   await ok('mgr', 'POST', '/api/auth/pin', { pin: '2580' });
   assert.equal((await call('mgr', 'GET', '/api/admin/audit', null, { from: '2026-10-14', to: '2026-10-14' })).status, 403, 'المدير لا يرى السجل');
 });
+
+test('المصروفات: صافي الربح، الدفع من الدرج، التكرار، والصلاحيات', async () => {
+  const { ok, call } = await boot();
+  const { catalog, settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  await ok('owner', 'POST', '/api/shifts/open', { startingCash: 100000 });
+  const latte = findItem(catalog, 'لاتيه');
+  const milk = catalog.modifiers.find((m) => m.name === 'نوع الحليب').options[0].id;
+  const lines = [{ variantId: latte.variants[0].id, qty: 4, modifierOptionIds: [milk] }];
+  const total = clientTotal(catalog, settings, lines);
+  await ok('owner', 'POST', '/api/sales', { clientId: randomUUID(), lines, discountIds: [], diningOption: 'takeaway', clientTotal: total, payments: [{ typeId: 'cash', amount: total, tendered: total }] });
+
+  const rent = { clientId: 'exp-rent', amount: 50000, category: 'rent', note: 'إيجار يوم' };
+  await ok('owner', 'POST', '/api/admin/expenses', rent);
+  await ok('owner', 'POST', '/api/admin/expenses', rent);
+  await ok('owner', 'POST', '/api/admin/expenses', { clientId: 'exp-ice', amount: 3000, category: 'supplies', note: 'ثلج', fromDrawer: true });
+  const list = await ok('owner', 'GET', '/api/admin/expenses', null, { from: '2026-10-14', to: '2026-10-14' });
+  assert.equal(list.rows.length, 2, 'المصروف المكرر سُجّل مرة واحدة');
+  assert.equal(list.total, 53000);
+  const cur = await ok('owner', 'GET', '/api/shifts/current');
+  assert.equal(cur.live.expectedCash, 100000 + total - 3000, 'المدفوع من الدرج يُنقص النقد المتوقع');
+
+  const d = await ok('owner', 'GET', '/api/admin/reports/daily', null, { date: '2026-10-14' });
+  assert.equal(d.summary.expenses, 53000);
+  assert.equal(d.summary.netProfit, d.summary.profit - 53000);
+  const rep = await ok('owner', 'GET', '/api/admin/reports', null, { from: '2026-10-14', to: '2026-10-14' });
+  assert.equal(rep.summary.netProfit, rep.summary.profit - 53000);
+
+  assert.equal((await call('owner', 'POST', '/api/admin/expenses', { clientId: 'exp-f', amount: 1, category: 'other', date: '2026-10-20' })).body.error, 'INVALID_DATE', 'لا مصروف بتاريخ مستقبلي');
+  assert.equal((await call('owner', 'POST', '/api/admin/expenses', { clientId: 'exp-y', amount: 1, category: 'other', date: '2026-10-13', fromDrawer: true })).body.error, 'DRAWER_ONLY_TODAY');
+  await ok('owner', 'POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: '1470' });
+  await ok('cash', 'POST', '/api/auth/pin', { pin: '1470' });
+  assert.equal((await call('cash', 'POST', '/api/admin/expenses', { clientId: 'exp-c', amount: 1, category: 'other' })).status, 403, 'الكاشير لا يسجل مصروفات');
+
+  await ok('owner', 'DELETE', `/api/admin/expenses/${list.rows.find((x) => x.category === 'rent').id}`);
+  assert.equal((await ok('owner', 'GET', '/api/admin/expenses', null, { from: '2026-10-14', to: '2026-10-14' })).total, 3000);
+  const log = await ok('owner', 'GET', '/api/admin/audit', null, { from: '2026-10-14', to: '2026-10-14', group: 'expense' });
+  assert.deepEqual(log.map((x) => x.action).sort(), ['expense.create', 'expense.create', 'expense.delete']);
+});
