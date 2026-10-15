@@ -481,7 +481,7 @@ export const modals = {
 };
 
 // ---------------------------------------------------------------- استلام المشتريات
-const blankLine = () => ({ variantId: '', qty: '', total: '' });
+const blankLine = () => ({ id: uid(), variantId: '', qty: '', total: '' });
 
 async function ensureStockItems() {
   if (!A().stockItems) A().stockItems = await get('/api/admin/inventory/stock-items');
@@ -672,30 +672,33 @@ on({
     el.value = '';
     if (!file) return;
     await ensureStockItems();
-    openModal({ type: 'receive', clientId: uid(), lines: [], supplier: '', scanning: true });
+    const scanId = uid();
+    openModal({ type: 'receive', clientId: scanId, lines: [], supplier: '', scanning: true });
+    const same = () => state.modal?.type === 'receive' && state.modal.clientId === scanId;
     try {
       const { data, mediaType } = await compressImage(file);
       const r = await post('/api/admin/inventory/scan', { image: data, mediaType });
-      if (state.modal?.type !== 'receive') return;
+      if (!same()) return;
       Object.assign(state.modal, {
         scanning: false, scanned: true, supplier: r.supplier ?? '', invoiceTotal: r.total ? Math.round(r.total) : null,
-        lines: r.lines.length ? r.lines.map((l) => ({ ...l, qty: l.qty ?? '', total: l.lineTotal ?? '' })) : [blankLine()],
+        lines: r.lines.length ? r.lines.map((l) => ({ ...l, id: uid(), qty: l.qty ?? '', total: l.lineTotal ?? '' })) : [blankLine()],
       });
       if (!r.lines.length) toast('لم يُعثر على أسطر في الصورة — أدخلها يدوياً', 'bad');
     } catch (e) {
-      if (state.modal?.type === 'receive') Object.assign(state.modal, { scanning: false, lines: [blankLine()] });
+      if (same()) Object.assign(state.modal, { scanning: false, lines: [blankLine()] });
       fail(e);
     }
     render();
   },
   'rcv-supplier': (el) => { state.modal.supplier = el.value; },
-  'rcv-field': (el) => { state.modal.lines[Number(el.dataset.i)][el.dataset.k] = el.value; render(); },
+  // سطر عُدّل = عملية جديدة (مفتاح جديد)؛ إعادة إرسال سطر لم يتغير لا تكرره
+  'rcv-field': (el) => { const l = state.modal.lines[Number(el.dataset.i)]; l[el.dataset.k] = el.value; l.id = uid(); render(); },
   'rcv-add': () => { state.modal.lines.push(blankLine()); render(); },
   'rcv-remove': (el) => { state.modal.lines.splice(Number(el.dataset.i), 1); render(); },
   'rcv-submit': () => busy(async () => {
     const m = state.modal;
-    const lines = m.lines.map((l) => ({ variantId: l.variantId, qty: num(String(l.qty), 'الكمية'), total: l.total === '' || l.total === null ? null : num(String(l.total), 'المبلغ') }));
-    const r = await post('/api/admin/inventory/receive', { clientId: m.clientId, supplier: m.supplier || null, lines });
+    const lines = m.lines.map((l) => ({ id: l.id, variantId: l.variantId, qty: num(String(l.qty), 'الكمية'), total: l.total === '' || l.total === null ? null : num(String(l.total), 'المبلغ') }));
+    const r = await post('/api/admin/inventory/receive', { supplier: m.supplier || null, lines });
     state.modal = null;
     toast(`أُضيفت ${r.received} ${r.received === 1 ? 'مادة' : 'مواد'} إلى المخزون`, 'ok');
     state.catalog = null;

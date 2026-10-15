@@ -1266,7 +1266,10 @@ async function nextSeq(db, name) {
 }
 
 // طرق الدفع الافتراضية القديمة (نقد، بطاقة، زين كاش، FIB) صارت: نقد أو كي
-const OLD_PAYMENT_IDS = 'cash,card,zain,fib';
+const OLD_PAYMENT_TYPES = JSON.stringify([
+  { id: 'cash', name: 'نقد', kind: 'cash', active: true }, { id: 'card', name: 'بطاقة', kind: 'card', active: true },
+  { id: 'zain', name: 'زين كاش', kind: 'other', active: true }, { id: 'fib', name: 'FIB', kind: 'other', active: true },
+]);
 const PAYMENT_TYPES = [
   { id: 'cash', name: 'نقد', kind: 'cash', active: true },
   { id: 'qi', name: 'كي', kind: 'card', active: true },
@@ -1275,8 +1278,8 @@ const PAYMENT_TYPES = [
 async function getSettings(db) {
   const s = await db.collection('settings').findOne({ _id: 'store' });
   if (!s) throw new AppError(409, 'NOT_SET_UP');
-  // مقهى لم يعدّل طرق الدفع الافتراضية القديمة: تُستبدل مرة واحدة (الإيصالات السابقة تحفظ اسم الطريقة)
-  if (s.paymentTypes?.map((p) => p.id).join(',') === OLD_PAYMENT_IDS) {
+  // مقهى لم يعدّل طرق الدفع الافتراضية القديمة إطلاقاً (أسماء وأنواع وتفعيل): تُستبدل مرة واحدة (الإيصالات السابقة تحفظ اسم الطريقة)
+  if (JSON.stringify(s.paymentTypes?.map(({ id, name, kind, active }) => ({ id, name, kind, active }))) === OLD_PAYMENT_TYPES) {
     s.paymentTypes = PAYMENT_TYPES.map((p) => ({ ...p }));
     await db.collection('settings').updateOne({ _id: 'store' }, { $set: { paymentTypes: s.paymentTypes } });
   }
@@ -2319,23 +2322,34 @@ function createInventory(ctx) {
         qty: match && qty !== null ? Math.round(qty) : null,
       };
     });
-    return { supplier: r?.supplier ? String(r.supplier).slice(0, 60) : null, date: r?.date ?? null, total: num(r?.total), lines };
+    const total = num(r?.total);
+    return { supplier: r?.supplier ? String(r.supplier).slice(0, 60) : null, date: typeof r?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : null,
+      total: total === null ? null : Math.round(total), lines };
   }
 
   /** استلام مشتريات دفعة واحدة (يدوياً أو بعد مراجعة الفاتورة). كل سطر حركة مستقلة بمفتاح ثابت → آمن لإعادة المحاولة */
   async function receiveBatch(actor, input = {}) {
     requirePerm(actor, 'admin.inventory');
-    const clientId = checkId(input.clientId, 'clientId');
     if (!Array.isArray(input.lines) || input.lines.length === 0 || input.lines.length > 60) throw bad('INVALID_LIST', 'lines');
     const supplier = str(input.supplier, { field: 'supplier', max: 60, optional: true });
     const note = supplier ? `مشتريات من ${supplier}` : 'استلام مشتريات';
-    const results = [];
-    for (const [i, l] of input.lines.entries()) {
+    // التحقق من كل الأسطر قبل كتابة أي شيء: الدفعة تُقبل كاملة أو تُرفض كاملة
+    const lines = input.lines.map((l) => {
+      if (!l || typeof l !== 'object') throw bad('INVALID_LIST', 'lines');
       const qty = int(l.qty, { field: 'lines.qty', min: 1, max: 10_000_000 });
       const total = l.total === undefined || l.total === null || l.total === '' ? null : int(l.total, { field: 'lines.total', min: 0, max: 1_000_000_000 });
+      // مفتاح لكل سطر يولّده الجهاز (يتغير إن عُدّل السطر) → إعادة المحاولة لا تكرر ولا تتخطى سطراً
+      return { id: checkId(l.id, 'lines.id'), variantId: checkId(l.variantId, 'lines.variantId'), qty, total };
+    });
+    if (new Set(lines.map((l) => l.id)).size !== lines.length) throw bad('DUPLICATE_ID', 'lines.id');
+    const found = await variants().find({ _id: { $in: [...new Set(lines.map((l) => l.variantId))] } }).toArray();
+    const tracked = new Set(found.filter((v) => v.trackStock && v.active !== false).map((v) => v._id));
+    if (lines.some((l) => !tracked.has(l.variantId))) throw notFound('VARIANT_NOT_TRACKED');
+    const results = [];
+    for (const l of lines) {
       // التكلفة لكل وحدة (بالدينار، حتى 3 منازل) = مبلغ السطر ÷ الكمية؛ تدخل متوسط التكلفة الموزون
-      const cost = total === null ? undefined : formatMilli(Math.round((total * 1000) / qty));
-      const r = await adjust(actor, { clientId: `${clientId}-${i}`, type: 'receive', variantId: l.variantId, qty, cost, note });
+      const cost = l.total === null ? undefined : formatMilli(Math.round((l.total * 1000) / l.qty));
+      const r = await adjust(actor, { clientId: `rcv-${l.id}`.slice(0, 64), type: 'receive', variantId: l.variantId, qty: l.qty, cost, note });
       results.push({ variantId: l.variantId, ...r });
     }
     return { received: results.filter((r) => r.applied).length, lines: results };
@@ -4466,7 +4480,7 @@ if (typeof document !== 'undefined') {
     bar.classList.add('dragging');
     const startX = e.clientX;
     const startW = pos.querySelector('.ticket').getBoundingClientRect().width;
-    const move = (ev) => setTicketW(pos, clampTicketW(pos, startW + (startX - ev.clientX)));
+    const move = (ev) => { setTicketW(pos, clampTicketW(pos, startW + (startX - ev.clientX))); fitLines(); };
     const up = () => {
       bar.classList.remove('dragging');
       bar.removeEventListener('pointermove', move);
@@ -4483,6 +4497,7 @@ if (typeof document !== 'undefined') {
     if (!bar) return;
     setTicketW(bar.closest('.pos'), null);
     saveTicketW(null);
+    fitLines();
   });
   document.addEventListener('keydown', (e) => {
     const bar = e.target.closest?.('.splitter');
@@ -4491,6 +4506,7 @@ if (typeof document !== 'undefined') {
     const cur = state.pos.ticketW ?? pos.querySelector('.ticket').getBoundingClientRect().width;
     setTicketW(pos, clampTicketW(pos, cur + (e.key === 'ArrowLeft' ? 24 : -24)));
     saveTicketW(state.pos.ticketW);
+    fitLines();
   });
 }
 
@@ -4658,6 +4674,14 @@ const modals = {
     const foot = `${m.lineKey ? `<button class="btn danger" data-action="item-remove">${icon('trash', 'sm')} حذف</button>` : ''}
       <button class="btn primary lg" data-action="item-save" ${missing.length ? 'disabled' : ''}>${missing.length ? `اختر ${esc(missing[0].name)}` : `${m.lineKey ? 'حفظ' : 'إضافة'} · ${money(unit * m.qty)}`}</button>`;
     return modalFrame({ title: item.name, body, foot, cls: 'wide' });
+  },
+
+  'line-missing'(s) {
+    const line = s.pos.cart.lines.find((l) => l.key === s.modal.key);
+    if (!line) return '';
+    return modalFrame({ title: line.itemName, sub: esc(line.variantName ?? ''),
+      body: `<p>${icon('alert', 'sm')} هذا الصنف أو حجمه لم يعد متاحاً في القائمة، فلا يمكن بيعه. احذفه من الطلب ثم أضف البديل.</p>`,
+      foot: `<button class="btn danger solid" data-action="line-remove">${icon('trash', 'sm')} حذف من الطلب</button>` });
   },
 
   'all-lines'(s) {
@@ -4851,7 +4875,9 @@ on({
   'item-remove': () => { state.pos.cart.lines = state.pos.cart.lines.filter((l) => l.key !== state.modal.lineKey); closeModal(); },
   'pos-line': (el) => {
     const line = state.pos.cart.lines.find((l) => l.key === el.dataset.key);
-    if (!line || !itemById(line.itemId)) return undefined;
+    if (!line) return undefined;
+    const item = itemById(line.itemId);
+    if (!item || !item.variants.some((v) => v.id === line.variantId)) return openModal({ type: 'line-missing', key: line.key });
     return openModal({ type: 'item', itemId: line.itemId, variantId: line.variantId, options: line.modifiers.map((m) => m.id), qty: line.qty, note: line.note, lineKey: line.key, discountIds: [...line.discountIds] });
   },
   'item-discount': (el) => {
@@ -4859,6 +4885,7 @@ on({
     m.discountIds = m.discountIds.includes(el.dataset.id) ? m.discountIds.filter((d) => d !== el.dataset.id) : [...m.discountIds, el.dataset.id];
     render();
   },
+  'line-remove': () => { state.pos.cart.lines = state.pos.cart.lines.filter((l) => l.key !== state.modal.key); closeModal(); },
   'pos-all-lines': () => openModal({ type: 'all-lines' }),
   'ticket-toggle': () => { state.pos.ticketHidden = !state.pos.ticketHidden; saveTicketHidden(state.pos.ticketHidden); render(); },
   'pos-discounts': () => openModal({ type: 'discounts' }),
@@ -5985,7 +6012,7 @@ const modals = {
 };
 
 // ---------------------------------------------------------------- استلام المشتريات
-const blankLine = () => ({ variantId: '', qty: '', total: '' });
+const blankLine = () => ({ id: uid(), variantId: '', qty: '', total: '' });
 
 async function ensureStockItems() {
   if (!A().stockItems) A().stockItems = await get('/api/admin/inventory/stock-items');
@@ -6176,30 +6203,33 @@ on({
     el.value = '';
     if (!file) return;
     await ensureStockItems();
-    openModal({ type: 'receive', clientId: uid(), lines: [], supplier: '', scanning: true });
+    const scanId = uid();
+    openModal({ type: 'receive', clientId: scanId, lines: [], supplier: '', scanning: true });
+    const same = () => state.modal?.type === 'receive' && state.modal.clientId === scanId;
     try {
       const { data, mediaType } = await compressImage(file);
       const r = await post('/api/admin/inventory/scan', { image: data, mediaType });
-      if (state.modal?.type !== 'receive') return;
+      if (!same()) return;
       Object.assign(state.modal, {
         scanning: false, scanned: true, supplier: r.supplier ?? '', invoiceTotal: r.total ? Math.round(r.total) : null,
-        lines: r.lines.length ? r.lines.map((l) => ({ ...l, qty: l.qty ?? '', total: l.lineTotal ?? '' })) : [blankLine()],
+        lines: r.lines.length ? r.lines.map((l) => ({ ...l, id: uid(), qty: l.qty ?? '', total: l.lineTotal ?? '' })) : [blankLine()],
       });
       if (!r.lines.length) toast('لم يُعثر على أسطر في الصورة — أدخلها يدوياً', 'bad');
     } catch (e) {
-      if (state.modal?.type === 'receive') Object.assign(state.modal, { scanning: false, lines: [blankLine()] });
+      if (same()) Object.assign(state.modal, { scanning: false, lines: [blankLine()] });
       fail(e);
     }
     render();
   },
   'rcv-supplier': (el) => { state.modal.supplier = el.value; },
-  'rcv-field': (el) => { state.modal.lines[Number(el.dataset.i)][el.dataset.k] = el.value; render(); },
+  // سطر عُدّل = عملية جديدة (مفتاح جديد)؛ إعادة إرسال سطر لم يتغير لا تكرره
+  'rcv-field': (el) => { const l = state.modal.lines[Number(el.dataset.i)]; l[el.dataset.k] = el.value; l.id = uid(); render(); },
   'rcv-add': () => { state.modal.lines.push(blankLine()); render(); },
   'rcv-remove': (el) => { state.modal.lines.splice(Number(el.dataset.i), 1); render(); },
   'rcv-submit': () => busy(async () => {
     const m = state.modal;
-    const lines = m.lines.map((l) => ({ variantId: l.variantId, qty: num(String(l.qty), 'الكمية'), total: l.total === '' || l.total === null ? null : num(String(l.total), 'المبلغ') }));
-    const r = await post('/api/admin/inventory/receive', { clientId: m.clientId, supplier: m.supplier || null, lines });
+    const lines = m.lines.map((l) => ({ id: l.id, variantId: l.variantId, qty: num(String(l.qty), 'الكمية'), total: l.total === '' || l.total === null ? null : num(String(l.total), 'المبلغ') }));
+    const r = await post('/api/admin/inventory/receive', { supplier: m.supplier || null, lines });
     state.modal = null;
     toast(`أُضيفت ${r.received} ${r.received === 1 ? 'مادة' : 'مواد'} إلى المخزون`, 'ok');
     state.catalog = null;

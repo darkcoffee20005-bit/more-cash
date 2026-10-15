@@ -42,7 +42,8 @@ const SYSTEM = `أنت مساعد إدخال مشتريات لمقهى في ال
  * @returns {(input: { image: string, mediaType: string, stock: {id:string,name:string,unit:string}[] }) => Promise<object>}
  */
 export function createInvoiceReader({ apiKey, model = INVOICE_MODEL }) {
-  const client = new Anthropic({ apiKey, timeout: 50_000, maxRetries: 1 });
+  // محاولتان × 25 ثانية تبقى تحت حد الدالة في Vercel (60 ثانية) فيصل للمستخدم خطأ واضح لا انقطاع
+  const client = new Anthropic({ apiKey, timeout: 25_000, maxRetries: 1 });
   return async function readInvoice({ image, mediaType, stock }) {
     const list = stock.map((s) => `${s.id} | ${s.name} | ${s.unit}`).join('\n');
     const response = await client.beta.messages.create({

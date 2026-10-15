@@ -76,7 +76,10 @@ export async function nextSeq(db, name) {
 }
 
 // طرق الدفع الافتراضية القديمة (نقد، بطاقة، زين كاش، FIB) صارت: نقد أو كي
-const OLD_PAYMENT_IDS = 'cash,card,zain,fib';
+const OLD_PAYMENT_TYPES = JSON.stringify([
+  { id: 'cash', name: 'نقد', kind: 'cash', active: true }, { id: 'card', name: 'بطاقة', kind: 'card', active: true },
+  { id: 'zain', name: 'زين كاش', kind: 'other', active: true }, { id: 'fib', name: 'FIB', kind: 'other', active: true },
+]);
 const PAYMENT_TYPES = [
   { id: 'cash', name: 'نقد', kind: 'cash', active: true },
   { id: 'qi', name: 'كي', kind: 'card', active: true },
@@ -85,8 +88,8 @@ const PAYMENT_TYPES = [
 export async function getSettings(db) {
   const s = await db.collection('settings').findOne({ _id: 'store' });
   if (!s) throw new AppError(409, 'NOT_SET_UP');
-  // مقهى لم يعدّل طرق الدفع الافتراضية القديمة: تُستبدل مرة واحدة (الإيصالات السابقة تحفظ اسم الطريقة)
-  if (s.paymentTypes?.map((p) => p.id).join(',') === OLD_PAYMENT_IDS) {
+  // مقهى لم يعدّل طرق الدفع الافتراضية القديمة إطلاقاً (أسماء وأنواع وتفعيل): تُستبدل مرة واحدة (الإيصالات السابقة تحفظ اسم الطريقة)
+  if (JSON.stringify(s.paymentTypes?.map(({ id, name, kind, active }) => ({ id, name, kind, active }))) === OLD_PAYMENT_TYPES) {
     s.paymentTypes = PAYMENT_TYPES.map((p) => ({ ...p }));
     await db.collection('settings').updateOne({ _id: 'store' }, { $set: { paymentTypes: s.paymentTypes } });
   }

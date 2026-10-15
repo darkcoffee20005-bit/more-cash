@@ -103,7 +103,7 @@ if (typeof document !== 'undefined') {
     bar.classList.add('dragging');
     const startX = e.clientX;
     const startW = pos.querySelector('.ticket').getBoundingClientRect().width;
-    const move = (ev) => setTicketW(pos, clampTicketW(pos, startW + (startX - ev.clientX)));
+    const move = (ev) => { setTicketW(pos, clampTicketW(pos, startW + (startX - ev.clientX))); fitLines(); };
     const up = () => {
       bar.classList.remove('dragging');
       bar.removeEventListener('pointermove', move);
@@ -120,6 +120,7 @@ if (typeof document !== 'undefined') {
     if (!bar) return;
     setTicketW(bar.closest('.pos'), null);
     saveTicketW(null);
+    fitLines();
   });
   document.addEventListener('keydown', (e) => {
     const bar = e.target.closest?.('.splitter');
@@ -128,6 +129,7 @@ if (typeof document !== 'undefined') {
     const cur = state.pos.ticketW ?? pos.querySelector('.ticket').getBoundingClientRect().width;
     setTicketW(pos, clampTicketW(pos, cur + (e.key === 'ArrowLeft' ? 24 : -24)));
     saveTicketW(state.pos.ticketW);
+    fitLines();
   });
 }
 
@@ -295,6 +297,14 @@ export const modals = {
     const foot = `${m.lineKey ? `<button class="btn danger" data-action="item-remove">${icon('trash', 'sm')} حذف</button>` : ''}
       <button class="btn primary lg" data-action="item-save" ${missing.length ? 'disabled' : ''}>${missing.length ? `اختر ${esc(missing[0].name)}` : `${m.lineKey ? 'حفظ' : 'إضافة'} · ${money(unit * m.qty)}`}</button>`;
     return modalFrame({ title: item.name, body, foot, cls: 'wide' });
+  },
+
+  'line-missing'(s) {
+    const line = s.pos.cart.lines.find((l) => l.key === s.modal.key);
+    if (!line) return '';
+    return modalFrame({ title: line.itemName, sub: esc(line.variantName ?? ''),
+      body: `<p>${icon('alert', 'sm')} هذا الصنف أو حجمه لم يعد متاحاً في القائمة، فلا يمكن بيعه. احذفه من الطلب ثم أضف البديل.</p>`,
+      foot: `<button class="btn danger solid" data-action="line-remove">${icon('trash', 'sm')} حذف من الطلب</button>` });
   },
 
   'all-lines'(s) {
@@ -488,7 +498,9 @@ on({
   'item-remove': () => { state.pos.cart.lines = state.pos.cart.lines.filter((l) => l.key !== state.modal.lineKey); closeModal(); },
   'pos-line': (el) => {
     const line = state.pos.cart.lines.find((l) => l.key === el.dataset.key);
-    if (!line || !itemById(line.itemId)) return undefined;
+    if (!line) return undefined;
+    const item = itemById(line.itemId);
+    if (!item || !item.variants.some((v) => v.id === line.variantId)) return openModal({ type: 'line-missing', key: line.key });
     return openModal({ type: 'item', itemId: line.itemId, variantId: line.variantId, options: line.modifiers.map((m) => m.id), qty: line.qty, note: line.note, lineKey: line.key, discountIds: [...line.discountIds] });
   },
   'item-discount': (el) => {
@@ -496,6 +508,7 @@ on({
     m.discountIds = m.discountIds.includes(el.dataset.id) ? m.discountIds.filter((d) => d !== el.dataset.id) : [...m.discountIds, el.dataset.id];
     render();
   },
+  'line-remove': () => { state.pos.cart.lines = state.pos.cart.lines.filter((l) => l.key !== state.modal.key); closeModal(); },
   'pos-all-lines': () => openModal({ type: 'all-lines' }),
   'ticket-toggle': () => { state.pos.ticketHidden = !state.pos.ticketHidden; saveTicketHidden(state.pos.ticketHidden); render(); },
   'pos-discounts': () => openModal({ type: 'discounts' }),

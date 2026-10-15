@@ -106,23 +106,34 @@ export function createInventory(ctx) {
         qty: match && qty !== null ? Math.round(qty) : null,
       };
     });
-    return { supplier: r?.supplier ? String(r.supplier).slice(0, 60) : null, date: r?.date ?? null, total: num(r?.total), lines };
+    const total = num(r?.total);
+    return { supplier: r?.supplier ? String(r.supplier).slice(0, 60) : null, date: typeof r?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : null,
+      total: total === null ? null : Math.round(total), lines };
   }
 
   /** استلام مشتريات دفعة واحدة (يدوياً أو بعد مراجعة الفاتورة). كل سطر حركة مستقلة بمفتاح ثابت → آمن لإعادة المحاولة */
   async function receiveBatch(actor, input = {}) {
     requirePerm(actor, 'admin.inventory');
-    const clientId = checkId(input.clientId, 'clientId');
     if (!Array.isArray(input.lines) || input.lines.length === 0 || input.lines.length > 60) throw bad('INVALID_LIST', 'lines');
     const supplier = str(input.supplier, { field: 'supplier', max: 60, optional: true });
     const note = supplier ? `مشتريات من ${supplier}` : 'استلام مشتريات';
-    const results = [];
-    for (const [i, l] of input.lines.entries()) {
+    // التحقق من كل الأسطر قبل كتابة أي شيء: الدفعة تُقبل كاملة أو تُرفض كاملة
+    const lines = input.lines.map((l) => {
+      if (!l || typeof l !== 'object') throw bad('INVALID_LIST', 'lines');
       const qty = int(l.qty, { field: 'lines.qty', min: 1, max: 10_000_000 });
       const total = l.total === undefined || l.total === null || l.total === '' ? null : int(l.total, { field: 'lines.total', min: 0, max: 1_000_000_000 });
+      // مفتاح لكل سطر يولّده الجهاز (يتغير إن عُدّل السطر) → إعادة المحاولة لا تكرر ولا تتخطى سطراً
+      return { id: checkId(l.id, 'lines.id'), variantId: checkId(l.variantId, 'lines.variantId'), qty, total };
+    });
+    if (new Set(lines.map((l) => l.id)).size !== lines.length) throw bad('DUPLICATE_ID', 'lines.id');
+    const found = await variants().find({ _id: { $in: [...new Set(lines.map((l) => l.variantId))] } }).toArray();
+    const tracked = new Set(found.filter((v) => v.trackStock && v.active !== false).map((v) => v._id));
+    if (lines.some((l) => !tracked.has(l.variantId))) throw notFound('VARIANT_NOT_TRACKED');
+    const results = [];
+    for (const l of lines) {
       // التكلفة لكل وحدة (بالدينار، حتى 3 منازل) = مبلغ السطر ÷ الكمية؛ تدخل متوسط التكلفة الموزون
-      const cost = total === null ? undefined : formatMilli(Math.round((total * 1000) / qty));
-      const r = await adjust(actor, { clientId: `${clientId}-${i}`, type: 'receive', variantId: l.variantId, qty, cost, note });
+      const cost = l.total === null ? undefined : formatMilli(Math.round((l.total * 1000) / l.qty));
+      const r = await adjust(actor, { clientId: `rcv-${l.id}`.slice(0, 64), type: 'receive', variantId: l.variantId, qty: l.qty, cost, note });
       results.push({ variantId: l.variantId, ...r });
     }
     return { received: results.filter((r) => r.applied).length, lines: results };

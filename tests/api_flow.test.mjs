@@ -329,6 +329,15 @@ test('مقهى بطرق الدفع القديمة الافتراضية ينتق�
   ] } });
   const { settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
   assert.deepEqual(settings.paymentTypes.map((p) => p.id), ['cash', 'qi']);
+
+  // مقهى عدّل طرقه (اسم مختلف أو طريقة معطلة) لا تُمس إعداداته
+  const custom = [
+    { id: 'cash', name: 'نقد', kind: 'cash', active: true }, { id: 'card', name: 'ماستركارد', kind: 'card', active: true },
+    { id: 'zain', name: 'زين كاش', kind: 'other', active: true }, { id: 'fib', name: 'FIB', kind: 'other', active: false },
+  ];
+  await db.collection('settings').updateOne({ _id: store._id }, { $set: { paymentTypes: custom } });
+  const again = await ok('owner', 'GET', '/api/pos/bootstrap');
+  assert.deepEqual(again.settings.paymentTypes.map((p) => p.name), ['نقد', 'ماستركارد', 'زين كاش', 'FIB']);
 });
 
 test('استلام مشتريات: إدخال يدوي متعدد الأسطر، وقراءة فاتورة تُعاد للمراجعة قبل أي إضافة', async () => {
@@ -357,7 +366,7 @@ test('استلام مشتريات: إدخال يدوي متعدد الأسطر،
   assert.equal((await call('owner', 'POST', '/api/admin/inventory/scan', { image: 'x', mediaType: 'image/jpeg' })).body.error, 'INVALID_IMAGE');
 
   // التأكيد بعد المراجعة: يضيف الكميات ويحدّث التكلفة بالمتوسط المرجح، ومرة واحدة فقط مهما تكرر الطلب
-  const body = { clientId: 'rcv-1', supplier: 'مخازن الرافدين', lines: [{ variantId: bean.id, qty: 2000, total: 80000 }, { variantId: milk.id, qty: 12000, total: 30000 }] };
+  const body = { supplier: 'مخازن الرافدين', lines: [{ id: 'l-bean-1', variantId: bean.id, qty: 2000, total: 80000 }, { id: 'l-milk-1', variantId: milk.id, qty: 12000, total: 30000 }] };
   const r = await ok('owner', 'POST', '/api/admin/inventory/receive', body);
   assert.equal(r.received, 2);
   assert.equal((await ok('owner', 'POST', '/api/admin/inventory/receive', body)).received, 0, 'التكرار لا يضاعف المخزون');
@@ -367,7 +376,22 @@ test('استلام مشتريات: إدخال يدوي متعدد الأسطر،
   assert.equal(beanRow.costMilli, Math.round((5000 * 30000 + 2000 * 40000) / 7000), 'متوسط مرجح: 30 د.ع/غ القديم و40 د.ع/غ الجديد');
   const hist = await ok('owner', 'GET', `/api/admin/inventory/${bean.id}/history`);
   assert.ok(hist.some((h) => h.reason === 'receive' && h.note === 'مشتريات من مخازن الرافدين'));
-  assert.equal((await call('owner', 'POST', '/api/admin/inventory/receive', { clientId: 'rcv-2', lines: [{ variantId: bean.id, qty: 0 }] })).status, 400);
+  assert.equal((await call('owner', 'POST', '/api/admin/inventory/receive', { lines: [{ id: 'l-z', variantId: bean.id, qty: 0 }] })).status, 400);
+  assert.equal((await call('owner', 'POST', '/api/admin/inventory/receive', { lines: [null] })).status, 400, 'سطر فارغ = 400 لا 500');
+
+  // الدفعة كاملة أو لا شيء: سطر لمادة غير متتبعة يرفض الدفعة قبل أي كتابة
+  const latteVariant = (await ok('owner', 'GET', '/api/pos/bootstrap')).catalog.items.find((i) => i.name === 'لاتيه').variants[0].id;
+  const beanNow = (await ok('owner', 'GET', '/api/admin/inventory')).rows.find((x) => x.variantId === bean.id).stock;
+  const mixed = await call('owner', 'POST', '/api/admin/inventory/receive', { lines: [{ id: 'l-ok', variantId: bean.id, qty: 100 }, { id: 'l-bad', variantId: latteVariant, qty: 1 }] });
+  assert.equal(mixed.body.error, 'VARIANT_NOT_TRACKED');
+  assert.equal((await ok('owner', 'GET', '/api/admin/inventory')).rows.find((x) => x.variantId === bean.id).stock, beanNow, 'لم يُضف شيء');
+
+  // إعادة المحاولة بعد حذف سطر من الوسط: كل سطر بمفتاحه فلا يُتخطى أي سطر
+  const cups = items.find((x) => x.name === 'كوب 8 أونصة');
+  const tea = items.find((x) => x.name === 'شاي سيلاني');
+  await ok('owner', 'POST', '/api/admin/inventory/receive', { lines: [{ id: 'r-a', variantId: cups.id, qty: 10 }] });
+  const retry = await ok('owner', 'POST', '/api/admin/inventory/receive', { lines: [{ id: 'r-a', variantId: cups.id, qty: 10 }, { id: 'r-c', variantId: tea.id, qty: 500 }] });
+  assert.equal(retry.received, 1, 'السطر الجديد أُضيف رغم أن موضعه تغيّر');
 });
 
 test('قراءة الفاتورة بدون مفتاح API: رسالة واضحة والإدخال اليدوي يبقى متاحاً', async () => {

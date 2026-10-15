@@ -109,6 +109,13 @@ test('شاشة الرمز ثم الكاشير: طلب بإضافات وخصم و
   await runAction('pos-item', el({ id: water.id }));
   await runAction('pos-item', el({ id: water.id }));
   assert.equal(state.pos.cart.lines.length, 2, 'الماء المكرر دُمج');
+  // سطر لحجم لم يعد في القائمة (تذكرة قديمة مثلاً): نافذة حذف بدل تجمّد الشاشة
+  state.pos.cart.lines.push({ ...state.pos.cart.lines[1], key: 'ghost', variantId: 'no-such-variant', qty: 1 });
+  await runAction('pos-line', el({ key: 'ghost' }));
+  assert.equal(state.modal.type, 'line-missing');
+  clean(screen(), 'سطر محذوف من القائمة');
+  await runAction('line-remove');
+  assert.equal(state.pos.cart.lines.length, 2);
   html = screen(); clean(html, 'التذكرة');
   // 2 × (6000 + 1000 + 750) + 2 × 500 = 16,500
   assert.match(text(html), /دفع 16,500 د\.ع/);
