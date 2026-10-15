@@ -231,12 +231,23 @@ test('المدير: استرجاع جزئي، إغلاق وردية، ولوحة
   assert.equal(state.modal, null);
   assert.equal(state.view.receipts.detail.refunds.length, 1);
 
-  for (const sub of ['dashboard', 'daily', 'reports', 'expenses', 'shifts', 'audit', 'items', 'categories', 'modifiers', 'discounts', 'inventory', 'employees', 'settings']) {
+  for (const sub of ['dashboard', 'daily', 'reports', 'expenses', 'shifts', 'audit', 'branches', 'items', 'categories', 'modifiers', 'discounts', 'inventory', 'employees', 'settings']) {
     await go(`#/admin/${sub}`);
     const html = screen();
     clean(html, `الإدارة/${sub}`);
     assert.ok(html.length > 1500, `قسم ${sub} مرسوم`);
   }
+  // الفروع: التقرير المجمّع يعرض الفرع الحالي، وإنشاء فرع بنسخة من القائمة
+  await go('#/admin/branches');
+  assert.equal(state.view.admin.branchReport.rows.length, 1);
+  assert.ok(state.view.admin.branchReport.rows[0].current);
+  await runAction('branch-new');
+  clean(screen(), 'نافذة الفرع الجديد');
+  await runAction('branch-create', el(), {}, { name: 'فرع الكرادة', pin: '٣٦٩٢', pin2: '3692' });
+  assert.equal(state.view.admin.branches.length, 2);
+  assert.equal(state.view.admin.branchReport.rows.length, 2);
+  clean(screen(), 'الفروع بعد الإنشاء');
+
   // مصروف جديد يظهر في القائمة ويُطرح في التقرير اليومي
   await go('#/admin/expenses');
   await runAction('exp-new');

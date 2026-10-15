@@ -224,3 +224,66 @@ test('لوحة المزوّد معطلة إن لم يُضبط PLATFORM_ADMINS', 
   const { call } = await setup();
   assert.equal((await call('x', 'POST', '/api/platform/login', { email: 'a@b.iq', password: 'x' })).status, 404);
 });
+
+test('الفروع: فرع جديد بنسخة من القائمة، عزل البيانات، تبديل الجهاز، وتقرير مجمّع', async () => {
+  const { ok, call } = await setup({ admins: ['boss@morecash.iq'] });
+  await ok('a', 'POST', '/api/account/signup', { ...SHOP_A, seed: true });
+  const main = await ok('a', 'GET', '/api/pos/bootstrap');
+  const water = main.catalog.items.find((i) => i.name === 'ماء');
+  const latte = main.catalog.items.find((i) => i.name === 'لاتيه');
+
+  // كاشير لا يدير الفروع
+  await ok('a', 'POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: '1470' });
+  await ok('a', 'POST', '/api/auth/logout', {});
+  await ok('a', 'POST', '/api/auth/pin', { pin: '1470' });
+  assert.equal((await call('a', 'GET', '/api/account/branches')).status, 403);
+  await ok('a', 'POST', '/api/auth/logout', {});
+  await ok('a', 'POST', '/api/auth/pin', { pin: SHOP_A.pin });
+
+  // بيع في الفرع الرئيسي
+  await ok('a', 'POST', '/api/shifts/open', { startingCash: 0 });
+  await ok('a', 'POST', '/api/sales', { clientId: crypto.randomUUID(), lines: [{ variantId: water.variants[0].id, qty: 2 }], discountIds: [], diningOption: 'takeaway', clientTotal: 2 * water.variants[0].price, payments: [{ typeId: 'cash', amount: 2 * water.variants[0].price, tendered: 2 * water.variants[0].price }] });
+
+  const branch = await ok('a', 'POST', '/api/account/branches', { name: 'الزيتون — المنصور', pin: '٢٤٦٨', copyMenu: true });
+  const list = await ok('a', 'GET', '/api/account/branches');
+  assert.deepEqual(list.map((b) => [b.name, b.current]), [['مقهى الزيتون', true], ['الزيتون — المنصور', false]]);
+
+  // التبديل: يُطلب رمز الفرع الجديد، والقائمة منسوخة بمعرّفات جديدة ومخزون صفر
+  const sw = await ok('a', 'POST', '/api/account/branches/switch', { tenantId: branch.id });
+  assert.equal(sw.shop.name, 'الزيتون — المنصور');
+  assert.equal((await ok('a', 'GET', '/api/state')).employee, null, 'خرج الموظف عند التبديل');
+  await ok('a', 'POST', '/api/auth/pin', { pin: '2468' });
+  const b = await ok('a', 'GET', '/api/pos/bootstrap');
+  const bLatte = b.catalog.items.find((i) => i.name === 'لاتيه');
+  assert.ok(bLatte, 'القائمة نُسخت');
+  assert.notEqual(bLatte.id, latte.id, 'بمعرّفات جديدة');
+  assert.equal(bLatte.variants.length, latte.variants.length);
+  assert.equal(b.settings.paymentTypes.map((p) => p.name).join(), 'نقد,كي');
+  const inv = await ok('a', 'GET', '/api/admin/inventory');
+  assert.ok(inv.rows.length > 0 && inv.rows.every((r) => r.stock === 0), 'المخزون يبدأ من صفر');
+  assert.equal((await ok('a', 'GET', '/api/receipts')).length, 0, 'لا يرى إيصالات الفرع الرئيسي');
+  assert.equal((await call('a', 'POST', '/api/sales', { clientId: crypto.randomUUID(), lines: [{ variantId: water.variants[0].id, qty: 1 }], discountIds: [], diningOption: 'takeaway', clientTotal: water.variants[0].price, payments: [{ typeId: 'cash', amount: water.variants[0].price }] })).status >= 400, true, 'أصناف الفرع الآخر غير صالحة هنا');
+
+  // بيع في الفرع ثم التقرير المجمّع
+  await ok('a', 'POST', '/api/shifts/open', { startingCash: 0 });
+  const bWater = b.catalog.items.find((i) => i.name === 'ماء');
+  await ok('a', 'POST', '/api/sales', { clientId: crypto.randomUUID(), lines: [{ variantId: bWater.variants[0].id, qty: 3 }], discountIds: [], diningOption: 'takeaway', clientTotal: 3 * bWater.variants[0].price, payments: [{ typeId: 'cash', amount: 3 * bWater.variants[0].price, tendered: 3 * bWater.variants[0].price }] });
+  const rep = await ok('a', 'GET', '/api/account/branches/report', null, { from: '2026-10-14', to: '2026-10-14' });
+  assert.equal(rep.rows.length, 2);
+  assert.equal(rep.rows[0].net, 2 * water.variants[0].price);
+  assert.equal(rep.rows[1].net, 3 * bWater.variants[0].price);
+  assert.equal(rep.totals.net, rep.rows[0].net + rep.rows[1].net);
+  assert.equal(rep.totals.salesCount, 2);
+
+  // مقهى آخر لا يرى ولا يبدّل إلى فروع غيره
+  await ok('x', 'POST', '/api/account/signup', { ...SHOP_B, seed: false });
+  assert.equal((await call('x', 'POST', '/api/account/branches/switch', { tenantId: branch.id })).status, 403);
+  assert.equal((await ok('x', 'GET', '/api/account/branches')).length, 1);
+
+  // لوحة المزوّد تعرض الفرع مع بريد مالكه، والدخول من جهاز جديد يفتح الفرع الرئيسي
+  await ok('admin', 'POST', '/api/account/signup', { shopName: 'المزوّد', ownerName: 'مدير', email: 'boss@morecash.iq', password: 'boss-pass-2026', pin: '9087', seed: false });
+  await ok('admin', 'POST', '/api/platform/login', { email: 'boss@morecash.iq', password: 'boss-pass-2026' });
+  const shops = await ok('admin', 'GET', '/api/platform/shops');
+  assert.equal(shops.rows.find((r) => r.id === branch.id).email, 'ahmed@zaytoon.iq');
+  assert.equal((await ok('new', 'POST', '/api/account/login', { email: SHOP_A.email, password: SHOP_A.password })).shop.name, 'مقهى الزيتون');
+});

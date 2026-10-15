@@ -318,6 +318,26 @@ try {
   await p2.click('[data-action="pin-submit"]');
   await p2.waitForSelector('.tile');
   await p2.screenshot({ path: join(shots, '19-second-device.png') });
+
+  // الفروع (على الجهاز الثاني): فرع جديد بنسخة من القائمة، ثم التبديل إليه والدخول برمزه
+  await p2.goto(`http://127.0.0.1:${PORT}/#/admin/branches`);
+  await p2.waitForSelector('[data-action="branch-new"]');
+  await p2.click('[data-action="branch-new"]');
+  await p2.fill('#br-name', 'الزيتون — المنصور');
+  await p2.fill('#br-pin', '2468');
+  await p2.fill('#br-pin2', '2468');
+  await p2.click('form[data-form="branch-create"] button[type=submit]');
+  await p2.waitForSelector('td:has-text("الزيتون — المنصور")');
+  await p2.waitForSelector('tfoot');
+  await p2.waitForTimeout(200);
+  await p2.screenshot({ path: join(shots, '27-branches.png') });
+  await p2.click('[data-action="branch-switch"]');
+  await p2.click('[data-action="branch-switch"]');
+  await p2.waitForSelector('.keypad');
+  for (const k of '2468') await p2.click(`[data-k="${k}"]`);
+  await p2.click('[data-action="pin-submit"]');
+  await p2.waitForSelector('form[data-form="open-shift"]');
+  if (!(await p2.textContent('body')).includes('المنصور')) errors.push('branch switch: new branch name not shown');
   console.log(`charged ${due}; screenshots in ${shots}`);
 } finally {
   await browser.close();

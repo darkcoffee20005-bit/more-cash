@@ -9,6 +9,7 @@ import { AppError, bad, conflict, isDup, str } from './core.js';
 import { hashPassword, normalizePin, randomToken, sha256, validPin, verifyPassword } from './security.js';
 import { scopeDb } from '../db/scoped.js';
 import { createPlatformAdmin } from './platform-admin.js';
+import { createBranches } from './branches.js';
 
 const DEVICE_DAYS = 90;
 const MAX_FAILS = 5;
@@ -218,6 +219,14 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
         const actor = await app.ctx.services.auth.resolve(req.token);
         return await changePassword(device, actor, req.body);
       }
+      if (key === 'GET /api/account/branches') return { status: 200, body: await branches.list(device, req.token) };
+      if (key === 'POST /api/account/branches') return { status: 200, body: await branches.create(device, req.token, req.body) };
+      if (key === 'GET /api/account/branches/report') return { status: 200, body: await branches.report(device, req.token, req.query ?? {}) };
+      if (key === 'POST /api/account/branches/switch') {
+        const r = await branches.switchTo(device, req.token, req.body);
+        if (req.token) await app.handle({ ...req, method: 'POST', path: '/api/auth/logout' }).catch(() => {});
+        return { status: 200, body: r, setToken: null };
+      }
       if (key === 'GET /api/account') {
         const actor = await app.ctx.services.auth.resolve(req.token);
         if (!actor || actor.role !== 'owner') throw new AppError(403, 'FORBIDDEN', 'account.view');
@@ -234,6 +243,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
   }
 
   // الإيقاف يسري فوراً على هذه النسخة من الخادم، وخلال 30 ثانية على غيرها
+  const branches = createBranches({ db, now, newId, appFor, forgetApp: (id) => apps.delete(id) });
   const platformAdmin = createPlatformAdmin({ db, now, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log });
 
   return { handle, appFor };

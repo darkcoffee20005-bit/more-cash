@@ -35,8 +35,10 @@ export function createPlatformAdmin({ db, now, admins = [], passwordIterations, 
 
   async function shops({ search = '' } = {}) {
     const tenants = await db.collection('tenants').find({}).sort({ createdAt: -1 }).limit(2000).toArray();
-    const accounts = await db.collection('accounts').find({ tenantId: { $in: tenants.map((t) => t._id) } }).project({ email: 1, name: 1, tenantId: 1, lastLoginAt: 1 }).toArray();
-    const byTenant = new Map(accounts.map((a) => [a.tenantId, a]));
+    const accounts = await db.collection('accounts').find({}).project({ email: 1, name: 1, tenantId: 1, branches: 1, lastLoginAt: 1 }).limit(5000).toArray();
+    // الفروع: كل فرع مقهى مستقل يعود لنفس حساب المالك
+    const byTenant = new Map();
+    for (const a of accounts) for (const t of [a.tenantId, ...(a.branches ?? [])]) byTenant.set(t, a);
     const since = new Date(now().getTime() - 30 * 86400_000);
     const q = String(search).trim().toLowerCase();
     const rows = [];
@@ -51,7 +53,7 @@ export function createPlatformAdmin({ db, now, admins = [], passwordIterations, 
       rows.push({
         id: t._id, name: t.name, ownerName: acc?.name ?? null, email: acc?.email ?? null, createdAt: t.createdAt,
         lastLoginAt: acc?.lastLoginAt ?? null, lastSaleAt: last[0]?.createdAt ?? null, sales30, devices,
-        disabled: !!t.disabled, disabledReason: t.disabledReason ?? null,
+        disabled: !!t.disabled, disabledReason: t.disabledReason ?? null, branchOf: t.branchOf ?? null,
       });
     }
     const weekAgo = now().getTime() - 7 * 86400_000;
@@ -73,7 +75,8 @@ export function createPlatformAdmin({ db, now, admins = [], passwordIterations, 
 
   /** كلمة مرور مؤقتة تُعطى لصاحب المقهى؛ تُسجّل خروج كل أجهزته، ويُطلب منه تغييرها */
   async function resetPassword(tenantId, admin) {
-    const acc = await db.collection('accounts').findOne({ tenantId: checkId(tenantId) });
+    const id = checkId(tenantId);
+    const acc = await db.collection('accounts').findOne({ tenantId: id }) ?? await db.collection('accounts').findOne({ branches: id });
     if (!acc) throw new AppError(404, 'NOT_FOUND');
     // سهلة القراءة على الهاتف: بلا حروف ملتبسة (0/O، 1/l)
     const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';

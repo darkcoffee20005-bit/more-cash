@@ -6,6 +6,7 @@ import { del, get, post, put, uid } from '../api.js';
 import { icon } from '../icons.js';
 import { accountCard, loadAccount } from './account.js';
 import { printHtml } from './receipts.js';
+import { rememberSession } from '../offline.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 
 const COLORS = { olive: 'أخضر', petrol: 'أخضر داكن', sage: 'مريمية', teal: 'نعناعي', sand: 'ذهبي', clay: 'طيني', mocha: 'موكا', slate: 'رمادي' };
@@ -16,6 +17,7 @@ const SECTIONS = [
   ['expenses', 'المصروفات', 'cash', 'admin.reports'],
   ['shifts', 'الورديات', 'clock', 'admin.reports'],
   ['audit', 'سجل العمليات', 'list', 'admin.settings'],
+  ['branches', 'الفروع', 'layers', 'admin.settings'],
   ['items', 'الأصناف', 'cup', 'admin.catalog'],
   ['categories', 'التصنيفات', 'layers', 'admin.catalog'],
   ['modifiers', 'الإضافات', 'plus', 'admin.catalog'],
@@ -68,6 +70,23 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  branches(s, a) {
+    const list = a.branches;
+    const rep = a.branchReport;
+    const presets = [['today', 'اليوم'], ['yesterday', 'أمس'], ['week', '7 أيام'], ['month', 'هذا الشهر'], ['lastmonth', 'الشهر الماضي']];
+    const head = `<div class="page-head"><h1>الفروع</h1><button class="btn primary" data-action="branch-new">${icon('plus', 'sm')} فرع جديد</button></div>
+      <p class="muted small">كل فرع مقهى مستقل بموظفيه ومخزونه وإيصاله، تحت حسابك نفسه. هذا الجهاز يعمل الآن في: <b>${esc(s.shop?.name ?? '')}</b>.</p>`;
+    if (!list) return `${head}<p class="muted">جارٍ التحميل…</p>`;
+    const cols = (r) => `<td class="num">${money(r.net)}</td><td class="num">${r.salesCount}</td><td class="num">${money(r.profit)}</td><td class="num">${money(r.expenses)}</td><td class="num"><b>${money(r.netProfit)}</b></td>`;
+    return `${head}
+      <div class="toolbar"><div class="seg">${presets.map(([k, l]) => `<button class="${a.branchPreset === k ? 'on' : ''}" data-action="branch-preset" data-k="${k}">${l}</button>`).join('')}</div></div>
+      <div class="table-wrap"><table><thead><tr><th>الفرع</th><th class="num">صافي المبيعات</th><th class="num">الإيصالات</th><th class="num">الربح الإجمالي</th><th class="num">المصروفات</th><th class="num">صافي الربح</th><th></th></tr></thead>
+      <tbody>${(rep?.rows ?? list).map((r) => `<tr><td><b>${esc(r.name)}</b> ${r.current ? '<span class="pill ok">هذا الجهاز</span>' : ''}${list.find((x) => x.id === r.id)?.disabled ? ' <span class="pill bad">موقوف</span>' : ''}</td>
+        ${rep ? cols(r) : '<td colspan="5" class="muted">…</td>'}
+        <td>${r.current ? '' : `<button class="btn sm" data-action="branch-switch" data-id="${r.id}">التبديل لهذا الفرع</button>`}</td></tr>`).join('')}</tbody>
+      ${rep && rep.rows.length > 1 ? `<tfoot><tr><td>المجموع</td>${cols(rep.totals)}<td></td></tr></tfoot>` : ''}</table></div>`;
+  },
+
   expenses(s, a) {
     const e = a.expenses;
     const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر'], ['lastmonth', 'الشهر الماضي']];
@@ -305,6 +324,7 @@ const PAGES = {
 };
 
 const neg = (v) => (v ? `−${money(v)}` : money(0));
+const latin = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', other: 'أخرى' };
 
 // ---------------------------------------------------------------- سجل العمليات
@@ -509,6 +529,15 @@ export const modals = {
         <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
   },
 
+  'branch-new'(s) {
+    return modalFrame({ title: 'فرع جديد', body: `<form class="stack" data-form="branch-create" id="branch-form">
+      ${field('اسم الفرع', '<input name="name" id="br-name" required minlength="2" maxlength="60" placeholder="مثلاً: الزيتون — المنصور">')}
+      <div class="grid-2">${field('رمزك في الفرع الجديد', '<input name="pin" id="br-pin" required inputmode="numeric" maxlength="6" type="password" autocomplete="off">', '4–6 أرقام')}
+        ${field('تأكيد الرمز', '<input name="pin2" id="br-pin2" required inputmode="numeric" maxlength="6" type="password" autocomplete="off">')}</div>
+      <label class="check"><input type="checkbox" data-change="branch-copy" ${s.modal.copyMenu ? 'checked' : ''}> انسخ القائمة والأسعار والوصفات والإعدادات من هذا الفرع (المخزون يبدأ من صفر)</label>
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>إنشاء الفرع</button></form>` });
+  },
+
   expense(s) {
     const m = s.modal;
     const today = localDate(Date.now(), tz());
@@ -604,6 +633,13 @@ async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
+    branches: async () => {
+      if (!a.branchPreset) a.branchPreset = 'today';
+      const [from, to] = presetRange(a.branchPreset);
+      a.branches = await get('/api/account/branches');
+      a.branchReport = null; render();
+      a.branchReport = await get('/api/account/branches/report', { from, to });
+    },
     expenses: async () => {
       if (!a.expPreset) a.expPreset = 'month';
       const [from, to] = presetRange(a.expPreset);
@@ -651,6 +687,27 @@ const percentToBp = (v) => { const s = String(v ?? '').trim(); if (!/^\d+(\.\d{1
 
 on({
   // التقارير
+  'branch-preset': (el) => { A().branchPreset = el.dataset.k; loadSection('branches').catch(fail); },
+  'branch-new': () => openModal({ type: 'branch-new', copyMenu: true }),
+  'branch-copy': (el) => { state.modal.copyMenu = el.checked; },
+  'branch-create': (_el, _e, d) => busy(async () => {
+    if (latin(d.pin) !== latin(d.pin2)) throw new Error('الرمزان غير متطابقين');
+    const r = await post('/api/account/branches', { name: d.name, pin: d.pin, copyMenu: state.modal.copyMenu });
+    state.modal = null;
+    toast(`أُنشئ فرع ${r.name}`, 'ok');
+    await loadSection('branches');
+  }),
+  'branch-switch': (el) => busy(async () => {
+    const a = A();
+    if (a.switchConfirm !== el.dataset.id) { a.switchConfirm = el.dataset.id; toast('اضغط مرة أخرى: سيعمل هذا الجهاز في الفرع الآخر ويُطلب رمز الدخول'); return; }
+    const r = await post('/api/account/branches/switch', { tenantId: el.dataset.id });
+    // الجهاز صار في فرع آخر: قائمته ووردياته وموظفوه مختلفون
+    Object.assign(state, { shop: r.shop, employee: null, modal: null, view: { pin: '' }, pos: null, catalog: null, shift: null, settings: null });
+    rememberSession(r.shop, null);
+    history.replaceState(null, '', '#/');
+    toast(`هذا الجهاز الآن في ${r.shop.name}. أدخل رمزك`, 'ok');
+    render();
+  }),
   'exp-preset': (el) => { A().expPreset = el.dataset.k; loadSection('expenses').catch(fail); },
   'exp-new': () => openModal({ type: 'expense', clientId: uid(), category: 'supplies', fromDrawer: false }),
   'exp-cat': (el) => { state.modal.category = el.dataset.k; render(); },

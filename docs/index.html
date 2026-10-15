@@ -3662,8 +3662,10 @@ function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp
 
   async function shops({ search = '' } = {}) {
     const tenants = await db.collection('tenants').find({}).sort({ createdAt: -1 }).limit(2000).toArray();
-    const accounts = await db.collection('accounts').find({ tenantId: { $in: tenants.map((t) => t._id) } }).project({ email: 1, name: 1, tenantId: 1, lastLoginAt: 1 }).toArray();
-    const byTenant = new Map(accounts.map((a) => [a.tenantId, a]));
+    const accounts = await db.collection('accounts').find({}).project({ email: 1, name: 1, tenantId: 1, branches: 1, lastLoginAt: 1 }).limit(5000).toArray();
+    // الفروع: كل فرع مقهى مستقل يعود لنفس حساب المالك
+    const byTenant = new Map();
+    for (const a of accounts) for (const t of [a.tenantId, ...(a.branches ?? [])]) byTenant.set(t, a);
     const since = new Date(now().getTime() - 30 * 86400_000);
     const q = String(search).trim().toLowerCase();
     const rows = [];
@@ -3678,7 +3680,7 @@ function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp
       rows.push({
         id: t._id, name: t.name, ownerName: acc?.name ?? null, email: acc?.email ?? null, createdAt: t.createdAt,
         lastLoginAt: acc?.lastLoginAt ?? null, lastSaleAt: last[0]?.createdAt ?? null, sales30, devices,
-        disabled: !!t.disabled, disabledReason: t.disabledReason ?? null,
+        disabled: !!t.disabled, disabledReason: t.disabledReason ?? null, branchOf: t.branchOf ?? null,
       });
     }
     const weekAgo = now().getTime() - 7 * 86400_000;
@@ -3700,7 +3702,8 @@ function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp
 
   /** كلمة مرور مؤقتة تُعطى لصاحب المقهى؛ تُسجّل خروج كل أجهزته، ويُطلب منه تغييرها */
   async function resetPassword(tenantId, admin) {
-    const acc = await db.collection('accounts').findOne({ tenantId: checkId(tenantId) });
+    const id = checkId(tenantId);
+    const acc = await db.collection('accounts').findOne({ tenantId: id }) ?? await db.collection('accounts').findOne({ branches: id });
     if (!acc) throw new AppError(404, 'NOT_FOUND');
     // سهلة القراءة على الهاتف: بلا حروف ملتبسة (0/O، 1/l)
     const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -3742,6 +3745,147 @@ function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp
 return { createPlatformAdmin };
 })();
 
+// ---- server/app/branches.js
+const __m_server_app_branches_js = await (async () => {
+const { buildReport } = __m_shared_reports_js;
+const { dayRange } = __m_shared_format_js;
+const { AppError, bad, getSettings, id: checkId, str } = __m_server_app_core_js;
+const { normalizePin, validPin } = __m_server_app_security_js;
+const { scopeDb } = __m_server_db_scoped_js;
+// الفروع: حساب مالك واحد يملك عدة مقاهٍ (كل فرع مقهى مستقل بموظفيه ومخزونه وإيصالاته).
+// إنشاء فرع (مع نسخ القائمة اختيارياً)، تبديل فرع الجهاز، وتقرير مجمّع لكل الفروع.
+// يعمل على مستوى المنصة لأنه يعبر بين المقاهي، لكنه لا يقرأ إلا فروع الحساب نفسه.
+
+
+
+
+
+
+const MAX_BRANCHES = 20;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+// إعدادات تُنسخ للفرع الجديد (الاسم والعنوان والهاتف خاصة بكل فرع)
+const COPY_SETTINGS = ['tax', 'loyalty', 'paymentTypes', 'diningOptions', 'features', 'receipt', 'cashVarianceAlert', 'reportPhone', 'tzOffsetMin', 'currency'];
+
+const branchIds = (acc) => (Array.isArray(acc?.branches) && acc.branches.length ? acc.branches : [acc.tenantId]);
+
+function createBranches({ db, now, newId, appFor, forgetApp }) {
+  /** المالك فقط، ومن جهاز مربوط بأحد فروعه */
+  async function ownerContext(device, token) {
+    const app = await appFor(device.tenantId);
+    const actor = await app.ctx.services.auth.resolve(token);
+    if (!actor || actor.role !== 'owner') throw new AppError(403, 'FORBIDDEN', 'branches');
+    const acc = await db.collection('accounts').findOne({ _id: device.accountId });
+    if (!acc) throw new AppError(401, 'NO_SHOP');
+    return { app, actor, acc, ids: branchIds(acc) };
+  }
+
+  async function summaryOf(tenantId, from, to) {
+    const sdb = scopeDb(db, tenantId);
+    const settings = await getSettings(sdb);
+    const r = dayRange(from, to, settings.tzOffsetMin);
+    const receipts = await sdb.collection('receipts').find({ createdAt: { $gte: new Date(r.from), $lt: new Date(r.to) } }).project({ clientId: 0, prep: 0 }).toArray();
+    const rep = buildReport(receipts, { tzOffsetMin: settings.tzOffsetMin });
+    const exp = await sdb.collection('expenses').find({ day: { $gte: from, $lte: to } }).project({ amount: 1 }).toArray();
+    const expenses = exp.reduce((a, x) => a + x.amount, 0);
+    const s = rep.summary;
+    return { net: s.net, gross: s.gross, salesCount: s.salesCount, refunds: s.refunds, profit: s.profit, expenses, netProfit: s.profit - expenses, cashNet: s.cashNet, avgSale: s.avgSale };
+  }
+
+  async function list(device, token) {
+    const { ids } = await ownerContext(device, token);
+    const tenants = await db.collection('tenants').find({ _id: { $in: ids } }).toArray();
+    const byId = new Map(tenants.map((t) => [t._id, t]));
+    return ids.filter((id) => byId.has(id)).map((id) => ({ id, name: byId.get(id).name, current: id === device.tenantId, disabled: !!byId.get(id).disabled }));
+  }
+
+  async function create(device, token, body = {}) {
+    const { app, acc, ids } = await ownerContext(device, token);
+    if (ids.length >= MAX_BRANCHES) throw bad('TOO_MANY_BRANCHES');
+    const name = str(body.name, { field: 'name', min: 2, max: 60 });
+    const pin = normalizePin(body.pin);
+    if (!validPin(pin)) throw bad('WEAK_PIN');
+    const tenantId = newId();
+    await db.collection('tenants').insertOne({ _id: tenantId, name, ownerAccountId: acc._id, branchOf: acc.tenantId, createdAt: now() });
+    try {
+      const target = await appFor(tenantId);
+      const copyMenu = body.copyMenu !== false;
+      await target.ctx.services.auth.setup({ storeName: name, ownerName: acc.name, pin, seed: !copyMenu });
+      if (copyMenu) await copyCatalog(app.ctx.db, target.ctx.db);
+      await db.collection('accounts').updateOne({ _id: acc._id }, { $set: { branches: [...ids, tenantId] } });
+    } catch (e) {
+      // لا نترك فرعاً نصف منشأ
+      await db.collection('tenants').deleteOne({ _id: tenantId }).catch(() => {});
+      for (const c of ['settings', 'employees', 'categories', 'modifiers', 'discounts', 'items', 'variants', 'stock_moves', 'audit', 'counters']) {
+        await db.collection(c).deleteMany({ tenantId }).catch(() => {});
+      }
+      forgetApp(tenantId);
+      throw e;
+    }
+    return { id: tenantId, name };
+  }
+
+  /** تبديل فرع هذا الجهاز: يُسجَّل خروج الموظف الحالي ويُطلب رمز الدخول في الفرع الآخر */
+  async function switchTo(device, token, body = {}) {
+    const { ids } = await ownerContext(device, token);
+    const target = checkId(body.tenantId, 'tenantId');
+    if (!ids.includes(target)) throw new AppError(403, 'FORBIDDEN', 'branch');
+    await db.collection('devices').updateOne({ _id: device._id }, { $set: { tenantId: target } });
+    const t = await db.collection('tenants').findOne({ _id: target });
+    return { shop: { id: target, name: t?.name ?? '' } };
+  }
+
+  async function report(device, token, { from, to } = {}) {
+    const { ids } = await ownerContext(device, token);
+    if (!DATE.test(from ?? '') || !DATE.test(to ?? '') || from > to) throw new AppError(400, 'INVALID_RANGE');
+    const tenants = new Map((await db.collection('tenants').find({ _id: { $in: ids } }).toArray()).map((t) => [t._id, t]));
+    const rows = [];
+    for (const id of ids) {
+      if (!tenants.has(id)) continue;
+      rows.push({ id, name: tenants.get(id).name, current: id === device.tenantId, ...(await summaryOf(id, from, to)) });
+    }
+    const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+    const totals = { net: sum('net'), gross: sum('gross'), salesCount: sum('salesCount'), refunds: sum('refunds'), profit: sum('profit'), expenses: sum('expenses'), netProfit: sum('netProfit'), cashNet: sum('cashNet') };
+    totals.avgSale = totals.salesCount ? Math.round(totals.net / totals.salesCount) : 0;
+    return { from, to, rows, totals };
+  }
+
+  return { list, create, switchTo, report };
+}
+
+/** نسخ القائمة (تصنيفات، إضافات، خصومات، أصناف بأحجامها ووصفاتها، ومكونات) بمعرّفات جديدة، والمخزون يبدأ من صفر */
+async function copyCatalog(from, to) {
+  const ids = new Map();
+  const map = (old) => { if (!ids.has(old)) ids.set(old, crypto.randomUUID()); return ids.get(old); };
+  const strip = ({ _id, tenantId, ...rest }) => rest;
+  for (const name of ['categories', 'modifiers', 'discounts']) {
+    for (const d of await from.collection(name).find({ active: { $ne: false } }).toArray()) {
+      await to.collection(name).insertOne({ ...strip(d), _id: map(d._id) });
+    }
+  }
+  const items = await from.collection('items').find({ active: { $ne: false } }).toArray();
+  const variants = await from.collection('variants').find({ active: { $ne: false } }).toArray();
+  for (const it of items) {
+    await to.collection('items').insertOne({
+      ...strip(it), _id: map(it._id), categoryId: it.categoryId ? (ids.get(it.categoryId) ?? null) : null,
+      modifierIds: (it.modifierIds ?? []).filter((m) => ids.has(m)).map((m) => ids.get(m)),
+    });
+  }
+  const itemIds = new Set(items.map((i) => i._id));
+  for (const v of variants.filter((x) => itemIds.has(x.itemId))) map(v._id);
+  for (const v of variants.filter((x) => itemIds.has(x.itemId))) {
+    await to.collection('variants').insertOne({
+      ...strip(v), _id: ids.get(v._id), itemId: ids.get(v.itemId), stock: 0,
+      recipe: (v.recipe ?? []).filter((r) => ids.has(r.variantId)).map((r) => ({ variantId: ids.get(r.variantId), qty: r.qty })),
+    });
+  }
+  const src = await getSettings(from);
+  const patch = Object.fromEntries(COPY_SETTINGS.filter((k) => k in src).map((k) => [k, src[k]]));
+  await to.collection('settings').updateOne({ _id: 'store' }, { $set: patch });
+}
+
+return { branchIds, createBranches };
+})();
+
 // ---- server/app/platform.js
 const __m_server_app_platform_js = await (async () => {
 const { createApp } = __m_server_app_index_js;
@@ -3749,12 +3893,14 @@ const { AppError, bad, conflict, isDup, str } = __m_server_app_core_js;
 const { hashPassword, normalizePin, randomToken, sha256, validPin, verifyPassword } = __m_server_app_security_js;
 const { scopeDb } = __m_server_db_scoped_js;
 const { createPlatformAdmin } = __m_server_app_platform_admin_js;
+const { createBranches } = __m_server_app_branches_js;
 // المنصة: حسابات المقاهي، ربط الجهاز بمقهى، وتوجيه كل طلب إلى تطبيق ذلك المقهى فقط.
 //
 // طبقتا دخول:
 //   1) حساب المقهى (بريد + كلمة مرور) — مرة واحدة على كل جهاز. ينشئ "جلسة جهاز" طويلة (كوكي mc_device).
 //   2) رمز الموظف (PIN) — سريع، لكل وردية/موظف، داخل المقهى المرتبط بالجهاز فقط (كوكي mc_session).
 // لذلك لا يمكن تجربة رموز PIN إلا من جهاز سجّل صاحبه الدخول بكلمة المرور.
+
 
 
 
@@ -3969,6 +4115,14 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
         const actor = await app.ctx.services.auth.resolve(req.token);
         return await changePassword(device, actor, req.body);
       }
+      if (key === 'GET /api/account/branches') return { status: 200, body: await branches.list(device, req.token) };
+      if (key === 'POST /api/account/branches') return { status: 200, body: await branches.create(device, req.token, req.body) };
+      if (key === 'GET /api/account/branches/report') return { status: 200, body: await branches.report(device, req.token, req.query ?? {}) };
+      if (key === 'POST /api/account/branches/switch') {
+        const r = await branches.switchTo(device, req.token, req.body);
+        if (req.token) await app.handle({ ...req, method: 'POST', path: '/api/auth/logout' }).catch(() => {});
+        return { status: 200, body: r, setToken: null };
+      }
       if (key === 'GET /api/account') {
         const actor = await app.ctx.services.auth.resolve(req.token);
         if (!actor || actor.role !== 'owner') throw new AppError(403, 'FORBIDDEN', 'account.view');
@@ -3985,6 +4139,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
   }
 
   // الإيقاف يسري فوراً على هذه النسخة من الخادم، وخلال 30 ثانية على غيرها
+  const branches = createBranches({ db, now, newId, appFor, forgetApp: (id) => apps.delete(id) });
   const platformAdmin = createPlatformAdmin({ db, now, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log });
 
   return { handle, appFor };
@@ -6098,8 +6253,10 @@ const { del, get, post, put, uid } = __m_public_js_api_js;
 const { icon } = __m_public_js_icons_js;
 const { accountCard, loadAccount } = __m_public_js_views_account_js;
 const { printHtml } = __m_public_js_views_receipts_js;
+const { rememberSession } = __m_public_js_offline_js;
 const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
 // لوحة الإدارة (Back Office): المتابعة، التقارير، الأصناف، التصنيفات، الإضافات، الخصومات، المخزون، الموظفون، الورديات، الإعدادات.
+
 
 
 
@@ -6117,6 +6274,7 @@ const SECTIONS = [
   ['expenses', 'المصروفات', 'cash', 'admin.reports'],
   ['shifts', 'الورديات', 'clock', 'admin.reports'],
   ['audit', 'سجل العمليات', 'list', 'admin.settings'],
+  ['branches', 'الفروع', 'layers', 'admin.settings'],
   ['items', 'الأصناف', 'cup', 'admin.catalog'],
   ['categories', 'التصنيفات', 'layers', 'admin.catalog'],
   ['modifiers', 'الإضافات', 'plus', 'admin.catalog'],
@@ -6169,6 +6327,23 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  branches(s, a) {
+    const list = a.branches;
+    const rep = a.branchReport;
+    const presets = [['today', 'اليوم'], ['yesterday', 'أمس'], ['week', '7 أيام'], ['month', 'هذا الشهر'], ['lastmonth', 'الشهر الماضي']];
+    const head = `<div class="page-head"><h1>الفروع</h1><button class="btn primary" data-action="branch-new">${icon('plus', 'sm')} فرع جديد</button></div>
+      <p class="muted small">كل فرع مقهى مستقل بموظفيه ومخزونه وإيصاله، تحت حسابك نفسه. هذا الجهاز يعمل الآن في: <b>${esc(s.shop?.name ?? '')}</b>.</p>`;
+    if (!list) return `${head}<p class="muted">جارٍ التحميل…</p>`;
+    const cols = (r) => `<td class="num">${money(r.net)}</td><td class="num">${r.salesCount}</td><td class="num">${money(r.profit)}</td><td class="num">${money(r.expenses)}</td><td class="num"><b>${money(r.netProfit)}</b></td>`;
+    return `${head}
+      <div class="toolbar"><div class="seg">${presets.map(([k, l]) => `<button class="${a.branchPreset === k ? 'on' : ''}" data-action="branch-preset" data-k="${k}">${l}</button>`).join('')}</div></div>
+      <div class="table-wrap"><table><thead><tr><th>الفرع</th><th class="num">صافي المبيعات</th><th class="num">الإيصالات</th><th class="num">الربح الإجمالي</th><th class="num">المصروفات</th><th class="num">صافي الربح</th><th></th></tr></thead>
+      <tbody>${(rep?.rows ?? list).map((r) => `<tr><td><b>${esc(r.name)}</b> ${r.current ? '<span class="pill ok">هذا الجهاز</span>' : ''}${list.find((x) => x.id === r.id)?.disabled ? ' <span class="pill bad">موقوف</span>' : ''}</td>
+        ${rep ? cols(r) : '<td colspan="5" class="muted">…</td>'}
+        <td>${r.current ? '' : `<button class="btn sm" data-action="branch-switch" data-id="${r.id}">التبديل لهذا الفرع</button>`}</td></tr>`).join('')}</tbody>
+      ${rep && rep.rows.length > 1 ? `<tfoot><tr><td>المجموع</td>${cols(rep.totals)}<td></td></tr></tfoot>` : ''}</table></div>`;
+  },
+
   expenses(s, a) {
     const e = a.expenses;
     const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر'], ['lastmonth', 'الشهر الماضي']];
@@ -6406,6 +6581,7 @@ const PAGES = {
 };
 
 const neg = (v) => (v ? `−${money(v)}` : money(0));
+const latin = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', other: 'أخرى' };
 
 // ---------------------------------------------------------------- سجل العمليات
@@ -6610,6 +6786,15 @@ const modals = {
         <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
   },
 
+  'branch-new'(s) {
+    return modalFrame({ title: 'فرع جديد', body: `<form class="stack" data-form="branch-create" id="branch-form">
+      ${field('اسم الفرع', '<input name="name" id="br-name" required minlength="2" maxlength="60" placeholder="مثلاً: الزيتون — المنصور">')}
+      <div class="grid-2">${field('رمزك في الفرع الجديد', '<input name="pin" id="br-pin" required inputmode="numeric" maxlength="6" type="password" autocomplete="off">', '4–6 أرقام')}
+        ${field('تأكيد الرمز', '<input name="pin2" id="br-pin2" required inputmode="numeric" maxlength="6" type="password" autocomplete="off">')}</div>
+      <label class="check"><input type="checkbox" data-change="branch-copy" ${s.modal.copyMenu ? 'checked' : ''}> انسخ القائمة والأسعار والوصفات والإعدادات من هذا الفرع (المخزون يبدأ من صفر)</label>
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>إنشاء الفرع</button></form>` });
+  },
+
   expense(s) {
     const m = s.modal;
     const today = localDate(Date.now(), tz());
@@ -6705,6 +6890,13 @@ async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
+    branches: async () => {
+      if (!a.branchPreset) a.branchPreset = 'today';
+      const [from, to] = presetRange(a.branchPreset);
+      a.branches = await get('/api/account/branches');
+      a.branchReport = null; render();
+      a.branchReport = await get('/api/account/branches/report', { from, to });
+    },
     expenses: async () => {
       if (!a.expPreset) a.expPreset = 'month';
       const [from, to] = presetRange(a.expPreset);
@@ -6752,6 +6944,27 @@ const percentToBp = (v) => { const s = String(v ?? '').trim(); if (!/^\d+(\.\d{1
 
 on({
   // التقارير
+  'branch-preset': (el) => { A().branchPreset = el.dataset.k; loadSection('branches').catch(fail); },
+  'branch-new': () => openModal({ type: 'branch-new', copyMenu: true }),
+  'branch-copy': (el) => { state.modal.copyMenu = el.checked; },
+  'branch-create': (_el, _e, d) => busy(async () => {
+    if (latin(d.pin) !== latin(d.pin2)) throw new Error('الرمزان غير متطابقين');
+    const r = await post('/api/account/branches', { name: d.name, pin: d.pin, copyMenu: state.modal.copyMenu });
+    state.modal = null;
+    toast(`أُنشئ فرع ${r.name}`, 'ok');
+    await loadSection('branches');
+  }),
+  'branch-switch': (el) => busy(async () => {
+    const a = A();
+    if (a.switchConfirm !== el.dataset.id) { a.switchConfirm = el.dataset.id; toast('اضغط مرة أخرى: سيعمل هذا الجهاز في الفرع الآخر ويُطلب رمز الدخول'); return; }
+    const r = await post('/api/account/branches/switch', { tenantId: el.dataset.id });
+    // الجهاز صار في فرع آخر: قائمته ووردياته وموظفوه مختلفون
+    Object.assign(state, { shop: r.shop, employee: null, modal: null, view: { pin: '' }, pos: null, catalog: null, shift: null, settings: null });
+    rememberSession(r.shop, null);
+    history.replaceState(null, '', '#/');
+    toast(`هذا الجهاز الآن في ${r.shop.name}. أدخل رمزك`, 'ok');
+    render();
+  }),
   'exp-preset': (el) => { A().expPreset = el.dataset.k; loadSection('expenses').catch(fail); },
   'exp-new': () => openModal({ type: 'expense', clientId: uid(), category: 'supplies', fromDrawer: false }),
   'exp-cat': (el) => { state.modal.category = el.dataset.k; render(); },
