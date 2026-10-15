@@ -17,7 +17,7 @@ const IP_MAX = 20;
 const MAX_CACHED_APPS = 300;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations } = {}) {
+export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null } = {}) {
   const apps = new Map(); // tenantId → {app, ready}
   const ipFails = new Map(); // ip → {count, since}
 
@@ -27,7 +27,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
       apps.delete(tenantId); apps.set(tenantId, entry); // الأحدث استخداماً في النهاية
       return entry;
     }
-    const app = createApp({ db: scopeDb(db, tenantId), now, newId, pepper, log });
+    const app = createApp({ db: scopeDb(db, tenantId), now, newId, pepper, log, readInvoice });
     entry = { app, ready: app.start().catch((e) => log.error?.(e)) };
     apps.set(tenantId, entry);
     if (apps.size > MAX_CACHED_APPS) apps.delete(apps.keys().next().value);

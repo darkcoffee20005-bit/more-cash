@@ -2,6 +2,7 @@
 // متغيرات البيئة في Vercel: MONGODB_URI (إلزامي — Atlas)، MONGODB_DB، PIN_PEPPER.
 import { connectDb } from '../server/db/connect.js';
 import { createPlatform } from '../server/app/platform.js';
+import { createInvoiceReader } from '../server/app/invoice.js';
 import { handleApiRequest } from '../server/http.js';
 
 let ready = null;
@@ -35,7 +36,9 @@ async function init() {
     throw e;
   }
   const { db } = await connectDb({ uri, dbName: process.env.MONGODB_DB ?? 'morecash', memoryFile: null, log: { info() {}, warn() {} }, maxPoolSize: 5 });
-  return createPlatform({ db, newId: () => crypto.randomUUID(), pepper: process.env.PIN_PEPPER || null });
+  // قراءة صور الفواتير تعمل فقط عند ضبط ANTHROPIC_API_KEY في متغيرات Vercel؛ الإدخال اليدوي يعمل دائماً
+  const readInvoice = process.env.ANTHROPIC_API_KEY ? createInvoiceReader({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
+  return createPlatform({ db, newId: () => crypto.randomUUID(), pepper: process.env.PIN_PEPPER || null, readInvoice });
 }
 
 /** سبب الفشل بلا أي سر (لا الرابط ولا كلمة المرور) */
@@ -60,7 +63,7 @@ export default async function handler(req, res) {
   // فحص الحالة: يرد دائماً 200 ليُقرأ بسهولة من المتصفح وأدوات المراقبة
   if (req.method === 'GET' && /^\/api\/health(\/[a-z0-9-]*)?$/.test(String(req.url).split('?')[0])) {
     let body;
-    try { ready ??= init(); await ready; body = { ok: true, db: 'connected' }; } catch (e) { ready = null; body = { ok: false, db: reason(e) }; }
+    try { ready ??= init(); await ready; body = { ok: true, db: 'connected', invoiceScan: Boolean(process.env.ANTHROPIC_API_KEY) }; } catch (e) { ready = null; body = { ok: false, db: reason(e) }; }
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');

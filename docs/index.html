@@ -202,8 +202,14 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .main { min-width: 0; min-height: 0; overflow: auto; }
 
 /* ---------------------------------------------------------------- شاشة البيع */
-.pos { height: 100%; min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(300px, .85fr) minmax(0, 1fr); }
-.pos > .ticket { order: -1; }
+.pos { height: 100%; min-height: 0; overflow: hidden; display: grid; grid-template-columns: var(--ticket-w, minmax(300px, .85fr)) 14px minmax(0, 1fr); }
+.pos > .ticket { order: -2; }
+.pos > .splitter { order: -1; }
+/* مقبض السحب بين نافذة الطلب والأصناف: منطقة لمس عريضة وخط ظاهر في المنتصف */
+.splitter { position: relative; cursor: col-resize; touch-action: none; background: var(--surface-2); border-inline: 1px solid var(--line); display: grid; place-items: center; outline: none; }
+.splitter span { width: 4px; height: 48px; border-radius: 4px; background: var(--line-strong); transition: background .15s, height .15s; }
+.splitter:hover span, .splitter:focus-visible span, .splitter.dragging span { background: var(--primary); height: 72px; }
+.splitter.dragging { background: var(--brand-100); }
 .catalog { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .pos-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pos-top h1 { font-size: 1.15rem; margin-inline-end: auto; }
@@ -218,25 +224,25 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .cat-chip::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
 .cat-chip.on { background: var(--c); border-color: var(--c); color: #fff; }
 .cat-chip.on::before { background: rgb(255 255 255 / 70%); }
-.tiles { flex: 1; overflow-y: auto; padding: 16px 18px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 12px; align-content: start; }
+.tiles { flex: 1; overflow-y: auto; padding: 12px 14px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; align-content: start; }
 .tile {
   --c: var(--tile-olive);
-  position: relative; min-height: 118px; border-radius: var(--r-lg); border: 1px solid var(--line); border-top: 5px solid var(--c);
+  position: relative; min-height: 94px; border-radius: var(--r-md); border: 1px solid var(--line); border-top: 4px solid var(--c);
   background: linear-gradient(180deg, color-mix(in srgb, var(--c) 7%, var(--surface)) 0%, var(--surface) 55%);
-  padding: 12px 14px; text-align: start; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-1);
+  padding: 9px 11px; text-align: start; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow-1);
   transition: transform .08s ease, box-shadow .15s, border-color .15s;
 }
 .tile:hover { box-shadow: 0 6px 18px rgb(30 57 50 / 12%); }
 .tile:active { transform: scale(.97); }
-.tile .t-name { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; line-height: 1.3; }
-.tile .t-meta { font-size: .78rem; color: var(--muted); }
-.tile .t-price { margin-top: auto; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tile .t-name { font-family: var(--font-display); font-weight: 600; font-size: .95rem; line-height: 1.3; }
+.tile .t-meta { font-size: .72rem; color: var(--muted); }
+.tile .t-price { margin-top: auto; font-weight: 600; font-size: .9rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .tile .t-flag { position: absolute; top: 10px; inset-inline-end: 10px; }
 .tile.out { opacity: .55; filter: grayscale(.6); }
 .c-olive { --c: var(--tile-olive); } .c-petrol { --c: var(--tile-petrol); } .c-sage { --c: var(--tile-sage); } .c-teal { --c: var(--tile-teal); }
 .c-sand { --c: var(--tile-sand); } .c-clay { --c: var(--tile-clay); } .c-mocha { --c: var(--tile-mocha); } .c-slate { --c: var(--tile-slate); }
 
-.ticket { background: var(--surface); border-inline-end: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.ticket { background: var(--surface); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .ticket-head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
 .ticket-title { display: flex; align-items: center; gap: 8px; }
 .ticket-title h2 { font-size: 1.1rem; }
@@ -378,7 +384,41 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
 .demo-tag { font-size: .66rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--gold); color: #1e2a26; }
 .demo-flag { position: fixed; z-index: 30; top: max(10px, env(safe-area-inset-top, 0px)); inset-inline-end: max(12px, env(safe-area-inset-left, 0px)); background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); padding: 4px 12px; border-radius: 999px; font-size: .78rem; font-weight: 600; pointer-events: none; }
 
+/* ---------------------------------------------------------------- استلام المشتريات وتنبيه المخزون */
+.rcv-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(90px, 1fr) minmax(110px, 1fr) auto; gap: 8px; align-items: center; padding: 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); }
+.rcv-row.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: var(--warn-soft); }
+.rcv-row .rcv-src, .rcv-row .rcv-cost { grid-column: 1 / -1; }
+.rcv-num { display: flex; align-items: center; gap: 6px; }
+.rcv-num input { min-width: 0; }
+.alert-low { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-radius: var(--r-lg); background: var(--bad-soft); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); }
+.alert-low > svg.i { flex: none; margin-top: 2px; }
+.alert-low .small { color: var(--ink-2); }
+.alert-low a { color: inherit; font-weight: 700; }
+@media (max-width: 700px) { .rcv-row { grid-template-columns: 1fr 1fr auto; } .rcv-row select { grid-column: 1 / -1; } }
+
+/* تنبيه المخزون على شاشة البيع */
+.low-banner { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 12px; border-radius: var(--r-md); background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
+.low-banner.has-out { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.low-banner .low-text { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: .9rem; }
+.low-banner .low-list { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--ink-2); font-size: .84rem; }
+.low-banner .low-out { color: var(--bad); font-weight: 600; }
+.low-banner .icon-btn { width: 34px; height: 34px; color: inherit; }
+.rail .badge.bad { background: var(--bad); color: #fff; }
+
 /* ---------------------------------------------------------------- استجابة */
+/* الآيباد أفقياً: مسافات أقل وشريط جانبي أنحف لتتسع الأصناف والطلب */
+@media (orientation: landscape) and (max-height: 900px) and (min-width: 701px) {
+  :root { --rail: 76px; }
+  .rail { gap: 2px; padding-top: 8px; }
+  .rail .mark { width: 38px; height: 38px; margin-bottom: 6px; }
+  .rail a { padding: 7px 2px; font-size: .68rem; }
+  .catalog-head { padding: 10px 12px 8px; gap: 8px; }
+  .pos-top h1 { font-size: 1.02rem; }
+  .ticket-head { padding: 10px 12px; gap: 8px; }
+  .line { padding: 9px 12px; }
+  .ticket-actions { padding-top: 8px; gap: 6px; }
+  .ticket-actions .btn.lg { min-height: 54px; }
+}
 @media (max-width: 1180px) { :root { --ticket: 350px; } .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 960px) {
   .admin { grid-template-columns: 1fr; }
@@ -388,8 +428,8 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
   .split-view { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
-  .pos { grid-template-columns: minmax(290px, .85fr) minmax(0, 1fr); }
-  .tiles { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); padding: 12px; gap: 10px; }
+  .pos { grid-template-columns: var(--ticket-w, minmax(290px, .85fr)) 14px minmax(0, 1fr); }
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); padding: 10px; gap: 8px; }
   .catalog-head { padding: 12px; }
   .pay-side { padding: 20px; }
   .pay-side .due { font-size: 2.2rem; }
@@ -399,7 +439,8 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
 @media (max-width: 700px) {
   .pos { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .pos > .ticket { order: 0; }
-  .ticket { border-inline-end: none; border-top: 1px solid var(--line); max-height: 52vh; }
+  .pos > .splitter { display: none; }
+  .ticket { border-top: 1px solid var(--line); max-height: 52vh; }
   .pay { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
@@ -2128,9 +2169,14 @@ function createCatalog(ctx) {
         return { id: v.id, name: v.name, price: v.price, sku: v.sku, available };
       }),
     }));
+    // تنبيه المخزون المنخفض يظهر على شاشة البيع لكل الموظفين (أسماء وكميات فقط، بلا تكاليف)
+    const lowStock = items.flatMap((i) => i.variants.filter((v) => v.trackStock && v.stock <= v.lowStock).map((v) => ({
+      variantId: v.id, name: v.name ? `${i.name} — ${v.name}` : i.name, stock: v.stock, unit: i.unit ?? 'قطعة', out: v.stock <= 0,
+    }))).sort((a, b) => Number(b.out) - Number(a.out) || a.stock - b.stock);
     return {
       categories: categories.map((c) => out(c)),
       items: forSale,
+      lowStock,
       modifiers: modifiers.map((m) => out(m)),
       discounts: discounts.map((d) => out(d)),
     };
@@ -2144,8 +2190,8 @@ return { createCatalog };
 
 // ---- server/app/inventory.js
 const __m_server_app_inventory_js = await (async () => {
-const { costOf, parseMilli, weightedCost } = __m_shared_calc_js;
-const { audit, bad, id: checkId, int, isDup, notFound, oneOf, requirePerm, str } = __m_server_app_core_js;
+const { costOf, formatMilli, parseMilli, weightedCost } = __m_shared_calc_js;
+const { AppError, audit, bad, id: checkId, int, isDup, notFound, oneOf, requirePerm, str } = __m_server_app_core_js;
 // المخزون: دفتر حركات (stock_moves) بمفتاح فريد لكل حركة + رصيد مخزّن على الحجم يُحدَّث بـ $inc.
 // المفتاح الفريد يجعل كل حركة تُطبَّق مرة واحدة مهما تكررت المحاولة؛ والرصيد قابل لإعادة البناء من الدفتر.
 
@@ -2219,6 +2265,63 @@ function createInventory(ctx) {
     return { applied, delta, stock: after.stock, costMilli: after.costMilli };
   }
 
+  /** مواد المخزون المتاحة للاستلام (المكونات والأصناف المتتبعة) */
+  async function stockItems() {
+    const vs = await variants().find({ active: true, trackStock: true }).toArray();
+    const items = new Map((await db.collection('items').find({ _id: { $in: [...new Set(vs.map((v) => v.itemId))] } }).toArray()).map((i) => [i._id, i]));
+    return vs.filter((v) => items.get(v.itemId)?.active !== false).map((v) => {
+      const item = items.get(v.itemId);
+      return { id: v._id, name: v.name ? `${item.name} — ${v.name}` : item.name, unit: item.unit ?? 'قطعة' };
+    });
+  }
+
+  /** قراءة صورة فاتورة: تُعاد الأسطر للمراجعة فقط، لا يُكتب شيء في المخزون هنا */
+  async function scanInvoice(actor, input = {}) {
+    requirePerm(actor, 'admin.inventory');
+    if (!ctx.readInvoice) throw new AppError(503, 'SCAN_NOT_CONFIGURED');
+    const mediaType = oneOf(input.mediaType, ['image/jpeg', 'image/png', 'image/webp'], 'mediaType');
+    if (typeof input.image !== 'string' || input.image.length < 100 || input.image.length > 4_500_000 || !/^[A-Za-z0-9+/=]+$/.test(input.image)) throw bad('INVALID_IMAGE');
+    const stock = await stockItems();
+    let r;
+    try {
+      r = await ctx.readInvoice({ image: input.image, mediaType, stock });
+    } catch (e) {
+      ctx.log?.error?.(e);
+      throw new AppError(502, 'SCAN_FAILED');
+    }
+    const ids = new Map(stock.map((x) => [x.id, x]));
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+    const lines = (Array.isArray(r?.lines) ? r.lines : []).slice(0, 60).map((l) => {
+      const match = ids.get(l.matchId) ?? null;
+      const qty = num(l.stockQty);
+      return {
+        description: String(l.description ?? '').slice(0, 80), invoiceQty: num(l.invoiceQty), invoiceUnit: l.invoiceUnit ? String(l.invoiceUnit).slice(0, 20) : null,
+        lineTotal: num(l.lineTotal) === null ? null : Math.round(l.lineTotal), variantId: match?.id ?? null, unit: match?.unit ?? null,
+        qty: match && qty !== null ? Math.round(qty) : null,
+      };
+    });
+    return { supplier: r?.supplier ? String(r.supplier).slice(0, 60) : null, date: r?.date ?? null, total: num(r?.total), lines };
+  }
+
+  /** استلام مشتريات دفعة واحدة (يدوياً أو بعد مراجعة الفاتورة). كل سطر حركة مستقلة بمفتاح ثابت → آمن لإعادة المحاولة */
+  async function receiveBatch(actor, input = {}) {
+    requirePerm(actor, 'admin.inventory');
+    const clientId = checkId(input.clientId, 'clientId');
+    if (!Array.isArray(input.lines) || input.lines.length === 0 || input.lines.length > 60) throw bad('INVALID_LIST', 'lines');
+    const supplier = str(input.supplier, { field: 'supplier', max: 60, optional: true });
+    const note = supplier ? `مشتريات من ${supplier}` : 'استلام مشتريات';
+    const results = [];
+    for (const [i, l] of input.lines.entries()) {
+      const qty = int(l.qty, { field: 'lines.qty', min: 1, max: 10_000_000 });
+      const total = l.total === undefined || l.total === null || l.total === '' ? null : int(l.total, { field: 'lines.total', min: 0, max: 1_000_000_000 });
+      // التكلفة لكل وحدة (بالدينار، حتى 3 منازل) = مبلغ السطر ÷ الكمية؛ تدخل متوسط التكلفة الموزون
+      const cost = total === null ? undefined : formatMilli(Math.round((total * 1000) / qty));
+      const r = await adjust(actor, { clientId: `${clientId}-${i}`, type: 'receive', variantId: l.variantId, qty, cost, note });
+      results.push({ variantId: l.variantId, ...r });
+    }
+    return { received: results.filter((r) => r.applied).length, lines: results };
+  }
+
   async function history(actor, variantId, limit = 100) {
     requirePerm(actor, 'admin.inventory');
     const rows = await moves().find({ variantId: checkId(variantId, 'variantId') }).sort({ at: -1 }).limit(Math.min(limit, 500)).toArray();
@@ -2243,7 +2346,7 @@ function createInventory(ctx) {
     return { checked: sums.size, fixed };
   }
 
-  return { applyMove, list, adjust, history, reconcile };
+  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch };
 }
 
 return { MOVE_REASON, createInventory };
@@ -3097,7 +3200,7 @@ return { createShifts };
 // ---- server/app/index.js
 const __m_server_app_index_js = await (async () => {
 const { dayRange } = __m_shared_format_js;
-const { AppError, getSettings } = __m_server_app_core_js;
+const { AppError, getSettings, requirePerm } = __m_server_app_core_js;
 const { createAuth, createSettings, publicEmployee } = __m_server_app_auth_js;
 const { createCatalog } = __m_server_app_catalog_js;
 const { createInventory } = __m_server_app_inventory_js;
@@ -3115,8 +3218,8 @@ const { createShifts } = __m_server_app_shifts_js;
 
 
 
-function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console }) {
-  const ctx = { db, now, newId, pepper, log };
+function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, readInvoice = null }) {
+  const ctx = { db, now, newId, pepper, log, readInvoice };
   ctx.inventory = createInventory(ctx);
   ctx.shifts = createShifts(ctx);
   const auth = createAuth(ctx);
@@ -3184,6 +3287,9 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['POST', '/api/admin/inventory/adjust', (actor, req) => ctx.inventory.adjust(actor, req.body)],
     ['GET', '/api/admin/inventory/:id/history', (actor, req, p) => ctx.inventory.history(actor, p.id)],
     ['POST', '/api/admin/inventory/reconcile', (actor) => ctx.inventory.reconcile(actor)],
+    ['GET', '/api/admin/inventory/stock-items', async (actor) => { requirePerm(actor, 'admin.inventory'); return ctx.inventory.stockItems(); }],
+    ['POST', '/api/admin/inventory/scan', (actor, req) => ctx.inventory.scanInvoice(actor, req.body)],
+    ['POST', '/api/admin/inventory/receive', (actor, req) => ctx.inventory.receiveBatch(actor, req.body)],
     ['GET', '/api/admin/employees', (actor) => auth.listEmployees(actor)],
     ['POST', '/api/admin/employees', (actor, req) => auth.saveEmployee(actor, req.body)],
     ['GET', '/api/admin/settings', (actor) => settings.get(actor)],
@@ -3355,7 +3461,7 @@ const IP_MAX = 20;
 const MAX_CACHED_APPS = 300;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations } = {}) {
+function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null } = {}) {
   const apps = new Map(); // tenantId → {app, ready}
   const ipFails = new Map(); // ip → {count, since}
 
@@ -3365,7 +3471,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
       apps.delete(tenantId); apps.set(tenantId, entry); // الأحدث استخداماً في النهاية
       return entry;
     }
-    const app = createApp({ db: scopeDb(db, tenantId), now, newId, pepper, log });
+    const app = createApp({ db: scopeDb(db, tenantId), now, newId, pepper, log, readInvoice });
     entry = { app, ready: app.start().catch((e) => log.error?.(e)) };
     apps.set(tenantId, entry);
     if (apps.size > MAX_CACHED_APPS) apps.delete(apps.keys().next().value);
@@ -3795,6 +3901,9 @@ const P = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13 7 4 4"/>',
   alert: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/>',
   download: '<path d="M12 4v11M7 10l5 5 5-5M4 20h16"/>',
+  expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  shrink: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4V8Z"/><circle cx="12" cy="13" r="3.5"/>',
   bean: '<g transform="rotate(32 12 12)"><ellipse cx="12" cy="12" rx="6" ry="9"/><path d="M12 3.5l1.3 2-2.6 2 2.6 2-2.6 2 2.6 2-2.6 2 2.6 2-1.3 1"/></g>',
 };
 
@@ -3893,6 +4002,10 @@ function toast(text, kind = '') {
 
 const ERRORS = {
   NETWORK: 'تعذر الاتصال بالخادم. تحقق من الشبكة.',
+  SCAN_NOT_CONFIGURED: 'قراءة صور الفواتير غير مفعّلة بعد (يلزم ANTHROPIC_API_KEY في إعدادات الخادم). يمكنك إدخال المشتريات يدوياً.',
+  SCAN_FAILED: 'تعذرت قراءة الفاتورة. جرّب صورة أوضح بإضاءة جيدة، أو أدخل الأسطر يدوياً.',
+  INVALID_IMAGE: 'الصورة غير صالحة.',
+  TOO_LARGE: 'الصورة كبيرة جداً.',
   NOT_AUTHENTICATED: 'انتهت الجلسة. أدخل رمزك مجدداً.',
   FORBIDDEN: 'لا تملك صلاحية هذه العملية.',
   WRONG_PIN: 'الرمز غير صحيح.',
@@ -4238,7 +4351,7 @@ async function loadBootstrap() {
   state.catalog = b.catalog;
   state.shift = b.shift;
   state.ticketsCount = b.ticketsCount;
-  if (!state.pos) state.pos = { categoryId: null, search: '', cart: emptyCart() };
+  if (!state.pos) state.pos = { categoryId: null, search: '', cart: emptyCart(), ticketW: loadTicketW() };
 }
 
 function emptyCart() {
@@ -4264,12 +4377,74 @@ function safeTotals() {
 
 const discountLabel = (d) => (d.type === 'percent' ? pct(d.value) : money(d.value));
 
+// ---------------------------------------------------------------- عرض نافذة الطلب (قابل للسحب، ويُحفظ على هذا الجهاز)
+const TICKET_W_KEY = 'morecash.ticketW';
+const TICKET_MIN = 280;
+
+function loadTicketW() {
+  try { const v = Number(localStorage.getItem(TICKET_W_KEY)); return Number.isFinite(v) && v >= TICKET_MIN ? v : null; } catch { return null; }
+}
+function saveTicketW(v) {
+  try { if (v) localStorage.setItem(TICKET_W_KEY, String(v)); else localStorage.removeItem(TICKET_W_KEY); } catch { /* تخزين غير متاح */ }
+}
+/** النافذة على اليمين: السحب لليسار يكبّرها. يبقى للأصناف 340 بكسل على الأقل */
+function clampTicketW(pos, w) {
+  return Math.round(Math.max(TICKET_MIN, Math.min(w, pos.getBoundingClientRect().width - 340)));
+}
+// بعد تدوير الشاشة لا يتجاوز العرض المحفوظ ما يترك للأصناف 340 بكسل
+const ticketWidthCss = (w) => `min(${w}px, calc(100% - 354px))`;
+function setTicketW(pos, w) {
+  state.pos.ticketW = w;
+  if (w) pos.style.setProperty('--ticket-w', ticketWidthCss(w)); else pos.style.removeProperty('--ticket-w');
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', (e) => {
+    const bar = e.target.closest?.('.splitter');
+    if (!bar) return;
+    const pos = bar.closest('.pos');
+    e.preventDefault();
+    bar.setPointerCapture?.(e.pointerId);
+    bar.classList.add('dragging');
+    const startX = e.clientX;
+    const startW = pos.querySelector('.ticket').getBoundingClientRect().width;
+    const move = (ev) => setTicketW(pos, clampTicketW(pos, startW + (startX - ev.clientX)));
+    const up = () => {
+      bar.classList.remove('dragging');
+      bar.removeEventListener('pointermove', move);
+      bar.removeEventListener('pointerup', up);
+      bar.removeEventListener('pointercancel', up);
+      saveTicketW(state.pos.ticketW);
+    };
+    bar.addEventListener('pointermove', move);
+    bar.addEventListener('pointerup', up);
+    bar.addEventListener('pointercancel', up);
+  });
+  document.addEventListener('dblclick', (e) => {
+    const bar = e.target.closest?.('.splitter');
+    if (!bar) return;
+    setTicketW(bar.closest('.pos'), null);
+    saveTicketW(null);
+  });
+  document.addEventListener('keydown', (e) => {
+    const bar = e.target.closest?.('.splitter');
+    if (!bar || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    const pos = bar.closest('.pos');
+    const cur = state.pos.ticketW ?? pos.querySelector('.ticket').getBoundingClientRect().width;
+    setTicketW(pos, clampTicketW(pos, cur + (e.key === 'ArrowLeft' ? 24 : -24)));
+    saveTicketW(state.pos.ticketW);
+  });
+}
+
 // ---------------------------------------------------------------- العرض
 const routes = {
   pos(s) {
     if (!s.catalog) return '<div class="page"><p class="muted">جارٍ تحميل القائمة…</p></div>';
     if (!s.shift) return shiftGate();
-    return `<div class="pos">${catalogPane(s)}${ticketPane(s)}</div>`;
+    const w = s.pos.ticketW;
+    return `<div class="pos" ${w ? `style="--ticket-w:${ticketWidthCss(w)}"` : ''}>${catalogPane(s)}
+      <div class="splitter" role="separator" aria-orientation="vertical" aria-label="اسحب لتغيير حجم نافذة الطلب" tabindex="0" title="اسحب لتغيير الحجم · نقرتان للحجم الافتراضي"><span></span></div>
+      ${ticketPane(s)}</div>`;
   },
 };
 
@@ -4300,6 +4475,7 @@ function catalogPane(s) {
       <div class="pos-top"><h1>${esc(s.settings?.name ?? '')}</h1>
         ${s.shift ? `<span class="pill ok">${icon('clock', 'sm')} وردية #${s.shift.number}</span>` : ''}
         <span class="clock">${time(Date.now(), tz)}</span></div>
+      ${lowBanner(s)}
       <div class="search-box">${icon('search', 'sm')}<input type="search" id="pos-search" placeholder="ابحث باسم الصنف أو SKU" value="${esc(search)}" data-input="pos-search" autocomplete="off"></div>
       <div class="cats" role="tablist">${cats.join('')}</div>
     </div>
@@ -4307,6 +4483,20 @@ function catalogPane(s) {
       ${items.length ? items.map(tile).join('') : `<div class="empty" style="grid-column:1/-1">${icon('search')}<p>لا أصناف مطابقة</p></div>`}
     </div>
   </section>`;
+}
+
+const lowKey = (list) => list.map((x) => `${x.variantId}:${x.out ? 0 : 1}`).join(',');
+
+function lowBanner(s) {
+  const low = s.catalog.lowStock ?? [];
+  if (!low.length || s.pos.lowDismissed === lowKey(low)) return '';
+  const outN = low.filter((x) => x.out).length;
+  const shown = low.slice(0, 4).map((x) => `<span class="${x.out ? 'low-out' : ''}">${esc(x.name)} <b class="num">${x.stock.toLocaleString('en-US')} ${esc(x.unit)}</b></span>`).join('');
+  return `<div class="low-banner ${outN ? 'has-out' : ''}" role="alert">${icon('alert', 'sm')}
+    <div class="low-text"><b>${outN ? `نفد ${outN} ومنخفض ${low.length - outN}` : `مخزون منخفض: ${low.length} ${low.length === 1 ? 'مادة' : 'مواد'}`}</b>
+      <span class="low-list">${shown}${low.length > 4 ? `<span>+${low.length - 4}</span>` : ''}</span></div>
+    ${can('admin.inventory') ? '<a class="btn sm" href="#/admin/inventory">المخزون</a>' : ''}
+    <button class="icon-btn" data-action="low-dismiss" aria-label="إخفاء التنبيه">${icon('x', 'sm')}</button></div>`;
 }
 
 function tile(item) {
@@ -4693,6 +4883,8 @@ on({
     if (state.pos.cart.ticket?.id === el.dataset.id) state.pos.cart = emptyCart();
   }),
 
+  'low-dismiss': () => { state.pos.lowDismissed = lowKey(state.catalog.lowStock ?? []); render(); },
+
   // ---- الدفع
   'pos-charge': () => {
     let total;
@@ -4794,7 +4986,14 @@ async function saveTicket(data) {
 }
 
 async function refreshAvailability() {
-  try { state.catalog = (await get('/api/pos/bootstrap')).catalog; render(); } catch { /* غير حرج */ }
+  try {
+    const before = new Set((state.catalog?.lowStock ?? []).map((x) => `${x.variantId}:${x.out}`));
+    state.catalog = (await get('/api/pos/bootstrap')).catalog;
+    // مادة نزلت تحت الحد (أو نفدت) بسبب هذا البيع: تنبيه فوري
+    const fresh = state.catalog.lowStock.filter((x) => !before.has(`${x.variantId}:${x.out}`));
+    if (fresh.length) toast(`${fresh[0].out ? 'نفد' : 'انخفض مخزون'}: ${fresh.map((x) => x.name).join('، ')}`, 'bad');
+    render();
+  } catch { /* غير حرج */ }
 }
 
 async function enter() {
@@ -5451,7 +5650,12 @@ const PAGES = {
     const f = a.invFilter ?? 'all';
     const rows = inv.rows.filter((r) => f === 'all' || (f === 'low' ? r.low : f === 'ing' ? r.ingredient : !r.ingredient));
     return `<div class="page-head"><h1>المخزون</h1><span class="muted">قيمة المخزون ${money(inv.totalValue)}</span>
-        <button class="btn sm" data-action="inv-reconcile">${icon('check', 'sm')} مطابقة مع الدفتر</button></div>
+        <div class="row wrap">
+          <button class="btn primary" data-action="rcv-open">${icon('plus', 'sm')} استلام مشتريات</button>
+          <label class="btn"><input type="file" accept="image/*" capture="environment" hidden data-change="rcv-scan" id="rcv-file">${icon('camera', 'sm')} تصوير فاتورة</label>
+          <button class="btn sm ghost" data-action="inv-reconcile">${icon('check', 'sm')} مطابقة مع الدفتر</button></div></div>
+      ${inv.lowCount ? `<div class="alert-low" role="alert">${icon('alert')}<div><b>${inv.lowCount} ${inv.lowCount === 1 ? 'مادة' : 'مواد'} تحت حد التنبيه</b>
+        <div class="small">${inv.rows.filter((r) => r.low).map((r) => `${esc(r.name)}: ${r.stock.toLocaleString('en-US')} ${esc(r.unit)}`).join(' · ')}</div></div></div>` : ''}
       <div class="toolbar"><div class="seg">${[['all', 'الكل'], ['low', `تحت الحد (${inv.lowCount})`], ['ing', 'المكونات'], ['goods', 'أصناف جاهزة']].map(([k, l]) => `<button class="${f === k ? 'on' : ''}" data-action="inv-filter" data-f="${k}">${l}</button>`).join('')}</div></div>
       <div class="table-wrap"><table><thead><tr><th>المادة</th><th class="num">الرصيد</th><th class="num">حد التنبيه</th><th class="num">التكلفة/وحدة</th><th class="num">القيمة</th><th></th></tr></thead>
       <tbody>${rows.map((r) => `<tr><td><b>${esc(r.name)}</b> ${r.ingredient ? '<span class="pill olive">مكون</span>' : ''}</td>
@@ -5670,12 +5874,74 @@ const modals = {
         <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
   },
 
+  receive(s) {
+    const m = s.modal;
+    const items = A().stockItems ?? [];
+    const byId = new Map(items.map((x) => [x.id, x]));
+    if (m.scanning) {
+      return modalFrame({ title: 'قراءة الفاتورة', body: `<div class="empty" style="padding:28px">${icon('receipt')}<h3>جارٍ قراءة الفاتورة…</h3>
+        <p class="muted">يستخرج البرنامج المواد والكميات والأسعار. قد يستغرق ذلك حتى نصف دقيقة.</p></div>` });
+    }
+    const qtyOf = (l) => parseAmount(String(l.qty ?? '')) ?? 0;
+    const ready = m.lines.filter((l) => l.variantId && qtyOf(l) > 0);
+    const invalid = m.lines.length - ready.length;
+    const sum = m.lines.reduce((a, l) => a + (parseAmount(String(l.total ?? '')) ?? 0), 0);
+    const rows = m.lines.map((l, i) => {
+      const it = byId.get(l.variantId);
+      const qty = qtyOf(l);
+      const total = parseAmount(String(l.total ?? ''));
+      const unitCost = it && qty > 0 && total ? formatMilli(Math.round((total * 1000) / qty)) : null;
+      return `<div class="rcv-row ${l.variantId && qty > 0 ? '' : 'warn'}">
+        ${l.description ? `<div class="small muted rcv-src">في الفاتورة: ${esc([l.invoiceQty, l.invoiceUnit, l.description].filter((x) => x !== null && x !== undefined && x !== '').join(' '))}</div>` : ''}
+        <select data-change="rcv-field" data-i="${i}" data-k="variantId" id="rcv-v-${i}" aria-label="المادة">
+          <option value="">— اختر المادة —</option>${items.map((x) => `<option value="${x.id}" ${x.id === l.variantId ? 'selected' : ''}>${esc(x.name)} (${esc(x.unit)})</option>`).join('')}</select>
+        <label class="rcv-num"><input data-input="rcv-field" data-i="${i}" data-k="qty" id="rcv-q-${i}" value="${esc(l.qty ?? '')}" inputmode="numeric" placeholder="الكمية" aria-label="الكمية"><span class="muted small">${esc(it?.unit ?? '')}</span></label>
+        <label class="rcv-num"><input data-input="rcv-field" data-i="${i}" data-k="total" id="rcv-t-${i}" value="${esc(l.total ?? '')}" inputmode="numeric" placeholder="المبلغ" aria-label="مبلغ السطر"><span class="muted small">د.ع</span></label>
+        <button type="button" class="icon-btn" data-action="rcv-remove" data-i="${i}" aria-label="حذف السطر">${icon('x', 'sm')}</button>
+        ${unitCost ? `<div class="small muted rcv-cost">التكلفة: ${unitCost} د.ع لكل ${esc(it.unit)}</div>` : ''}
+      </div>`;
+    }).join('');
+    const body = `
+      ${m.scanned ? `<div class="card pad small" style="background:var(--surface-2)">${icon('check', 'sm')} قُرئت الفاتورة${m.supplier ? ` من <b>${esc(m.supplier)}</b>` : ''}${m.invoiceTotal ? ` · إجمالي الفاتورة ${money(m.invoiceTotal)}` : ''}.
+        <b>راجع كل سطر قبل التأكيد</b> — الأسطر المظللة تحتاج اختيار مادة أو كمية.</div>` : ''}
+      ${field('المورد (اختياري)', `<input id="rcv-supplier" data-input="rcv-supplier" value="${esc(m.supplier ?? '')}" maxlength="60" placeholder="اسم المورد أو رقم الفاتورة">`)}
+      <div class="stack" style="gap:10px">${rows || '<p class="muted">لا أسطر بعد. أضف سطراً لكل مادة مستلمة.</p>'}</div>
+      <button type="button" class="btn sm" data-action="rcv-add">${icon('plus', 'sm')} سطر</button>
+      ${items.length ? '' : '<p class="muted small">لا توجد مواد مخزون بعد. أضفها من الأصناف بنوع «مكوّن» أولاً.</p>'}`;
+    const foot = `<div class="muted small" style="align-self:center;flex:none">${m.lines.length ? `المجموع ${money(sum)}${m.invoiceTotal && sum !== m.invoiceTotal ? ` <span class="pill warn">يختلف عن الفاتورة</span>` : ''}` : ''}</div>
+      <button class="btn primary" data-action="rcv-submit" ${ready.length && !invalid && !s.busy ? '' : 'disabled'}>${invalid ? `أكمل ${invalid} ${invalid === 1 ? 'سطر' : 'أسطر'}` : `${icon('check', 'sm')} تأكيد وإضافة للمخزون (${ready.length})`}</button>`;
+    return modalFrame({ title: 'استلام مشتريات', cls: 'wide', body, foot });
+  },
+
   'inv-history'(s) {
     const h = s.modal.rows;
     return modalFrame({ title: 'سجل الحركات', cls: 'wide', body: h ? `<div class="table-wrap"><table><thead><tr><th>الوقت</th><th>الحركة</th><th class="num">الكمية</th><th>بواسطة</th><th>ملاحظة</th></tr></thead>
       <tbody>${h.map((x) => `<tr><td class="small">${dateTime(x.at, tz())}</td><td>${esc(x.reasonName)}</td><td class="num" style="color:${x.delta < 0 ? 'var(--bad)' : 'var(--ok)'}">${x.delta > 0 ? '+' : ''}${x.delta.toLocaleString('en-US')}</td><td class="small">${esc(x.byName ?? '')}</td><td class="small">${esc(x.note ?? '')}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">لا حركات</td></tr>'}</tbody></table></div>` : '<p class="muted">جارٍ التحميل…</p>' });
   },
 };
+
+// ---------------------------------------------------------------- استلام المشتريات
+const blankLine = () => ({ variantId: '', qty: '', total: '' });
+
+async function ensureStockItems() {
+  if (!A().stockItems) A().stockItems = await get('/api/admin/inventory/stock-items');
+}
+
+/** تصغير صورة الفاتورة قبل الإرسال (أطول ضلع 1600 بكسل، JPEG) — يكفي للقراءة ويبقى تحت حد الطلب */
+async function compressImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(Object.assign(new Error('img'), { code: 'INVALID_IMAGE' })); i.src = url; });
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return { data: canvas.toDataURL('image/jpeg', 0.8).split(',')[1], mediaType: 'image/jpeg' };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 // ---------------------------------------------------------------- التحميل
 function presetRange(k) {
@@ -5706,7 +5972,7 @@ async function loadSection(sub) {
     categories: async () => { a.categories = await get('/api/admin/categories'); },
     modifiers: async () => { a.modifiers = await get('/api/admin/modifiers'); },
     discounts: async () => { a.discounts = await get('/api/admin/discounts'); },
-    inventory: async () => { a.inventory = await get('/api/admin/inventory'); a.lowCount = a.inventory.lowCount; },
+    inventory: async () => { a.inventory = await get('/api/admin/inventory'); a.lowCount = a.inventory.lowCount; a.stockItems = null; },
     employees: async () => { a.employees = await get('/api/admin/employees'); },
     settings: async () => { [a.settings, a.account] = await Promise.all([get('/api/admin/settings'), loadAccount()]); },
   };
@@ -5837,6 +6103,44 @@ on({
 
   // المخزون
   'inv-filter': (el) => { A().invFilter = el.dataset.f; render(); },
+  'rcv-open': async () => {
+    await ensureStockItems();
+    openModal({ type: 'receive', clientId: uid(), lines: [blankLine()], supplier: '' });
+  },
+  'rcv-scan': async (el) => {
+    const file = el.files?.[0];
+    el.value = '';
+    if (!file) return;
+    await ensureStockItems();
+    openModal({ type: 'receive', clientId: uid(), lines: [], supplier: '', scanning: true });
+    try {
+      const { data, mediaType } = await compressImage(file);
+      const r = await post('/api/admin/inventory/scan', { image: data, mediaType });
+      if (state.modal?.type !== 'receive') return;
+      Object.assign(state.modal, {
+        scanning: false, scanned: true, supplier: r.supplier ?? '', invoiceTotal: r.total ? Math.round(r.total) : null,
+        lines: r.lines.length ? r.lines.map((l) => ({ ...l, qty: l.qty ?? '', total: l.lineTotal ?? '' })) : [blankLine()],
+      });
+      if (!r.lines.length) toast('لم يُعثر على أسطر في الصورة — أدخلها يدوياً', 'bad');
+    } catch (e) {
+      if (state.modal?.type === 'receive') Object.assign(state.modal, { scanning: false, lines: [blankLine()] });
+      fail(e);
+    }
+    render();
+  },
+  'rcv-supplier': (el) => { state.modal.supplier = el.value; },
+  'rcv-field': (el) => { state.modal.lines[Number(el.dataset.i)][el.dataset.k] = el.value; render(); },
+  'rcv-add': () => { state.modal.lines.push(blankLine()); render(); },
+  'rcv-remove': (el) => { state.modal.lines.splice(Number(el.dataset.i), 1); render(); },
+  'rcv-submit': () => busy(async () => {
+    const m = state.modal;
+    const lines = m.lines.map((l) => ({ variantId: l.variantId, qty: num(String(l.qty), 'الكمية'), total: l.total === '' || l.total === null ? null : num(String(l.total), 'المبلغ') }));
+    const r = await post('/api/admin/inventory/receive', { clientId: m.clientId, supplier: m.supplier || null, lines });
+    state.modal = null;
+    toast(`أُضيفت ${r.received} ${r.received === 1 ? 'مادة' : 'مواد'} إلى المخزون`, 'ok');
+    state.catalog = null;
+    await loadSection('inventory');
+  }),
   'inv-adjust': (el) => openModal({ type: 'inv-adjust', variantId: el.dataset.id, adjType: 'receive', clientId: uid() }),
   'adj-type': (el) => { state.modal.adjType = el.dataset.k; state.modal.clientId = uid(); render(); },
   'inv-adjust-submit': (_el, _e, d) => busy(async () => {
@@ -5970,7 +6274,9 @@ const views = {
 
 function railView(s) {
   const links = NAV.filter(([r, , , p]) => can(p) || (r === 'admin' && can('admin.catalog'))).map(([r, label, ic]) => {
-    const badge = r === 'pos' && s.ticketsCount ? `<span class="badge">${s.ticketsCount}</span>` : '';
+    const low = s.catalog?.lowStock?.length ?? 0;
+    const badge = r === 'pos' && s.ticketsCount ? `<span class="badge">${s.ticketsCount}</span>`
+      : r === 'admin' && low && can('admin.inventory') ? `<span class="badge bad" title="مواد تحت حد التنبيه">${low}</span>` : '';
     return `<a href="#/${r}" class="${s.route === r ? 'on' : ''}" ${s.route === r ? 'aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge}</a>`;
   }).join('');
   return `<nav class="rail" aria-label="التنقل الرئيسي">
@@ -5980,10 +6286,24 @@ function railView(s) {
       ${globalThis.MORECASH_BACKEND ? '<span class="demo-tag" title="البيانات في هذا المتصفح فقط">تجريبي</span>' : ''}
       <div class="avatar" title="${esc(s.employee.name)}">${esc(initials(s.employee.name))}</div>
       <span class="small" style="font-size:.7rem;text-align:center">${esc(s.employee.name)}</span>
+      ${canFullscreen() ? `<button data-action="fullscreen" title="ملء الشاشة">${icon(isFullscreen() ? 'shrink' : 'expand', 'sm')}<span>${isFullscreen() ? 'تصغير' : 'تكبير'}</span></button>` : ''}
       <button data-action="lock" title="قفل الشاشة">${icon('lock', 'sm')}<span>قفل</span></button>
     </div>
   </nav>`;
 }
+
+// ---------------------------------------------------------------- ملء الشاشة (الآيباد والمتصفحات المكتبية؛ الآيفون لا يدعمه فيُخفى الزر)
+const doc = typeof document !== 'undefined' ? document : null;
+const canFullscreen = () => Boolean(doc && (doc.fullscreenEnabled || doc.webkitFullscreenEnabled));
+const isFullscreen = () => Boolean(doc && (doc.fullscreenElement || doc.webkitFullscreenElement));
+async function toggleFullscreen() {
+  const el = doc.documentElement;
+  try {
+    if (isFullscreen()) await (doc.exitFullscreen ?? doc.webkitExitFullscreen).call(doc);
+    else await (el.requestFullscreen ?? el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+  } catch { toast('تعذّر ملء الشاشة. على الآيباد: شارك ← إضافة إلى الشاشة الرئيسية', 'bad'); }
+}
+if (doc) for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) doc.addEventListener(ev, () => render());
 
 // ---------------------------------------------------------------- الإجراءات العامة
 async function loadSession(employee) {
@@ -6016,6 +6336,7 @@ on({
     state.view = { pin: '' };
     render();
   },
+  fullscreen: () => toggleFullscreen(),
   'close-modal': () => set({ modal: null }),
   reload: () => location.reload(),
   'modal-back': () => set({ modal: null }),

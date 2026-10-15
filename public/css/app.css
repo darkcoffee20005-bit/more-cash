@@ -199,8 +199,14 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .main { min-width: 0; min-height: 0; overflow: auto; }
 
 /* ---------------------------------------------------------------- شاشة البيع */
-.pos { height: 100%; min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(300px, .85fr) minmax(0, 1fr); }
-.pos > .ticket { order: -1; }
+.pos { height: 100%; min-height: 0; overflow: hidden; display: grid; grid-template-columns: var(--ticket-w, minmax(300px, .85fr)) 14px minmax(0, 1fr); }
+.pos > .ticket { order: -2; }
+.pos > .splitter { order: -1; }
+/* مقبض السحب بين نافذة الطلب والأصناف: منطقة لمس عريضة وخط ظاهر في المنتصف */
+.splitter { position: relative; cursor: col-resize; touch-action: none; background: var(--surface-2); border-inline: 1px solid var(--line); display: grid; place-items: center; outline: none; }
+.splitter span { width: 4px; height: 48px; border-radius: 4px; background: var(--line-strong); transition: background .15s, height .15s; }
+.splitter:hover span, .splitter:focus-visible span, .splitter.dragging span { background: var(--primary); height: 72px; }
+.splitter.dragging { background: var(--brand-100); }
 .catalog { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .pos-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pos-top h1 { font-size: 1.15rem; margin-inline-end: auto; }
@@ -215,25 +221,25 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .cat-chip::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
 .cat-chip.on { background: var(--c); border-color: var(--c); color: #fff; }
 .cat-chip.on::before { background: rgb(255 255 255 / 70%); }
-.tiles { flex: 1; overflow-y: auto; padding: 16px 18px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 12px; align-content: start; }
+.tiles { flex: 1; overflow-y: auto; padding: 12px 14px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; align-content: start; }
 .tile {
   --c: var(--tile-olive);
-  position: relative; min-height: 118px; border-radius: var(--r-lg); border: 1px solid var(--line); border-top: 5px solid var(--c);
+  position: relative; min-height: 94px; border-radius: var(--r-md); border: 1px solid var(--line); border-top: 4px solid var(--c);
   background: linear-gradient(180deg, color-mix(in srgb, var(--c) 7%, var(--surface)) 0%, var(--surface) 55%);
-  padding: 12px 14px; text-align: start; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-1);
+  padding: 9px 11px; text-align: start; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow-1);
   transition: transform .08s ease, box-shadow .15s, border-color .15s;
 }
 .tile:hover { box-shadow: 0 6px 18px rgb(30 57 50 / 12%); }
 .tile:active { transform: scale(.97); }
-.tile .t-name { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; line-height: 1.3; }
-.tile .t-meta { font-size: .78rem; color: var(--muted); }
-.tile .t-price { margin-top: auto; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tile .t-name { font-family: var(--font-display); font-weight: 600; font-size: .95rem; line-height: 1.3; }
+.tile .t-meta { font-size: .72rem; color: var(--muted); }
+.tile .t-price { margin-top: auto; font-weight: 600; font-size: .9rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .tile .t-flag { position: absolute; top: 10px; inset-inline-end: 10px; }
 .tile.out { opacity: .55; filter: grayscale(.6); }
 .c-olive { --c: var(--tile-olive); } .c-petrol { --c: var(--tile-petrol); } .c-sage { --c: var(--tile-sage); } .c-teal { --c: var(--tile-teal); }
 .c-sand { --c: var(--tile-sand); } .c-clay { --c: var(--tile-clay); } .c-mocha { --c: var(--tile-mocha); } .c-slate { --c: var(--tile-slate); }
 
-.ticket { background: var(--surface); border-inline-end: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.ticket { background: var(--surface); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .ticket-head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
 .ticket-title { display: flex; align-items: center; gap: 8px; }
 .ticket-title h2 { font-size: 1.1rem; }
@@ -375,7 +381,41 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
 .demo-tag { font-size: .66rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--gold); color: #1e2a26; }
 .demo-flag { position: fixed; z-index: 30; top: max(10px, env(safe-area-inset-top, 0px)); inset-inline-end: max(12px, env(safe-area-inset-left, 0px)); background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); padding: 4px 12px; border-radius: 999px; font-size: .78rem; font-weight: 600; pointer-events: none; }
 
+/* ---------------------------------------------------------------- استلام المشتريات وتنبيه المخزون */
+.rcv-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(90px, 1fr) minmax(110px, 1fr) auto; gap: 8px; align-items: center; padding: 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); }
+.rcv-row.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: var(--warn-soft); }
+.rcv-row .rcv-src, .rcv-row .rcv-cost { grid-column: 1 / -1; }
+.rcv-num { display: flex; align-items: center; gap: 6px; }
+.rcv-num input { min-width: 0; }
+.alert-low { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-radius: var(--r-lg); background: var(--bad-soft); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); }
+.alert-low > svg.i { flex: none; margin-top: 2px; }
+.alert-low .small { color: var(--ink-2); }
+.alert-low a { color: inherit; font-weight: 700; }
+@media (max-width: 700px) { .rcv-row { grid-template-columns: 1fr 1fr auto; } .rcv-row select { grid-column: 1 / -1; } }
+
+/* تنبيه المخزون على شاشة البيع */
+.low-banner { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 12px; border-radius: var(--r-md); background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
+.low-banner.has-out { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.low-banner .low-text { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: .9rem; }
+.low-banner .low-list { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--ink-2); font-size: .84rem; }
+.low-banner .low-out { color: var(--bad); font-weight: 600; }
+.low-banner .icon-btn { width: 34px; height: 34px; color: inherit; }
+.rail .badge.bad { background: var(--bad); color: #fff; }
+
 /* ---------------------------------------------------------------- استجابة */
+/* الآيباد أفقياً: مسافات أقل وشريط جانبي أنحف لتتسع الأصناف والطلب */
+@media (orientation: landscape) and (max-height: 900px) and (min-width: 701px) {
+  :root { --rail: 76px; }
+  .rail { gap: 2px; padding-top: 8px; }
+  .rail .mark { width: 38px; height: 38px; margin-bottom: 6px; }
+  .rail a { padding: 7px 2px; font-size: .68rem; }
+  .catalog-head { padding: 10px 12px 8px; gap: 8px; }
+  .pos-top h1 { font-size: 1.02rem; }
+  .ticket-head { padding: 10px 12px; gap: 8px; }
+  .line { padding: 9px 12px; }
+  .ticket-actions { padding-top: 8px; gap: 6px; }
+  .ticket-actions .btn.lg { min-height: 54px; }
+}
 @media (max-width: 1180px) { :root { --ticket: 350px; } .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 960px) {
   .admin { grid-template-columns: 1fr; }
@@ -385,8 +425,8 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
   .split-view { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
-  .pos { grid-template-columns: minmax(290px, .85fr) minmax(0, 1fr); }
-  .tiles { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); padding: 12px; gap: 10px; }
+  .pos { grid-template-columns: var(--ticket-w, minmax(290px, .85fr)) 14px minmax(0, 1fr); }
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); padding: 10px; gap: 8px; }
   .catalog-head { padding: 12px; }
   .pay-side { padding: 20px; }
   .pay-side .due { font-size: 2.2rem; }
@@ -396,7 +436,8 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
 @media (max-width: 700px) {
   .pos { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .pos > .ticket { order: 0; }
-  .ticket { border-inline-end: none; border-top: 1px solid var(--line); max-height: 52vh; }
+  .pos > .splitter { display: none; }
+  .ticket { border-top: 1px solid var(--line); max-height: 52vh; }
   .pay { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {

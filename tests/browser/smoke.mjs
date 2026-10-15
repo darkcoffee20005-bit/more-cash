@@ -25,7 +25,14 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'ar-IQ' });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.g|ERR_FAILED/.test(m.text())) errors.push(`console: ${m.text()}`); });
+  // 503 متوقع مرة واحدة: تصوير فاتورة بلا ANTHROPIC_API_KEY (يُتحقق من رسالته أدناه)
+  let expected503 = 0;
+  page.on('response', (r) => { if (r.status() === 503 && r.url().endsWith('/api/admin/inventory/scan')) expected503 += 1; });
+  page.on('console', (m) => {
+    if (m.type() !== 'error' || /fonts\.g|ERR_FAILED/.test(m.text())) return;
+    if (/status of 503/.test(m.text()) && expected503 > 0) { expected503 -= 1; return; }
+    errors.push(`console: ${m.text()}`);
+  });
   page.on('requestfailed', (r) => { if (!/fonts\.(googleapis|gstatic)/.test(r.url())) errors.push(`requestfailed: ${r.url()}`); });
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   const shot = async (name) => { await page.waitForTimeout(260); await page.screenshot({ path: join(shots, `${name}.png`) }); };
@@ -130,6 +137,27 @@ try {
     });
     if (!fit.narrower) errors.push(`${name}: ticket should be slightly narrower than the items area`);
     if (!fit.payVisible || !fit.noScroll) errors.push(`${name}: pay button needs scrolling`);
+    if (name === 'ipad-landscape') {
+      // سحب المقبض يكبّر نافذة الطلب، ويبقى الحجم بعد إعادة التحميل
+      const w0 = await page.evaluate(() => document.querySelector('.ticket').getBoundingClientRect().width);
+      const bar = await page.locator('.splitter').boundingBox();
+      await page.mouse.move(bar.x + bar.width / 2, bar.y + bar.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(bar.x - 120, bar.y + bar.height / 2, { steps: 6 });
+      await page.mouse.up();
+      const w1 = await page.evaluate(() => document.querySelector('.ticket').getBoundingClientRect().width);
+      if (Math.abs(w1 - w0 - 120) > 8) errors.push(`splitter drag: ${w0} → ${w1}`);
+      await page.reload();
+      await page.waitForSelector('.tile');
+      const w2 = await page.evaluate(() => document.querySelector('.ticket').getBoundingClientRect().width);
+      if (Math.abs(w2 - w1) > 2) errors.push(`ticket width not kept after reload: ${w1} → ${w2}`);
+      await page.click('.tile:has-text("كرواسون")');
+      await page.click('[data-action="item-save"]');
+      await page.click('.tile:has-text("ماء")');
+      await page.dblclick('.splitter');
+      if (await page.evaluate(() => localStorage.getItem('morecash.ticketW')) !== null) errors.push('double-click should reset width');
+      if (!(await page.isVisible('[data-action="fullscreen"]'))) errors.push('fullscreen button missing');
+    }
     await shot(`19-${name}`);
     await page.click('[data-action="pos-charge"]');
     await page.waitForSelector('.bills');
@@ -144,6 +172,34 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/#/admin/daily`);
   await page.waitForSelector('.kpis');
   await shot('21-daily-report');
+
+  // المخزون: تنبيه، استلام يدوي، وتصوير فاتورة (بلا مفتاح API هنا → رسالة واضحة ويبقى الإدخال اليدوي)
+  await page.goto(`http://127.0.0.1:${PORT}/#/admin/inventory`);
+  await page.waitForSelector('[data-action="rcv-open"]');
+  await page.setInputFiles('#rcv-file', { name: 'invoice.png', mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
+  await page.waitForSelector('.toast.bad');
+  if (!/غير مفعّلة/.test(await page.textContent('.toast.bad'))) errors.push('scan without key: unclear message');
+  await page.waitForSelector('.rcv-row');
+  await page.selectOption('#rcv-v-0', { label: 'بن إسبريسو (غ)' });
+  await page.fill('#rcv-q-0', '1000');
+  await page.fill('#rcv-t-0', '40000');
+  await shot('22-receive');
+  await page.click('[data-action="rcv-submit"]');
+  await page.waitForSelector('.toast.ok');
+  await shot('23-inventory');
+  // جرد يُنزل مادة تحت الحد → تنبيه على شاشة البيع وشارة على الإدارة
+  await page.evaluate(async () => {
+    const inv = await (await fetch('/api/admin/inventory')).json();
+    const cake = inv.rows.find((r) => r.name.startsWith('تشيز كيك'));
+    await fetch('/api/admin/inventory/adjust', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'morecash' },
+      body: JSON.stringify({ clientId: crypto.randomUUID(), variantId: cake.variantId, type: 'count', qty: 2 }) }).then((r) => r.json());
+  });
+  await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
+  await page.reload();
+  await page.waitForSelector('.low-banner');
+  if (!(await page.isVisible('.rail .badge.bad'))) errors.push('low-stock badge missing on admin');
+  await shot('24-low-banner');
 
   // الألوان فاتحة حتى لو كان الجهاز في الوضع الداكن، وعرض الهاتف
   await page.emulateMedia({ colorScheme: 'dark' });

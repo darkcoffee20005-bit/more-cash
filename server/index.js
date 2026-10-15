@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { connectDb } from './db/connect.js';
 import { createPlatform } from './app/platform.js';
+import { createInvoiceReader } from './app/invoice.js';
 import { createHttpServer } from './http.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,7 +36,8 @@ async function main() {
   if (env.MONGODB_URI && !env.PIN_PEPPER) console.warn('تنبيه: PIN_PEPPER غير محدد؛ سيُستخدم سر مخزّن في قاعدة البيانات.');
 
   const { db, kind, close } = await connectDb({ uri: env.MONGODB_URI, dbName: env.MONGODB_DB ?? 'morecash', memoryFile: env.MONGODB_URI ? null : dataFile });
-  const app = createPlatform({ db, newId: randomUUID, pepper: env.PIN_PEPPER || null });
+  const readInvoice = env.ANTHROPIC_API_KEY ? createInvoiceReader({ apiKey: env.ANTHROPIC_API_KEY }) : null;
+  const app = createPlatform({ db, newId: randomUUID, pepper: env.PIN_PEPPER || null, readInvoice });
 
   const server = createHttpServer(app, {
     publicDir: join(ROOT, 'public'), sharedDir: join(ROOT, 'shared'),

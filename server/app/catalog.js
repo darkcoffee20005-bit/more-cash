@@ -229,9 +229,14 @@ export function createCatalog(ctx) {
         return { id: v.id, name: v.name, price: v.price, sku: v.sku, available };
       }),
     }));
+    // تنبيه المخزون المنخفض يظهر على شاشة البيع لكل الموظفين (أسماء وكميات فقط، بلا تكاليف)
+    const lowStock = items.flatMap((i) => i.variants.filter((v) => v.trackStock && v.stock <= v.lowStock).map((v) => ({
+      variantId: v.id, name: v.name ? `${i.name} — ${v.name}` : i.name, stock: v.stock, unit: i.unit ?? 'قطعة', out: v.stock <= 0,
+    }))).sort((a, b) => Number(b.out) - Number(a.out) || a.stock - b.stock);
     return {
       categories: categories.map((c) => out(c)),
       items: forSale,
+      lowStock,
       modifiers: modifiers.map((m) => out(m)),
       discounts: discounts.map((d) => out(d)),
     };

@@ -7,11 +7,11 @@ import { ensureIndexes } from '../server/db/indexes.js';
 import { createApp } from '../server/app/index.js';
 import { calculateTicket, unitPrice } from '../shared/calc.js';
 
-async function boot({ seed = true } = {}) {
+async function boot({ seed = true, readInvoice = null } = {}) {
   const db = new MemoryDb({ newId: randomUUID });
   await ensureIndexes(db);
   let clock = new Date('2026-10-14T07:00:00Z'); // 10:00 بتوقيت بغداد
-  const app = createApp({ db, now: () => clock, log: { error() {}, warn() {}, info() {} } });
+  const app = createApp({ db, now: () => clock, log: { error() {}, warn() {}, info() {} }, readInvoice });
   const tokens = {};
   const call = async (who, method, path, body, query) => {
     const r = await app.handle({ method, path, body, query, token: tokens[who] ?? null, ip: who });
@@ -329,4 +329,50 @@ test('مقهى بطرق الدفع القديمة الافتراضية ينتق�
   ] } });
   const { settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
   assert.deepEqual(settings.paymentTypes.map((p) => p.id), ['cash', 'qi']);
+});
+
+test('استلام مشتريات: إدخال يدوي متعدد الأسطر، وقراءة فاتورة تُعاد للمراجعة قبل أي إضافة', async () => {
+  let seen = null;
+  const readInvoice = async ({ stock }) => {
+    seen = stock;
+    const bean = stock.find((x) => x.name === 'بن إسبريسو');
+    return { supplier: 'مخازن الرافدين', date: '2026-10-14', total: 95000, lines: [
+      { description: 'بن برازيلي', invoiceQty: 2, invoiceUnit: 'كيلو', lineTotal: 80000, matchId: bean.id, stockQty: 2000 },
+      { description: 'مناديل', invoiceQty: 5, invoiceUnit: 'باكيت', lineTotal: 15000, matchId: 'غير-موجود', stockQty: 5 },
+    ] };
+  };
+  const { ok, call } = await boot({ readInvoice });
+  const items = await ok('owner', 'GET', '/api/admin/inventory/stock-items');
+  const bean = items.find((x) => x.name === 'بن إسبريسو');
+  const milk = items.find((x) => x.name === 'حليب كامل');
+  assert.equal(bean.unit, 'غ');
+
+  // الفاتورة: لا يتغير المخزون بالقراءة، والسطر غير المطابق يبقى بلا مادة
+  const before = (await ok('owner', 'GET', '/api/admin/inventory')).rows.find((r) => r.variantId === bean.id).stock;
+  const scan = await ok('owner', 'POST', '/api/admin/inventory/scan', { image: 'A'.repeat(200), mediaType: 'image/jpeg' });
+  assert.ok(seen.some((x) => x.id === bean.id), 'قائمة المخزون أُرسلت للمطابقة');
+  assert.equal(scan.supplier, 'مخازن الرافدين');
+  assert.deepEqual(scan.lines.map((l) => [l.variantId, l.qty]), [[bean.id, 2000], [null, null]]);
+  assert.equal((await ok('owner', 'GET', '/api/admin/inventory')).rows.find((r) => r.variantId === bean.id).stock, before);
+  assert.equal((await call('owner', 'POST', '/api/admin/inventory/scan', { image: 'x', mediaType: 'image/jpeg' })).body.error, 'INVALID_IMAGE');
+
+  // التأكيد بعد المراجعة: يضيف الكميات ويحدّث التكلفة بالمتوسط المرجح، ومرة واحدة فقط مهما تكرر الطلب
+  const body = { clientId: 'rcv-1', supplier: 'مخازن الرافدين', lines: [{ variantId: bean.id, qty: 2000, total: 80000 }, { variantId: milk.id, qty: 12000, total: 30000 }] };
+  const r = await ok('owner', 'POST', '/api/admin/inventory/receive', body);
+  assert.equal(r.received, 2);
+  assert.equal((await ok('owner', 'POST', '/api/admin/inventory/receive', body)).received, 0, 'التكرار لا يضاعف المخزون');
+  const inv = await ok('owner', 'GET', '/api/admin/inventory');
+  const beanRow = inv.rows.find((x) => x.variantId === bean.id);
+  assert.equal(beanRow.stock, before + 2000);
+  assert.equal(beanRow.costMilli, Math.round((5000 * 30000 + 2000 * 40000) / 7000), 'متوسط مرجح: 30 د.ع/غ القديم و40 د.ع/غ الجديد');
+  const hist = await ok('owner', 'GET', `/api/admin/inventory/${bean.id}/history`);
+  assert.ok(hist.some((h) => h.reason === 'receive' && h.note === 'مشتريات من مخازن الرافدين'));
+  assert.equal((await call('owner', 'POST', '/api/admin/inventory/receive', { clientId: 'rcv-2', lines: [{ variantId: bean.id, qty: 0 }] })).status, 400);
+});
+
+test('قراءة الفاتورة بدون مفتاح API: رسالة واضحة والإدخال اليدوي يبقى متاحاً', async () => {
+  const { call } = await boot();
+  const r = await call('owner', 'POST', '/api/admin/inventory/scan', { image: 'A'.repeat(200), mediaType: 'image/jpeg' });
+  assert.equal(r.status, 503);
+  assert.equal(r.body.error, 'SCAN_NOT_CONFIGURED');
 });

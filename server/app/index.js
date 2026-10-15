@@ -1,7 +1,7 @@
 // تجميع الخدمات وواجهة API كدالة نقية: handle(request) → response.
 // خادم Node (server/http.js) والنسخة التجريبية في المتصفح يستخدمان نفس الدالة.
 import { dayRange } from '../../shared/format.js';
-import { AppError, getSettings } from './core.js';
+import { AppError, getSettings, requirePerm } from './core.js';
 import { createAuth, createSettings, publicEmployee } from './auth.js';
 import { createCatalog } from './catalog.js';
 import { createInventory } from './inventory.js';
@@ -9,8 +9,8 @@ import { createReports } from './reports.js';
 import { createSales } from './sales.js';
 import { createShifts } from './shifts.js';
 
-export function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console }) {
-  const ctx = { db, now, newId, pepper, log };
+export function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, readInvoice = null }) {
+  const ctx = { db, now, newId, pepper, log, readInvoice };
   ctx.inventory = createInventory(ctx);
   ctx.shifts = createShifts(ctx);
   const auth = createAuth(ctx);
@@ -78,6 +78,9 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['POST', '/api/admin/inventory/adjust', (actor, req) => ctx.inventory.adjust(actor, req.body)],
     ['GET', '/api/admin/inventory/:id/history', (actor, req, p) => ctx.inventory.history(actor, p.id)],
     ['POST', '/api/admin/inventory/reconcile', (actor) => ctx.inventory.reconcile(actor)],
+    ['GET', '/api/admin/inventory/stock-items', async (actor) => { requirePerm(actor, 'admin.inventory'); return ctx.inventory.stockItems(); }],
+    ['POST', '/api/admin/inventory/scan', (actor, req) => ctx.inventory.scanInvoice(actor, req.body)],
+    ['POST', '/api/admin/inventory/receive', (actor, req) => ctx.inventory.receiveBatch(actor, req.body)],
     ['GET', '/api/admin/employees', (actor) => auth.listEmployees(actor)],
     ['POST', '/api/admin/employees', (actor, req) => auth.saveEmployee(actor, req.body)],
     ['GET', '/api/admin/settings', (actor) => settings.get(actor)],

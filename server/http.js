@@ -9,6 +9,7 @@ const TYPES = {
   '.webmanifest': 'application/manifest+json; charset=utf-8', '.woff2': 'font/woff2',
 };
 const MAX_BODY = 256 * 1024;
+const MAX_SCAN_BODY = 4 * 1024 * 1024; // صورة فاتورة مضغوطة (Vercel يقبل حتى 4.5 م.ب)
 const COOKIE = 'mc_session';
 const DEVICE_COOKIE = 'mc_device';
 const DEVICE_DAYS = 90;
@@ -18,7 +19,7 @@ const SECURITY_HEADERS = {
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'same-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-  'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
 };
 
 function readCookie(header, name) {
@@ -29,20 +30,20 @@ function readCookie(header, name) {
   return null;
 }
 
-async function readBody(req) {
+async function readBody(req, limit = MAX_BODY) {
   // Vercel يوفّر req.body محللاً مسبقاً؛ خادم Node العادي يقرأ التدفق
   if ('body' in req && req.body !== undefined) {
     let parsed;
     try { parsed = req.body; } catch { throw Object.assign(new Error('bad json'), { status: 400 }); }
     if (typeof parsed === 'string') { try { parsed = parsed ? JSON.parse(parsed) : {}; } catch { throw Object.assign(new Error('bad json'), { status: 400 }); } }
-    if (JSON.stringify(parsed ?? {}).length > MAX_BODY) throw Object.assign(new Error('too large'), { status: 413 });
+    if (JSON.stringify(parsed ?? {}).length > limit) throw Object.assign(new Error('too large'), { status: 413 });
     return parsed ?? {};
   }
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY) throw Object.assign(new Error('too large'), { status: 413 });
+    if (size > limit) throw Object.assign(new Error('too large'), { status: 413 });
     chunks.push(chunk);
   }
   const text = Buffer.concat(chunks).toString('utf8');
@@ -61,7 +62,7 @@ export async function handleApiRequest(app, req, res, { secureCookie = false, tr
         if (req.headers['x-requested-with'] !== 'morecash') return send(403, 'application/json', JSON.stringify({ error: 'CSRF' }));
         if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) return send(415, 'application/json', JSON.stringify({ error: 'JSON_REQUIRED' }));
       }
-      const body = req.method === 'GET' ? {} : await readBody(req);
+      const body = req.method === 'GET' ? {} : await readBody(req, url.pathname === '/api/admin/inventory/scan' ? MAX_SCAN_BODY : MAX_BODY);
       const ip = trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket.remoteAddress : req.socket.remoteAddress;
       const result = await app.handle({
         method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body,

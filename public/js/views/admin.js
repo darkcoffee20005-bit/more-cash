@@ -210,7 +210,12 @@ const PAGES = {
     const f = a.invFilter ?? 'all';
     const rows = inv.rows.filter((r) => f === 'all' || (f === 'low' ? r.low : f === 'ing' ? r.ingredient : !r.ingredient));
     return `<div class="page-head"><h1>المخزون</h1><span class="muted">قيمة المخزون ${money(inv.totalValue)}</span>
-        <button class="btn sm" data-action="inv-reconcile">${icon('check', 'sm')} مطابقة مع الدفتر</button></div>
+        <div class="row wrap">
+          <button class="btn primary" data-action="rcv-open">${icon('plus', 'sm')} استلام مشتريات</button>
+          <label class="btn"><input type="file" accept="image/*" capture="environment" hidden data-change="rcv-scan" id="rcv-file">${icon('camera', 'sm')} تصوير فاتورة</label>
+          <button class="btn sm ghost" data-action="inv-reconcile">${icon('check', 'sm')} مطابقة مع الدفتر</button></div></div>
+      ${inv.lowCount ? `<div class="alert-low" role="alert">${icon('alert')}<div><b>${inv.lowCount} ${inv.lowCount === 1 ? 'مادة' : 'مواد'} تحت حد التنبيه</b>
+        <div class="small">${inv.rows.filter((r) => r.low).map((r) => `${esc(r.name)}: ${r.stock.toLocaleString('en-US')} ${esc(r.unit)}`).join(' · ')}</div></div></div>` : ''}
       <div class="toolbar"><div class="seg">${[['all', 'الكل'], ['low', `تحت الحد (${inv.lowCount})`], ['ing', 'المكونات'], ['goods', 'أصناف جاهزة']].map(([k, l]) => `<button class="${f === k ? 'on' : ''}" data-action="inv-filter" data-f="${k}">${l}</button>`).join('')}</div></div>
       <div class="table-wrap"><table><thead><tr><th>المادة</th><th class="num">الرصيد</th><th class="num">حد التنبيه</th><th class="num">التكلفة/وحدة</th><th class="num">القيمة</th><th></th></tr></thead>
       <tbody>${rows.map((r) => `<tr><td><b>${esc(r.name)}</b> ${r.ingredient ? '<span class="pill olive">مكون</span>' : ''}</td>
@@ -429,12 +434,74 @@ export const modals = {
         <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
   },
 
+  receive(s) {
+    const m = s.modal;
+    const items = A().stockItems ?? [];
+    const byId = new Map(items.map((x) => [x.id, x]));
+    if (m.scanning) {
+      return modalFrame({ title: 'قراءة الفاتورة', body: `<div class="empty" style="padding:28px">${icon('receipt')}<h3>جارٍ قراءة الفاتورة…</h3>
+        <p class="muted">يستخرج البرنامج المواد والكميات والأسعار. قد يستغرق ذلك حتى نصف دقيقة.</p></div>` });
+    }
+    const qtyOf = (l) => parseAmount(String(l.qty ?? '')) ?? 0;
+    const ready = m.lines.filter((l) => l.variantId && qtyOf(l) > 0);
+    const invalid = m.lines.length - ready.length;
+    const sum = m.lines.reduce((a, l) => a + (parseAmount(String(l.total ?? '')) ?? 0), 0);
+    const rows = m.lines.map((l, i) => {
+      const it = byId.get(l.variantId);
+      const qty = qtyOf(l);
+      const total = parseAmount(String(l.total ?? ''));
+      const unitCost = it && qty > 0 && total ? formatMilli(Math.round((total * 1000) / qty)) : null;
+      return `<div class="rcv-row ${l.variantId && qty > 0 ? '' : 'warn'}">
+        ${l.description ? `<div class="small muted rcv-src">في الفاتورة: ${esc([l.invoiceQty, l.invoiceUnit, l.description].filter((x) => x !== null && x !== undefined && x !== '').join(' '))}</div>` : ''}
+        <select data-change="rcv-field" data-i="${i}" data-k="variantId" id="rcv-v-${i}" aria-label="المادة">
+          <option value="">— اختر المادة —</option>${items.map((x) => `<option value="${x.id}" ${x.id === l.variantId ? 'selected' : ''}>${esc(x.name)} (${esc(x.unit)})</option>`).join('')}</select>
+        <label class="rcv-num"><input data-input="rcv-field" data-i="${i}" data-k="qty" id="rcv-q-${i}" value="${esc(l.qty ?? '')}" inputmode="numeric" placeholder="الكمية" aria-label="الكمية"><span class="muted small">${esc(it?.unit ?? '')}</span></label>
+        <label class="rcv-num"><input data-input="rcv-field" data-i="${i}" data-k="total" id="rcv-t-${i}" value="${esc(l.total ?? '')}" inputmode="numeric" placeholder="المبلغ" aria-label="مبلغ السطر"><span class="muted small">د.ع</span></label>
+        <button type="button" class="icon-btn" data-action="rcv-remove" data-i="${i}" aria-label="حذف السطر">${icon('x', 'sm')}</button>
+        ${unitCost ? `<div class="small muted rcv-cost">التكلفة: ${unitCost} د.ع لكل ${esc(it.unit)}</div>` : ''}
+      </div>`;
+    }).join('');
+    const body = `
+      ${m.scanned ? `<div class="card pad small" style="background:var(--surface-2)">${icon('check', 'sm')} قُرئت الفاتورة${m.supplier ? ` من <b>${esc(m.supplier)}</b>` : ''}${m.invoiceTotal ? ` · إجمالي الفاتورة ${money(m.invoiceTotal)}` : ''}.
+        <b>راجع كل سطر قبل التأكيد</b> — الأسطر المظللة تحتاج اختيار مادة أو كمية.</div>` : ''}
+      ${field('المورد (اختياري)', `<input id="rcv-supplier" data-input="rcv-supplier" value="${esc(m.supplier ?? '')}" maxlength="60" placeholder="اسم المورد أو رقم الفاتورة">`)}
+      <div class="stack" style="gap:10px">${rows || '<p class="muted">لا أسطر بعد. أضف سطراً لكل مادة مستلمة.</p>'}</div>
+      <button type="button" class="btn sm" data-action="rcv-add">${icon('plus', 'sm')} سطر</button>
+      ${items.length ? '' : '<p class="muted small">لا توجد مواد مخزون بعد. أضفها من الأصناف بنوع «مكوّن» أولاً.</p>'}`;
+    const foot = `<div class="muted small" style="align-self:center;flex:none">${m.lines.length ? `المجموع ${money(sum)}${m.invoiceTotal && sum !== m.invoiceTotal ? ` <span class="pill warn">يختلف عن الفاتورة</span>` : ''}` : ''}</div>
+      <button class="btn primary" data-action="rcv-submit" ${ready.length && !invalid && !s.busy ? '' : 'disabled'}>${invalid ? `أكمل ${invalid} ${invalid === 1 ? 'سطر' : 'أسطر'}` : `${icon('check', 'sm')} تأكيد وإضافة للمخزون (${ready.length})`}</button>`;
+    return modalFrame({ title: 'استلام مشتريات', cls: 'wide', body, foot });
+  },
+
   'inv-history'(s) {
     const h = s.modal.rows;
     return modalFrame({ title: 'سجل الحركات', cls: 'wide', body: h ? `<div class="table-wrap"><table><thead><tr><th>الوقت</th><th>الحركة</th><th class="num">الكمية</th><th>بواسطة</th><th>ملاحظة</th></tr></thead>
       <tbody>${h.map((x) => `<tr><td class="small">${dateTime(x.at, tz())}</td><td>${esc(x.reasonName)}</td><td class="num" style="color:${x.delta < 0 ? 'var(--bad)' : 'var(--ok)'}">${x.delta > 0 ? '+' : ''}${x.delta.toLocaleString('en-US')}</td><td class="small">${esc(x.byName ?? '')}</td><td class="small">${esc(x.note ?? '')}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">لا حركات</td></tr>'}</tbody></table></div>` : '<p class="muted">جارٍ التحميل…</p>' });
   },
 };
+
+// ---------------------------------------------------------------- استلام المشتريات
+const blankLine = () => ({ variantId: '', qty: '', total: '' });
+
+async function ensureStockItems() {
+  if (!A().stockItems) A().stockItems = await get('/api/admin/inventory/stock-items');
+}
+
+/** تصغير صورة الفاتورة قبل الإرسال (أطول ضلع 1600 بكسل، JPEG) — يكفي للقراءة ويبقى تحت حد الطلب */
+async function compressImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(Object.assign(new Error('img'), { code: 'INVALID_IMAGE' })); i.src = url; });
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return { data: canvas.toDataURL('image/jpeg', 0.8).split(',')[1], mediaType: 'image/jpeg' };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 // ---------------------------------------------------------------- التحميل
 function presetRange(k) {
@@ -465,7 +532,7 @@ async function loadSection(sub) {
     categories: async () => { a.categories = await get('/api/admin/categories'); },
     modifiers: async () => { a.modifiers = await get('/api/admin/modifiers'); },
     discounts: async () => { a.discounts = await get('/api/admin/discounts'); },
-    inventory: async () => { a.inventory = await get('/api/admin/inventory'); a.lowCount = a.inventory.lowCount; },
+    inventory: async () => { a.inventory = await get('/api/admin/inventory'); a.lowCount = a.inventory.lowCount; a.stockItems = null; },
     employees: async () => { a.employees = await get('/api/admin/employees'); },
     settings: async () => { [a.settings, a.account] = await Promise.all([get('/api/admin/settings'), loadAccount()]); },
   };
@@ -596,6 +663,44 @@ on({
 
   // المخزون
   'inv-filter': (el) => { A().invFilter = el.dataset.f; render(); },
+  'rcv-open': async () => {
+    await ensureStockItems();
+    openModal({ type: 'receive', clientId: uid(), lines: [blankLine()], supplier: '' });
+  },
+  'rcv-scan': async (el) => {
+    const file = el.files?.[0];
+    el.value = '';
+    if (!file) return;
+    await ensureStockItems();
+    openModal({ type: 'receive', clientId: uid(), lines: [], supplier: '', scanning: true });
+    try {
+      const { data, mediaType } = await compressImage(file);
+      const r = await post('/api/admin/inventory/scan', { image: data, mediaType });
+      if (state.modal?.type !== 'receive') return;
+      Object.assign(state.modal, {
+        scanning: false, scanned: true, supplier: r.supplier ?? '', invoiceTotal: r.total ? Math.round(r.total) : null,
+        lines: r.lines.length ? r.lines.map((l) => ({ ...l, qty: l.qty ?? '', total: l.lineTotal ?? '' })) : [blankLine()],
+      });
+      if (!r.lines.length) toast('لم يُعثر على أسطر في الصورة — أدخلها يدوياً', 'bad');
+    } catch (e) {
+      if (state.modal?.type === 'receive') Object.assign(state.modal, { scanning: false, lines: [blankLine()] });
+      fail(e);
+    }
+    render();
+  },
+  'rcv-supplier': (el) => { state.modal.supplier = el.value; },
+  'rcv-field': (el) => { state.modal.lines[Number(el.dataset.i)][el.dataset.k] = el.value; render(); },
+  'rcv-add': () => { state.modal.lines.push(blankLine()); render(); },
+  'rcv-remove': (el) => { state.modal.lines.splice(Number(el.dataset.i), 1); render(); },
+  'rcv-submit': () => busy(async () => {
+    const m = state.modal;
+    const lines = m.lines.map((l) => ({ variantId: l.variantId, qty: num(String(l.qty), 'الكمية'), total: l.total === '' || l.total === null ? null : num(String(l.total), 'المبلغ') }));
+    const r = await post('/api/admin/inventory/receive', { clientId: m.clientId, supplier: m.supplier || null, lines });
+    state.modal = null;
+    toast(`أُضيفت ${r.received} ${r.received === 1 ? 'مادة' : 'مواد'} إلى المخزون`, 'ok');
+    state.catalog = null;
+    await loadSection('inventory');
+  }),
   'inv-adjust': (el) => openModal({ type: 'inv-adjust', variantId: el.dataset.id, adjType: 'receive', clientId: uid() }),
   'adj-type': (el) => { state.modal.adjType = el.dataset.k; state.modal.clientId = uid(); render(); },
   'inv-adjust-submit': (_el, _e, d) => busy(async () => {

@@ -1,7 +1,7 @@
 // المخزون: دفتر حركات (stock_moves) بمفتاح فريد لكل حركة + رصيد مخزّن على الحجم يُحدَّث بـ $inc.
 // المفتاح الفريد يجعل كل حركة تُطبَّق مرة واحدة مهما تكررت المحاولة؛ والرصيد قابل لإعادة البناء من الدفتر.
-import { costOf, parseMilli, weightedCost } from '../../shared/calc.js';
-import { audit, bad, id as checkId, int, isDup, notFound, oneOf, requirePerm, str } from './core.js';
+import { costOf, formatMilli, parseMilli, weightedCost } from '../../shared/calc.js';
+import { AppError, audit, bad, id as checkId, int, isDup, notFound, oneOf, requirePerm, str } from './core.js';
 
 export const MOVE_REASON = Object.freeze({
   initial: 'رصيد افتتاحي', sale: 'بيع', refund: 'استرجاع', receive: 'استلام', loss: 'هدر/تالف', count: 'جرد', adjust: 'تعديل',
@@ -71,6 +71,63 @@ export function createInventory(ctx) {
     return { applied, delta, stock: after.stock, costMilli: after.costMilli };
   }
 
+  /** مواد المخزون المتاحة للاستلام (المكونات والأصناف المتتبعة) */
+  async function stockItems() {
+    const vs = await variants().find({ active: true, trackStock: true }).toArray();
+    const items = new Map((await db.collection('items').find({ _id: { $in: [...new Set(vs.map((v) => v.itemId))] } }).toArray()).map((i) => [i._id, i]));
+    return vs.filter((v) => items.get(v.itemId)?.active !== false).map((v) => {
+      const item = items.get(v.itemId);
+      return { id: v._id, name: v.name ? `${item.name} — ${v.name}` : item.name, unit: item.unit ?? 'قطعة' };
+    });
+  }
+
+  /** قراءة صورة فاتورة: تُعاد الأسطر للمراجعة فقط، لا يُكتب شيء في المخزون هنا */
+  async function scanInvoice(actor, input = {}) {
+    requirePerm(actor, 'admin.inventory');
+    if (!ctx.readInvoice) throw new AppError(503, 'SCAN_NOT_CONFIGURED');
+    const mediaType = oneOf(input.mediaType, ['image/jpeg', 'image/png', 'image/webp'], 'mediaType');
+    if (typeof input.image !== 'string' || input.image.length < 100 || input.image.length > 4_500_000 || !/^[A-Za-z0-9+/=]+$/.test(input.image)) throw bad('INVALID_IMAGE');
+    const stock = await stockItems();
+    let r;
+    try {
+      r = await ctx.readInvoice({ image: input.image, mediaType, stock });
+    } catch (e) {
+      ctx.log?.error?.(e);
+      throw new AppError(502, 'SCAN_FAILED');
+    }
+    const ids = new Map(stock.map((x) => [x.id, x]));
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+    const lines = (Array.isArray(r?.lines) ? r.lines : []).slice(0, 60).map((l) => {
+      const match = ids.get(l.matchId) ?? null;
+      const qty = num(l.stockQty);
+      return {
+        description: String(l.description ?? '').slice(0, 80), invoiceQty: num(l.invoiceQty), invoiceUnit: l.invoiceUnit ? String(l.invoiceUnit).slice(0, 20) : null,
+        lineTotal: num(l.lineTotal) === null ? null : Math.round(l.lineTotal), variantId: match?.id ?? null, unit: match?.unit ?? null,
+        qty: match && qty !== null ? Math.round(qty) : null,
+      };
+    });
+    return { supplier: r?.supplier ? String(r.supplier).slice(0, 60) : null, date: r?.date ?? null, total: num(r?.total), lines };
+  }
+
+  /** استلام مشتريات دفعة واحدة (يدوياً أو بعد مراجعة الفاتورة). كل سطر حركة مستقلة بمفتاح ثابت → آمن لإعادة المحاولة */
+  async function receiveBatch(actor, input = {}) {
+    requirePerm(actor, 'admin.inventory');
+    const clientId = checkId(input.clientId, 'clientId');
+    if (!Array.isArray(input.lines) || input.lines.length === 0 || input.lines.length > 60) throw bad('INVALID_LIST', 'lines');
+    const supplier = str(input.supplier, { field: 'supplier', max: 60, optional: true });
+    const note = supplier ? `مشتريات من ${supplier}` : 'استلام مشتريات';
+    const results = [];
+    for (const [i, l] of input.lines.entries()) {
+      const qty = int(l.qty, { field: 'lines.qty', min: 1, max: 10_000_000 });
+      const total = l.total === undefined || l.total === null || l.total === '' ? null : int(l.total, { field: 'lines.total', min: 0, max: 1_000_000_000 });
+      // التكلفة لكل وحدة (بالدينار، حتى 3 منازل) = مبلغ السطر ÷ الكمية؛ تدخل متوسط التكلفة الموزون
+      const cost = total === null ? undefined : formatMilli(Math.round((total * 1000) / qty));
+      const r = await adjust(actor, { clientId: `${clientId}-${i}`, type: 'receive', variantId: l.variantId, qty, cost, note });
+      results.push({ variantId: l.variantId, ...r });
+    }
+    return { received: results.filter((r) => r.applied).length, lines: results };
+  }
+
   async function history(actor, variantId, limit = 100) {
     requirePerm(actor, 'admin.inventory');
     const rows = await moves().find({ variantId: checkId(variantId, 'variantId') }).sort({ at: -1 }).limit(Math.min(limit, 500)).toArray();
@@ -95,5 +152,5 @@ export function createInventory(ctx) {
     return { checked: sums.size, fixed };
   }
 
-  return { applyMove, list, adjust, history, reconcile };
+  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch };
 }

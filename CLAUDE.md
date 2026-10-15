@@ -1,6 +1,6 @@
 # مور كاش (MoreCash) — تعليمات للمساعد
 
-نظام كاشير وإدارة للكوفي شوب، متعدد المقاهي. Node.js 20+ بلا إطار، MongoDB (driver v6) هو الاعتمادية الوحيدة.
+نظام كاشير وإدارة للكوفي شوب، متعدد المقاهي. Node.js 20+ بلا إطار. الاعتماديات: MongoDB (driver v6)، و`@anthropic-ai/sdk` لقراءة صور الفواتير فقط.
 الواجهة SPA عربية RTL بلا مكتبات. ردّ على صاحب المشروع بالعربية.
 
 ## الأوامر
@@ -17,6 +17,7 @@
 - `public/` — الواجهة. `public/js/views/account.js` الصفحة الرئيسية والحسابات. `public/js/brand.js` الشعار.
 - الوصفات: كل حجم يحمل `recipe` (كميات تقريبية من المكونات) تُطرح من المخزون مع كل بيع؛ `GET /api/admin/reports/daily` يجمع مبيعات اليوم والموارد المصروفة (طباعة 80 مم + مشاركة).
 - الواجهة مصممة للآيباد: لوحة الطلب يمين وأضيق قليلاً من الأصناف، بلا تمرير (100dvh)، وبألوان فاتحة دائماً.
+- استلام المشتريات: يدوياً أو بتصوير فاتورة (`server/app/invoice.js`، نموذج claude-opus-5-5، يعمل فقط إن وُجد ANTHROPIC_API_KEY). القراءة لا تكتب شيئاً؛ المستخدم يراجع ثم `POST /api/admin/inventory/receive`. لا تستورد invoice.js من خدمات المقهى (النسخة التجريبية تُبنى منها للمتصفح) — يُمرَّر `readInvoice` من نقاط الدخول.
 - طرق الدفع الافتراضية: نقد أو كي. الكوكيز SameSite=Lax (Strict يكسر Safari عند الفتح من رابط).
 
 ## قواعد لا تُكسر
@@ -27,7 +28,7 @@
 
 ## النشر
 - GitHub: darkcoffee20005-bit/more-cash (فرع main). Vercel ينشر تلقائياً مع كل push (مشروع more-cash، منطقة hkg1).
-- متغيرات Vercel: MONGODB_URI (Production)، MONGODB_DB=morecash، و PIN_PEPPER اختياري.
+- متغيرات Vercel: MONGODB_URI (Production)، MONGODB_DB=morecash، و PIN_PEPPER اختياري، و ANTHROPIC_API_KEY لقراءة الفواتير.
 - MongoDB Atlas: Cluster0 (AP_EAST_1)، مستخدم التطبيق morecash_app، الوصول 0.0.0.0/0.
 
 ## الوضع الحالي

@@ -67,7 +67,9 @@ export const views = {
 
 function railView(s) {
   const links = NAV.filter(([r, , , p]) => can(p) || (r === 'admin' && can('admin.catalog'))).map(([r, label, ic]) => {
-    const badge = r === 'pos' && s.ticketsCount ? `<span class="badge">${s.ticketsCount}</span>` : '';
+    const low = s.catalog?.lowStock?.length ?? 0;
+    const badge = r === 'pos' && s.ticketsCount ? `<span class="badge">${s.ticketsCount}</span>`
+      : r === 'admin' && low && can('admin.inventory') ? `<span class="badge bad" title="مواد تحت حد التنبيه">${low}</span>` : '';
     return `<a href="#/${r}" class="${s.route === r ? 'on' : ''}" ${s.route === r ? 'aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge}</a>`;
   }).join('');
   return `<nav class="rail" aria-label="التنقل الرئيسي">
@@ -77,10 +79,24 @@ function railView(s) {
       ${globalThis.MORECASH_BACKEND ? '<span class="demo-tag" title="البيانات في هذا المتصفح فقط">تجريبي</span>' : ''}
       <div class="avatar" title="${esc(s.employee.name)}">${esc(initials(s.employee.name))}</div>
       <span class="small" style="font-size:.7rem;text-align:center">${esc(s.employee.name)}</span>
+      ${canFullscreen() ? `<button data-action="fullscreen" title="ملء الشاشة">${icon(isFullscreen() ? 'shrink' : 'expand', 'sm')}<span>${isFullscreen() ? 'تصغير' : 'تكبير'}</span></button>` : ''}
       <button data-action="lock" title="قفل الشاشة">${icon('lock', 'sm')}<span>قفل</span></button>
     </div>
   </nav>`;
 }
+
+// ---------------------------------------------------------------- ملء الشاشة (الآيباد والمتصفحات المكتبية؛ الآيفون لا يدعمه فيُخفى الزر)
+const doc = typeof document !== 'undefined' ? document : null;
+const canFullscreen = () => Boolean(doc && (doc.fullscreenEnabled || doc.webkitFullscreenEnabled));
+const isFullscreen = () => Boolean(doc && (doc.fullscreenElement || doc.webkitFullscreenElement));
+async function toggleFullscreen() {
+  const el = doc.documentElement;
+  try {
+    if (isFullscreen()) await (doc.exitFullscreen ?? doc.webkitExitFullscreen).call(doc);
+    else await (el.requestFullscreen ?? el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+  } catch { toast('تعذّر ملء الشاشة. على الآيباد: شارك ← إضافة إلى الشاشة الرئيسية', 'bad'); }
+}
+if (doc) for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) doc.addEventListener(ev, () => render());
 
 // ---------------------------------------------------------------- الإجراءات العامة
 async function loadSession(employee) {
@@ -113,6 +129,7 @@ on({
     state.view = { pin: '' };
     render();
   },
+  fullscreen: () => toggleFullscreen(),
   'close-modal': () => set({ modal: null }),
   reload: () => location.reload(),
   'modal-back': () => set({ modal: null }),

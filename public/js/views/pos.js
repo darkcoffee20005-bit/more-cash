@@ -13,7 +13,7 @@ export async function loadBootstrap() {
   state.catalog = b.catalog;
   state.shift = b.shift;
   state.ticketsCount = b.ticketsCount;
-  if (!state.pos) state.pos = { categoryId: null, search: '', cart: emptyCart() };
+  if (!state.pos) state.pos = { categoryId: null, search: '', cart: emptyCart(), ticketW: loadTicketW() };
 }
 
 function emptyCart() {
@@ -39,12 +39,74 @@ function safeTotals() {
 
 const discountLabel = (d) => (d.type === 'percent' ? pct(d.value) : money(d.value));
 
+// ---------------------------------------------------------------- عرض نافذة الطلب (قابل للسحب، ويُحفظ على هذا الجهاز)
+const TICKET_W_KEY = 'morecash.ticketW';
+const TICKET_MIN = 280;
+
+function loadTicketW() {
+  try { const v = Number(localStorage.getItem(TICKET_W_KEY)); return Number.isFinite(v) && v >= TICKET_MIN ? v : null; } catch { return null; }
+}
+function saveTicketW(v) {
+  try { if (v) localStorage.setItem(TICKET_W_KEY, String(v)); else localStorage.removeItem(TICKET_W_KEY); } catch { /* تخزين غير متاح */ }
+}
+/** النافذة على اليمين: السحب لليسار يكبّرها. يبقى للأصناف 340 بكسل على الأقل */
+function clampTicketW(pos, w) {
+  return Math.round(Math.max(TICKET_MIN, Math.min(w, pos.getBoundingClientRect().width - 340)));
+}
+// بعد تدوير الشاشة لا يتجاوز العرض المحفوظ ما يترك للأصناف 340 بكسل
+const ticketWidthCss = (w) => `min(${w}px, calc(100% - 354px))`;
+function setTicketW(pos, w) {
+  state.pos.ticketW = w;
+  if (w) pos.style.setProperty('--ticket-w', ticketWidthCss(w)); else pos.style.removeProperty('--ticket-w');
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', (e) => {
+    const bar = e.target.closest?.('.splitter');
+    if (!bar) return;
+    const pos = bar.closest('.pos');
+    e.preventDefault();
+    bar.setPointerCapture?.(e.pointerId);
+    bar.classList.add('dragging');
+    const startX = e.clientX;
+    const startW = pos.querySelector('.ticket').getBoundingClientRect().width;
+    const move = (ev) => setTicketW(pos, clampTicketW(pos, startW + (startX - ev.clientX)));
+    const up = () => {
+      bar.classList.remove('dragging');
+      bar.removeEventListener('pointermove', move);
+      bar.removeEventListener('pointerup', up);
+      bar.removeEventListener('pointercancel', up);
+      saveTicketW(state.pos.ticketW);
+    };
+    bar.addEventListener('pointermove', move);
+    bar.addEventListener('pointerup', up);
+    bar.addEventListener('pointercancel', up);
+  });
+  document.addEventListener('dblclick', (e) => {
+    const bar = e.target.closest?.('.splitter');
+    if (!bar) return;
+    setTicketW(bar.closest('.pos'), null);
+    saveTicketW(null);
+  });
+  document.addEventListener('keydown', (e) => {
+    const bar = e.target.closest?.('.splitter');
+    if (!bar || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    const pos = bar.closest('.pos');
+    const cur = state.pos.ticketW ?? pos.querySelector('.ticket').getBoundingClientRect().width;
+    setTicketW(pos, clampTicketW(pos, cur + (e.key === 'ArrowLeft' ? 24 : -24)));
+    saveTicketW(state.pos.ticketW);
+  });
+}
+
 // ---------------------------------------------------------------- العرض
 export const routes = {
   pos(s) {
     if (!s.catalog) return '<div class="page"><p class="muted">جارٍ تحميل القائمة…</p></div>';
     if (!s.shift) return shiftGate();
-    return `<div class="pos">${catalogPane(s)}${ticketPane(s)}</div>`;
+    const w = s.pos.ticketW;
+    return `<div class="pos" ${w ? `style="--ticket-w:${ticketWidthCss(w)}"` : ''}>${catalogPane(s)}
+      <div class="splitter" role="separator" aria-orientation="vertical" aria-label="اسحب لتغيير حجم نافذة الطلب" tabindex="0" title="اسحب لتغيير الحجم · نقرتان للحجم الافتراضي"><span></span></div>
+      ${ticketPane(s)}</div>`;
   },
 };
 
@@ -75,6 +137,7 @@ function catalogPane(s) {
       <div class="pos-top"><h1>${esc(s.settings?.name ?? '')}</h1>
         ${s.shift ? `<span class="pill ok">${icon('clock', 'sm')} وردية #${s.shift.number}</span>` : ''}
         <span class="clock">${time(Date.now(), tz)}</span></div>
+      ${lowBanner(s)}
       <div class="search-box">${icon('search', 'sm')}<input type="search" id="pos-search" placeholder="ابحث باسم الصنف أو SKU" value="${esc(search)}" data-input="pos-search" autocomplete="off"></div>
       <div class="cats" role="tablist">${cats.join('')}</div>
     </div>
@@ -82,6 +145,20 @@ function catalogPane(s) {
       ${items.length ? items.map(tile).join('') : `<div class="empty" style="grid-column:1/-1">${icon('search')}<p>لا أصناف مطابقة</p></div>`}
     </div>
   </section>`;
+}
+
+const lowKey = (list) => list.map((x) => `${x.variantId}:${x.out ? 0 : 1}`).join(',');
+
+function lowBanner(s) {
+  const low = s.catalog.lowStock ?? [];
+  if (!low.length || s.pos.lowDismissed === lowKey(low)) return '';
+  const outN = low.filter((x) => x.out).length;
+  const shown = low.slice(0, 4).map((x) => `<span class="${x.out ? 'low-out' : ''}">${esc(x.name)} <b class="num">${x.stock.toLocaleString('en-US')} ${esc(x.unit)}</b></span>`).join('');
+  return `<div class="low-banner ${outN ? 'has-out' : ''}" role="alert">${icon('alert', 'sm')}
+    <div class="low-text"><b>${outN ? `نفد ${outN} ومنخفض ${low.length - outN}` : `مخزون منخفض: ${low.length} ${low.length === 1 ? 'مادة' : 'مواد'}`}</b>
+      <span class="low-list">${shown}${low.length > 4 ? `<span>+${low.length - 4}</span>` : ''}</span></div>
+    ${can('admin.inventory') ? '<a class="btn sm" href="#/admin/inventory">المخزون</a>' : ''}
+    <button class="icon-btn" data-action="low-dismiss" aria-label="إخفاء التنبيه">${icon('x', 'sm')}</button></div>`;
 }
 
 function tile(item) {
@@ -468,6 +545,8 @@ on({
     if (state.pos.cart.ticket?.id === el.dataset.id) state.pos.cart = emptyCart();
   }),
 
+  'low-dismiss': () => { state.pos.lowDismissed = lowKey(state.catalog.lowStock ?? []); render(); },
+
   // ---- الدفع
   'pos-charge': () => {
     let total;
@@ -569,7 +648,14 @@ async function saveTicket(data) {
 }
 
 async function refreshAvailability() {
-  try { state.catalog = (await get('/api/pos/bootstrap')).catalog; render(); } catch { /* غير حرج */ }
+  try {
+    const before = new Set((state.catalog?.lowStock ?? []).map((x) => `${x.variantId}:${x.out}`));
+    state.catalog = (await get('/api/pos/bootstrap')).catalog;
+    // مادة نزلت تحت الحد (أو نفدت) بسبب هذا البيع: تنبيه فوري
+    const fresh = state.catalog.lowStock.filter((x) => !before.has(`${x.variantId}:${x.out}`));
+    if (fresh.length) toast(`${fresh[0].out ? 'نفد' : 'انخفض مخزون'}: ${fresh.map((x) => x.name).join('، ')}`, 'bad');
+    render();
+  } catch { /* غير حرج */ }
 }
 
 export async function enter() {

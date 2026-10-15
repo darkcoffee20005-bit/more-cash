@@ -70,6 +70,13 @@ test('شاشة الرمز ثم الكاشير: طلب بإضافات وخصم و
   clean(html, 'البيع');
   assert.match(text(html), /قهوة ساخنة/);
   assert.doesNotMatch(html, /href="#\/admin"/, 'الكاشير لا يرى الإدارة');
+  // تنبيه المخزون المنخفض ظاهر للكاشير (بلا رابط للمخزون)، ويُخفى حتى تتغير القائمة
+  assert.ok(state.catalog.lowStock.length > 0, 'بيانات التجربة فيها مواد منخفضة');
+  assert.match(html, /class="low-banner/);
+  assert.doesNotMatch(html, /href="#\/admin\/inventory"/);
+  await runAction('low-dismiss');
+  assert.doesNotMatch(screen(), /class="low-banner/);
+  assert.match(screen(), /class="splitter"/, 'مقبض تغيير حجم نافذة الطلب');
 
   const latte = state.catalog.items.find((i) => i.name === 'لاتيه');
   await runAction('pos-item', el({ id: latte.id }));
@@ -244,6 +251,27 @@ test('المدير: استرجاع جزئي، إغلاق وردية، ولوحة
   clean(screen(), 'تعديل المخزون');
   await runAction('inv-adjust-submit', el(), {}, { qty: '6000', cost: '2.75', note: 'المورد' });
   assert.equal(state.view.admin.inventory.rows.find((r) => r.name === 'حليب كامل').stock, milk.stock + 6000);
+  assert.match(screen(), /class="alert-low"/, 'تنبيه واضح بالمواد تحت الحد');
+
+  // استلام مشتريات متعددة يدوياً مع مراجعة قبل التأكيد
+  await runAction('rcv-open');
+  assert.equal(state.modal.type, 'receive');
+  const bean = state.view.admin.stockItems.find((x) => x.name === 'بن إسبريسو');
+  const cups = state.view.admin.stockItems.find((x) => x.name === 'كوب 8 أونصة');
+  assert.match(screen(), /data-action="rcv-submit" disabled/, 'سطر فارغ يمنع التأكيد');
+  await runAction('rcv-field', el({ i: '0', k: 'variantId' }, { value: bean.id }));
+  await runAction('rcv-field', el({ i: '0', k: 'qty' }, { value: '١٠٠٠' }));
+  await runAction('rcv-field', el({ i: '0', k: 'total' }, { value: '40000' }));
+  await runAction('rcv-add');
+  await runAction('rcv-field', el({ i: '1', k: 'variantId' }, { value: cups.id }));
+  await runAction('rcv-field', el({ i: '1', k: 'qty' }, { value: '200' }));
+  let rcv = screen(); clean(rcv, 'استلام المشتريات');
+  assert.match(text(rcv), /التكلفة: 40 د\.ع لكل غ/);
+  assert.match(text(rcv), /تأكيد وإضافة للمخزون \(2\)/);
+  const beanBefore = state.view.admin.inventory.rows.find((r) => r.variantId === bean.id).stock;
+  await runAction('rcv-submit');
+  assert.equal(state.modal, null);
+  assert.equal(state.view.admin.inventory.rows.find((r) => r.variantId === bean.id).stock, beanBefore + 1000);
 
   // الإعدادات: تفعيل ضريبة مضافة 10% ثم إعادتها
   await go('#/admin/settings');
