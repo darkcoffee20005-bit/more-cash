@@ -159,3 +159,19 @@ test('تغيير كلمة المرور للمالك فقط، ويخرج الأج
   await ok('a', 'POST', '/api/auth/pin', { pin: '2468' });
   assert.equal((await call('a', 'POST', '/api/account/password', { current: 'new-pass-77', next: 'another-99' })).status, 403, 'الكاشير لا يغيّر كلمة المرور');
 });
+
+test('لوحة مفاتيح عربية: رمز بأرقام ٠-٩ يُقبل عند التسجيل، ويعمل بعدها بأي أرقام', async () => {
+  const { ok, call } = await setup();
+  const r = await call('ar', 'POST', '/api/account/signup', { shopName: 'مقهى السهم', ownerName: 'علي', email: 'ali@sahm.iq', password: 'qahwa-١٢٣٤!', pin: '٤٨٢٦' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  await ok('ar', 'POST', '/api/auth/logout', {});
+  assert.equal((await ok('ar', 'POST', '/api/auth/pin', { pin: '4826' })).employee.role, 'owner', 'الرمز نفسه بأرقام لاتينية');
+  await ok('ar', 'POST', '/api/auth/logout', {});
+  assert.equal((await ok('ar', 'POST', '/api/auth/pin', { pin: '۴۸۲۶' })).employee.role, 'owner', 'وبأرقام فارسية');
+  // موظف جديد برمز عربي
+  await ok('ar', 'POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: '٥٥٨٢' });
+  await ok('ar', 'POST', '/api/auth/logout', {});
+  assert.equal((await ok('ar', 'POST', '/api/auth/pin', { pin: '5582' })).employee.name, 'سارة');
+  // الدخول من جهاز جديد بكلمة المرور كما كُتبت
+  assert.equal((await ok('ar2', 'POST', '/api/account/login', { email: 'ALI@sahm.iq ', password: 'qahwa-١٢٣٤!' })).shop.name, 'مقهى السهم');
+});

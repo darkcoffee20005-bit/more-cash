@@ -6,7 +6,7 @@
 // لذلك لا يمكن تجربة رموز PIN إلا من جهاز سجّل صاحبه الدخول بكلمة المرور.
 import { createApp } from './index.js';
 import { AppError, bad, conflict, isDup, str } from './core.js';
-import { hashPassword, randomToken, sha256, validPin, verifyPassword } from './security.js';
+import { hashPassword, normalizePin, randomToken, sha256, validPin, verifyPassword } from './security.js';
 import { scopeDb } from '../db/scoped.js';
 
 const DEVICE_DAYS = 90;
@@ -94,6 +94,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     const ownerName = str(body.ownerName, { field: 'ownerName', min: 2, max: 40 });
     const mail = email(body.email);
     const pass = password(body.password);
+    body = { ...body, pin: normalizePin(body.pin) };
     if (!validPin(body.pin)) throw bad('WEAK_PIN');
 
     const tenantId = newId();

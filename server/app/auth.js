@@ -1,7 +1,7 @@
 // الإعداد الأول، الدخول بالرمز السري، الجلسات، والموظفون.
 import { ROLES, permissionsOf } from '../../shared/perms.js';
 import { AppError, audit, bad, bool, conflict, getSettings, id as checkId, isDup, notFound, oneOf, out, requirePerm, str } from './core.js';
-import { pinLookup, randomToken, sha256, validPin } from './security.js';
+import { normalizePin, pinLookup, randomToken, sha256, validPin } from './security.js';
 import { DEFAULT_SETTINGS, seedMenu } from './seed.js';
 
 const SESSION_HOURS = 12;
@@ -22,7 +22,8 @@ export function createAuth(ctx) {
     return !!(await db.collection('settings').findOne({ _id: 'store' }, { projection: { _id: 1 } }));
   }
 
-  async function setup({ storeName, ownerName, pin, seed = true } = {}) {
+  async function setup({ storeName, ownerName, pin: rawPin, seed = true } = {}) {
+    const pin = normalizePin(rawPin);
     if (await isSetUp()) throw conflict('ALREADY_SET_UP');
     const name = str(storeName, { field: 'storeName', min: 2, max: 60 });
     const owner = str(ownerName, { field: 'ownerName', min: 2, max: 40 });
@@ -53,7 +54,8 @@ export function createAuth(ctx) {
     failures.set(ip, f);
   }
 
-  async function login({ pin } = {}, ip = 'local') {
+  async function login({ pin: rawPin } = {}, ip = 'local') {
+    const pin = normalizePin(rawPin);
     checkLock(ip);
     if (typeof pin !== 'string' || !/^\d{4,6}$/.test(pin)) { recordFailure(ip); throw new AppError(401, 'WRONG_PIN'); }
     const lookup = await pinLookup(await secret(), pin);
@@ -95,6 +97,7 @@ export function createAuth(ctx) {
     const active = input.active !== false;
     const set = { name, role, phone, active, updatedAt: now() };
     if (input.pin) {
+      input.pin = normalizePin(input.pin);
       if (!validPin(input.pin)) throw bad('WEAK_PIN');
       set.pinLookup = await pinLookup(await secret(), input.pin);
     }

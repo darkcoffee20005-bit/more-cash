@@ -10,6 +10,7 @@ export const DEMO_ACCOUNT = { email: 'demo@morecash.app', password: 'morecash-de
 // النسخة التجريبية تعمل في ذاكرة المتصفح فقط: أي حساب يُنشأ فيها يضيع عند التحديث،
 // لذا روابط "إنشاء حساب" فيها تذهب للموقع الحقيقي (نفس النطاق على Vercel، أو الرابط الكامل من GitHub Pages)
 const LIVE_URL = 'https://more-cash.vercel.app';
+const latinDigits = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const DEMO_PAGE = () => !!globalThis.MORECASH_DEMO_PAGE; // تضبطه صفحة التجربة المنشورة فقط (demo/main.js)
 const signupHref = () => {
   if (!DEMO_PAGE()) return '#/signup';
@@ -116,8 +117,8 @@ function signup(s) {
       </fieldset>
       <fieldset><legend>رمزك السريع للكاشير</legend>
         <div class="grid-2">
-          ${field('الرمز (4–6 أرقام)', '<input name="pin" id="su-pin" required inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" type="password" autocomplete="off">')}
-          ${field('تأكيد الرمز', '<input name="pin2" id="su-pin2" required inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" type="password" autocomplete="off">')}
+          ${field('الرمز (4–6 أرقام)', '<input name="pin" id="su-pin" required inputmode="numeric" pattern="[0-9٠-٩۰-۹]{4,6}" maxlength="6" type="password" autocomplete="off">')}
+          ${field('تأكيد الرمز', '<input name="pin2" id="su-pin2" required inputmode="numeric" pattern="[0-9٠-٩۰-۹]{4,6}" maxlength="6" type="password" autocomplete="off">')}
         </div>
       </fieldset>
       <label class="check"><input type="checkbox" name="seed" checked> ابدأ بقائمة كوفي جاهزة</label>
@@ -210,7 +211,7 @@ export function initAccount({ loadSession }) {
     signup: (_el, _e, d) => busy(async () => {
       const missing = ['shopName', 'ownerName', 'email', 'password', 'pin'].find((k) => !String(d[k] ?? '').trim());
       if (missing) { toast('أكمل كل الحقول', 'bad'); document.querySelector(`[name="${missing}"]`)?.focus(); return; }
-      if (d.pin !== d.pin2) { toast('الرمزان غير متطابقين', 'bad'); return; }
+      if (latinDigits(d.pin) !== latinDigits(d.pin2)) { toast('الرمزان غير متطابقين', 'bad'); return; }
       const r = await post('/api/account/signup', { shopName: d.shopName, ownerName: d.ownerName, email: d.email, password: d.password, pin: d.pin, seed: d.seed });
       state.shop = r.shop;
       toast(`أهلاً بك في ${r.shop.name}`, 'ok');

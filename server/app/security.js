@@ -21,6 +21,12 @@ export async function pinLookup(secret, pin) {
   return hex(await crypto.subtle.sign('HMAC', key, enc.encode(`pin:${pin}`)));
 }
 
+/** أرقام عربية (٠-٩) وفارسية (۰-۹) → أرقام لاتينية. لوحة الآيباد العربية تكتب "٤٨٢٦" في حقل الرمز */
+export function normalizePin(pin) {
+  if (typeof pin !== 'string') return pin;
+  return pin.trim().replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+}
+
 export function validPin(pin) {
   return typeof pin === 'string' && /^\d{4,6}$/.test(pin) && !/^(\d)\1+$/.test(pin);
 }

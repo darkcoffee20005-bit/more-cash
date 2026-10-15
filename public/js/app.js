@@ -118,7 +118,9 @@ on({
   keydown: (_el, e) => {
     if (state.employee || !state.shop || state.modal) return;
     if (document.activeElement?.tagName === 'INPUT') return;
-    if (/^\d$/.test(e.key)) { const pin = state.view.pin ?? ''; if (pin.length < 6) set({ view: { ...state.view, pin: pin + e.key } }); }
+    // لوحة مفاتيح عربية: ٠-٩ و۰-۹ تُقبل كأرقام
+    const digit = /^[0-9]$/.test(e.key) ? e.key : /^[٠-٩]$/.test(e.key) ? String(e.key.charCodeAt(0) - 0x0660) : /^[۰-۹]$/.test(e.key) ? String(e.key.charCodeAt(0) - 0x06f0) : null;
+    if (digit) { const pin = state.view.pin ?? ''; if (pin.length < 6) set({ view: { ...state.view, pin: pin + digit } }); }
     else if (e.key === 'Backspace') set({ view: { ...state.view, pin: (state.view.pin ?? '').slice(0, -1) } });
     else if (e.key === 'Enter') submitPin();
   },

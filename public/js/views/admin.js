@@ -415,7 +415,7 @@ export const modals = {
       ${field('الاسم', `<input name="name" id="em-name" required maxlength="40" value="${esc(e.name)}" autofocus>`)}
       <div class="grid-2">${field('الدور', `<select name="role" id="em-role">${Object.entries(ROLES).map(([k, l]) => `<option value="${k}" ${e.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
         ${field('الهاتف', `<input name="phone" id="em-phone" dir="ltr" value="${esc(e.phone ?? '')}">`)}</div>
-      ${field(e.id ? 'رمز جديد (اتركه فارغاً للإبقاء)' : 'رمز الدخول', `<input name="pin" id="em-pin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" type="password" ${e.id ? '' : 'required'} autocomplete="new-password">`, '4–6 أرقام، فريد لكل موظف')}
+      ${field(e.id ? 'رمز جديد (اتركه فارغاً للإبقاء)' : 'رمز الدخول', `<input name="pin" id="em-pin" inputmode="numeric" pattern="[0-9٠-٩۰-۹]{4,6}" maxlength="6" type="password" ${e.id ? '' : 'required'} autocomplete="new-password">`, '4–6 أرقام، فريد لكل موظف')}
       ${e.id ? `<label class="check"><input type="checkbox" name="active" ${e.active ? 'checked' : ''}> فعال</label>` : ''}
       <p class="muted small">المالك: كل شيء · المدير: كل شيء عدا الموظفين والإعدادات · الكاشير: البيع والوردية والعملاء · الباريستا: شاشة التحضير فقط.</p>
       <button class="btn primary" type="submit">حفظ</button></form>` });

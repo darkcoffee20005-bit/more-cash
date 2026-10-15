@@ -1323,6 +1323,12 @@ async function pinLookup(secret, pin) {
   return hex(await crypto.subtle.sign('HMAC', key, enc.encode(`pin:${pin}`)));
 }
 
+/** أرقام عربية (٠-٩) وفارسية (۰-۹) → أرقام لاتينية. لوحة الآيباد العربية تكتب "٤٨٢٦" في حقل الرمز */
+function normalizePin(pin) {
+  if (typeof pin !== 'string') return pin;
+  return pin.trim().replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+}
+
 function validPin(pin) {
   return typeof pin === 'string' && /^\d{4,6}$/.test(pin) && !/^(\d)\1+$/.test(pin);
 }
@@ -1351,7 +1357,7 @@ async function verifyPassword(password, stored) {
   return diff === 0;
 }
 
-return { randomToken, sha256, pinLookup, validPin, hashPassword, verifyPassword };
+return { randomToken, sha256, pinLookup, normalizePin, validPin, hashPassword, verifyPassword };
 })();
 
 // ---- server/app/seed.js
@@ -1481,7 +1487,7 @@ return { DEFAULT_SETTINGS, seedMenu };
 const __m_server_app_auth_js = await (async () => {
 const { ROLES, permissionsOf } = __m_shared_perms_js;
 const { AppError, audit, bad, bool, conflict, getSettings, id: checkId, isDup, notFound, oneOf, out, requirePerm, str } = __m_server_app_core_js;
-const { pinLookup, randomToken, sha256, validPin } = __m_server_app_security_js;
+const { normalizePin, pinLookup, randomToken, sha256, validPin } = __m_server_app_security_js;
 const { DEFAULT_SETTINGS, seedMenu } = __m_server_app_seed_js;
 // الإعداد الأول، الدخول بالرمز السري، الجلسات، والموظفون.
 
@@ -1507,7 +1513,8 @@ function createAuth(ctx) {
     return !!(await db.collection('settings').findOne({ _id: 'store' }, { projection: { _id: 1 } }));
   }
 
-  async function setup({ storeName, ownerName, pin, seed = true } = {}) {
+  async function setup({ storeName, ownerName, pin: rawPin, seed = true } = {}) {
+    const pin = normalizePin(rawPin);
     if (await isSetUp()) throw conflict('ALREADY_SET_UP');
     const name = str(storeName, { field: 'storeName', min: 2, max: 60 });
     const owner = str(ownerName, { field: 'ownerName', min: 2, max: 40 });
@@ -1538,7 +1545,8 @@ function createAuth(ctx) {
     failures.set(ip, f);
   }
 
-  async function login({ pin } = {}, ip = 'local') {
+  async function login({ pin: rawPin } = {}, ip = 'local') {
+    const pin = normalizePin(rawPin);
     checkLock(ip);
     if (typeof pin !== 'string' || !/^\d{4,6}$/.test(pin)) { recordFailure(ip); throw new AppError(401, 'WRONG_PIN'); }
     const lookup = await pinLookup(await secret(), pin);
@@ -1580,6 +1588,7 @@ function createAuth(ctx) {
     const active = input.active !== false;
     const set = { name, role, phone, active, updatedAt: now() };
     if (input.pin) {
+      input.pin = normalizePin(input.pin);
       if (!validPin(input.pin)) throw bad('WEAK_PIN');
       set.pinLookup = await pinLookup(await secret(), input.pin);
     }
@@ -3473,7 +3482,7 @@ return { scopeDb };
 const __m_server_app_platform_js = await (async () => {
 const { createApp } = __m_server_app_index_js;
 const { AppError, bad, conflict, isDup, str } = __m_server_app_core_js;
-const { hashPassword, randomToken, sha256, validPin, verifyPassword } = __m_server_app_security_js;
+const { hashPassword, normalizePin, randomToken, sha256, validPin, verifyPassword } = __m_server_app_security_js;
 const { scopeDb } = __m_server_db_scoped_js;
 // المنصة: حسابات المقاهي، ربط الجهاز بمقهى، وتوجيه كل طلب إلى تطبيق ذلك المقهى فقط.
 //
@@ -3571,6 +3580,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     const ownerName = str(body.ownerName, { field: 'ownerName', min: 2, max: 40 });
     const mail = email(body.email);
     const pass = password(body.password);
+    body = { ...body, pin: normalizePin(body.pin) };
     if (!validPin(body.pin)) throw bad('WEAK_PIN');
 
     const tenantId = newId();
@@ -5299,6 +5309,7 @@ const DEMO_ACCOUNT = { email: 'demo@morecash.app', password: 'morecash-demo' };
 // النسخة التجريبية تعمل في ذاكرة المتصفح فقط: أي حساب يُنشأ فيها يضيع عند التحديث،
 // لذا روابط "إنشاء حساب" فيها تذهب للموقع الحقيقي (نفس النطاق على Vercel، أو الرابط الكامل من GitHub Pages)
 const LIVE_URL = 'https://more-cash.vercel.app';
+const latinDigits = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const DEMO_PAGE = () => !!globalThis.MORECASH_DEMO_PAGE; // تضبطه صفحة التجربة المنشورة فقط (demo/main.js)
 const signupHref = () => {
   if (!DEMO_PAGE()) return '#/signup';
@@ -5405,8 +5416,8 @@ function signup(s) {
       </fieldset>
       <fieldset><legend>رمزك السريع للكاشير</legend>
         <div class="grid-2">
-          ${field('الرمز (4–6 أرقام)', '<input name="pin" id="su-pin" required inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" type="password" autocomplete="off">')}
-          ${field('تأكيد الرمز', '<input name="pin2" id="su-pin2" required inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" type="password" autocomplete="off">')}
+          ${field('الرمز (4–6 أرقام)', '<input name="pin" id="su-pin" required inputmode="numeric" pattern="[0-9٠-٩۰-۹]{4,6}" maxlength="6" type="password" autocomplete="off">')}
+          ${field('تأكيد الرمز', '<input name="pin2" id="su-pin2" required inputmode="numeric" pattern="[0-9٠-٩۰-۹]{4,6}" maxlength="6" type="password" autocomplete="off">')}
         </div>
       </fieldset>
       <label class="check"><input type="checkbox" name="seed" checked> ابدأ بقائمة كوفي جاهزة</label>
@@ -5499,7 +5510,7 @@ function initAccount({ loadSession }) {
     signup: (_el, _e, d) => busy(async () => {
       const missing = ['shopName', 'ownerName', 'email', 'password', 'pin'].find((k) => !String(d[k] ?? '').trim());
       if (missing) { toast('أكمل كل الحقول', 'bad'); document.querySelector(`[name="${missing}"]`)?.focus(); return; }
-      if (d.pin !== d.pin2) { toast('الرمزان غير متطابقين', 'bad'); return; }
+      if (latinDigits(d.pin) !== latinDigits(d.pin2)) { toast('الرمزان غير متطابقين', 'bad'); return; }
       const r = await post('/api/account/signup', { shopName: d.shopName, ownerName: d.ownerName, email: d.email, password: d.password, pin: d.pin, seed: d.seed });
       state.shop = r.shop;
       toast(`أهلاً بك في ${r.shop.name}`, 'ok');
@@ -5963,7 +5974,7 @@ const modals = {
       ${field('الاسم', `<input name="name" id="em-name" required maxlength="40" value="${esc(e.name)}" autofocus>`)}
       <div class="grid-2">${field('الدور', `<select name="role" id="em-role">${Object.entries(ROLES).map(([k, l]) => `<option value="${k}" ${e.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
         ${field('الهاتف', `<input name="phone" id="em-phone" dir="ltr" value="${esc(e.phone ?? '')}">`)}</div>
-      ${field(e.id ? 'رمز جديد (اتركه فارغاً للإبقاء)' : 'رمز الدخول', `<input name="pin" id="em-pin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" type="password" ${e.id ? '' : 'required'} autocomplete="new-password">`, '4–6 أرقام، فريد لكل موظف')}
+      ${field(e.id ? 'رمز جديد (اتركه فارغاً للإبقاء)' : 'رمز الدخول', `<input name="pin" id="em-pin" inputmode="numeric" pattern="[0-9٠-٩۰-۹]{4,6}" maxlength="6" type="password" ${e.id ? '' : 'required'} autocomplete="new-password">`, '4–6 أرقام، فريد لكل موظف')}
       ${e.id ? `<label class="check"><input type="checkbox" name="active" ${e.active ? 'checked' : ''}> فعال</label>` : ''}
       <p class="muted small">المالك: كل شيء · المدير: كل شيء عدا الموظفين والإعدادات · الكاشير: البيع والوردية والعملاء · الباريستا: شاشة التحضير فقط.</p>
       <button class="btn primary" type="submit">حفظ</button></form>` });
@@ -6436,7 +6447,9 @@ on({
   keydown: (_el, e) => {
     if (state.employee || !state.shop || state.modal) return;
     if (document.activeElement?.tagName === 'INPUT') return;
-    if (/^\d$/.test(e.key)) { const pin = state.view.pin ?? ''; if (pin.length < 6) set({ view: { ...state.view, pin: pin + e.key } }); }
+    // لوحة مفاتيح عربية: ٠-٩ و۰-۹ تُقبل كأرقام
+    const digit = /^[0-9]$/.test(e.key) ? e.key : /^[٠-٩]$/.test(e.key) ? String(e.key.charCodeAt(0) - 0x0660) : /^[۰-۹]$/.test(e.key) ? String(e.key.charCodeAt(0) - 0x06f0) : null;
+    if (digit) { const pin = state.view.pin ?? ''; if (pin.length < 6) set({ view: { ...state.view, pin: pin + digit } }); }
     else if (e.key === 'Backspace') set({ view: { ...state.view, pin: (state.view.pin ?? '').slice(0, -1) } });
     else if (e.key === 'Enter') submitPin();
   },
