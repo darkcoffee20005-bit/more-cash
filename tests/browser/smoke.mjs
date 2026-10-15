@@ -74,7 +74,7 @@ try {
   const due = await page.textContent('.charge .amount');
   await page.click('[data-action="pos-charge"]');
   await page.waitForSelector('.pay');
-  await page.click('[data-action="pay-quick"] >> nth=1');
+  await page.click('[data-action="pay-bill"] >> nth=3');
   await shot('06-payment');
   await page.click('[data-action="pay-confirm"]');
   await page.waitForSelector('.done');
@@ -107,6 +107,31 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/#/admin/reports`);
   await page.waitForSelector('tfoot');
   await shot('14-reports');
+
+  // الآيباد: التذكرة لوحة على اليمين بالوضعين، والدفع بفئات العملة
+  for (const [name, w, h] of [['ipad-landscape', 1180, 820], ['ipad-portrait', 820, 1180]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
+    await page.waitForSelector('.tile');
+    await page.click('.tile:has-text("كرواسون")');
+    await page.click('[data-action="item-save"]');
+    await page.click('.tile:has-text("ماء")');
+    const side = await page.evaluate(() => {
+      const t = document.querySelector('.ticket').getBoundingClientRect();
+      const c = document.querySelector('.catalog').getBoundingClientRect();
+      return { ticketRight: t.left > c.left, sameRow: Math.abs(t.top - c.top) < 2 };
+    });
+    if (!side.ticketRight || !side.sameRow) errors.push(`${name}: ticket panel is not on the right side`);
+    await shot(`19-${name}`);
+    await page.click('[data-action="pos-charge"]');
+    await page.waitForSelector('.bills');
+    await page.click('[data-action="pay-bill"] >> nth=1');
+    await shot(`20-${name}-pay`);
+    await page.click('[data-action="pay-confirm"]');
+    await page.waitForSelector('.done');
+    await page.click('[data-action="pay-new"]');
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
 
   // الوضع الداكن وعرض الهاتف
   await page.emulateMedia({ colorScheme: 'dark' });
