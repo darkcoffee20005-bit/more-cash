@@ -1,0 +1,31 @@
+# مراقبة مور كاش: يفحص الموقع وقاعدة البيانات كل 15 دقيقة.
+# عند الفشل تفشل هذه المهمة فيرسل GitHub بريد تنبيه لصاحب المستودع تلقائياً.
+name: مراقبة الموقع
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: فحص /api/health
+        run: |
+          set -u
+          url="https://more-cash.vercel.app/api/health"
+          for attempt in 1 2 3; do
+            body=$(curl -sS --max-time 20 "$url" || true)
+            echo "محاولة $attempt: $body"
+            if echo "$body" | grep -q '"ok":true'; then echo "✅ الموقع وقاعدة البيانات يعملان"; exit 0; fi
+            sleep 20
+          done
+          echo "::error::مور كاش لا يستجيب أو قاعدة البيانات غير متصلة: $body"
+          exit 1
+      - name: فحص الصفحة الرئيسية
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://more-cash.vercel.app/)
+          echo "HTTP $code"
+          test "$code" = "200" || { echo "::error::الصفحة الرئيسية ترد $code"; exit 1; }

@@ -16,7 +16,7 @@ export async function enterPlatform() {
   try {
     const me = await get('/api/platform/me');
     p.me = me;
-    if (me.email) p.list = await get('/api/platform/shops', { search: p.search || undefined });
+    if (me.email) [p.list, p.errors] = await Promise.all([get('/api/platform/shops', { search: p.search || undefined }), get('/api/platform/errors')]);
   } catch (e) { p.me = { email: null, enabled: false }; fail(e); }
   render();
 }
@@ -42,6 +42,9 @@ export function platformView() {
       <div class="kpi lead"><span class="label">كل المقاهي</span><b>${l.totals.shops}</b></div>
       <div class="kpi"><span class="label">نشطة آخر 7 أيام</span><b>${l.totals.active7}</b></div>
       <div class="kpi"><span class="label">موقوفة</span><b>${l.totals.disabled}</b></div></div>` : ''}
+    ${p.errors ? `<details class="card pad" ${p.errors.count24h ? 'open' : ''}><summary><b>${p.errors.count24h ? `${icon('alert', 'sm')} ${p.errors.count24h} خطأ في الخادم خلال 24 ساعة` : `${icon('check', 'sm')} لا أخطاء في الخادم خلال 24 ساعة`}</b></summary>
+      ${p.errors.recent.length ? `<div class="table-wrap" style="margin-top:10px"><table><tbody>${p.errors.recent.map((x) => `<tr><td class="small">${dateTime(x.at, 180)}</td><td class="small" dir="ltr">${esc(x.method ?? '')} ${esc(x.path ?? '')}</td><td class="small" dir="ltr">${esc(x.name)}: ${esc(x.message)}</td><td class="small">${esc(P().list?.rows.find((r) => r.id === x.tenantId)?.name ?? '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      <p class="muted small">المراقبة الخارجية: يفحص GitHub الموقع كل 15 دقيقة ويرسل لك بريداً عند أي عطل.</p></details>` : ''}
     <div class="search-box">${icon('search', 'sm')}<input type="search" id="pf-search" placeholder="ابحث باسم المقهى أو البريد" value="${esc(p.search)}" data-input="platform-search" autocomplete="off"></div>
     <div class="table-wrap"><table><thead><tr><th>المقهى</th><th>المالك</th><th>التسجيل</th><th>آخر بيع</th><th class="num">مبيعات 30 يوم</th><th class="num">أجهزة</th><th>الحالة</th><th></th></tr></thead>
     <tbody>${!l ? '<tr><td colspan="8" class="muted">جارٍ التحميل…</td></tr>' : l.rows.length ? l.rows.map((r) => `<tr>

@@ -21,6 +21,13 @@ const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000
 
 export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null } = {}) {
   const apps = new Map(); // tenantId → {app, ready}
+  // أخطاء الخادم غير المتوقعة تُحفظ (14 يوماً) لتظهر في لوحة المزوّد قبل أن يبلّغ عنها مقهى
+  function recordError(e, where = {}) {
+    db.collection('platform_errors').insertOne({
+      _id: newId(), at: now(), name: String(e?.name ?? 'Error').slice(0, 60), message: String(e?.message ?? e).slice(0, 300), ...where,
+    }).catch(() => {});
+  }
+  const appLog = (tenantId) => ({ ...log, error: (e) => { log.error?.(e); recordError(e, { tenantId }); } });
   const ipFails = new Map(); // ip → {count, since}
 
   function tenantApp(tenantId) {
@@ -29,7 +36,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
       apps.delete(tenantId); apps.set(tenantId, entry); // الأحدث استخداماً في النهاية
       return entry;
     }
-    const app = createApp({ db: scopeDb(db, tenantId), now, newId, pepper, log, readInvoice });
+    const app = createApp({ db: scopeDb(db, tenantId), now, newId, pepper, log: appLog(tenantId), readInvoice });
     entry = { app, ready: app.start().catch((e) => log.error?.(e)) };
     apps.set(tenantId, entry);
     if (apps.size > MAX_CACHED_APPS) apps.delete(apps.keys().next().value);
@@ -238,6 +245,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     } catch (e) {
       if (e instanceof AppError) return { status: e.status, body: { error: e.code, detail: e.detail } };
       log.error?.(e);
+      recordError(e, { path: req.path, method: req.method });
       return { status: 500, body: { error: 'INTERNAL' } };
     }
   }

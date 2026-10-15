@@ -13,6 +13,7 @@ export async function ensureIndexes(db) {
     ix('devices', { tenantId: 1 }, { name: 'by_tenant' }),
     ix('devices', { accountId: 1 }, { name: 'by_account' }),
     ix('platform_sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
+    ix('platform_errors', { at: 1 }, { expireAfterSeconds: 14 * 86400, name: 'ttl' }),
 
     // ---- بيانات كل مقهى
     ix('receipts', t({ number: 1 }), { unique: true, name: 'uniq_number' }),

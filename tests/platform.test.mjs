@@ -195,6 +195,9 @@ test('لوحة المزوّد: قائمة المقاهي، الإيقاف وال
   const a = list.rows.find((r) => r.email === 'ahmed@zaytoon.iq');
   assert.equal(a.name, 'مقهى الزيتون');
   assert.equal((await ok('admin', 'GET', '/api/platform/shops', null, { search: 'رافدين' })).rows.length, 1);
+  const errs = await ok('admin', 'GET', '/api/platform/errors');
+  assert.equal(errs.count24h, 0);
+  assert.deepEqual(errs.recent, []);
 
   // الإيقاف: كل طلبات المقهى تُرفض، والحالة تعرض أنه موقوف؛ المقاهي الأخرى لا تتأثر
   assert.equal((await call('admin', 'POST', `/api/platform/shops/${a.id}/disable`, {})).body.error, 'REQUIRED', 'السبب مطلوب');

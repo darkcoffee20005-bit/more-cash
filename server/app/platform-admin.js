@@ -103,6 +103,11 @@ export function createPlatformAdmin({ db, now, admins = [], passwordIterations, 
     if (key === 'GET /api/platform/me') return { status: 200, body: { email: admin?.email ?? null, enabled: allowed.size > 0 } };
     if (!admin) throw new AppError(401, 'PLATFORM_AUTH');
     if (key === 'GET /api/platform/shops') return { status: 200, body: await shops(req.query ?? {}) };
+    if (key === 'GET /api/platform/errors') {
+      const since = new Date(now().getTime() - 86400_000);
+      const recent = await db.collection('platform_errors').find({}).sort({ at: -1 }).limit(30).toArray();
+      return { status: 200, body: { count24h: await db.collection('platform_errors').countDocuments({ at: { $gte: since } }), recent: recent.map(({ _id, ...x }) => x) } };
+    }
     const m = /^\/api\/platform\/shops\/([A-Za-z0-9_-]{1,64})\/(disable|enable|reset-password)$/.exec(req.path);
     if (m && req.method === 'POST') {
       if (m[2] === 'reset-password') return { status: 200, body: await resetPassword(m[1], admin) };
