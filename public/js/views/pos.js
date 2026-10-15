@@ -415,9 +415,7 @@ export const modals = {
     const type = types.find((p) => p.id === m.typeId) ?? types[0];
     const isCash = type.kind === 'cash';
     const amount = parseAmount(m.amountText) ?? remaining;
-    const tendered = cashTendered(m, amount);
-    const short = isCash && Number.isSafeInteger(amount) ? Math.max(0, amount - tendered) : 0;
-    const valid = Number.isSafeInteger(amount) && amount > 0 && amount <= remaining && short === 0;
+    const valid = Number.isSafeInteger(amount) && amount > 0 && amount <= remaining;
     return `<div class="modal full" role="dialog" aria-modal="true" aria-label="الدفع" data-stop><div class="pay">
       <section class="pay-side">
         <div class="row"><button class="icon-btn" style="color:#fff" data-action="close-modal" aria-label="رجوع">${icon('arrow')}</button><span class="label" style="color:#b8bf98">${s.pos.cart.ticket ? esc(s.pos.cart.ticket.name) : 'طلب جديد'}</span></div>
@@ -433,15 +431,7 @@ export const modals = {
       <section class="pay-main">
         <div class="pay-types">${types.map((p) => `<button class="pay-type ${p.id === type.id ? 'on' : ''}" data-action="pay-type" data-id="${p.id}">${icon(p.kind === 'cash' ? 'cash' : p.kind === 'card' ? 'card' : 'wallet')} ${esc(p.name)}</button>`).join('')}</div>
         ${field('المبلغ لهذه الدفعة', `<input class="amount-input" id="pay-amount" inputmode="numeric" value="${esc(m.amountText ?? String(remaining))}" data-input="pay-amount" autocomplete="off">`)}
-        ${isCash ? `<div class="stack" style="gap:8px"><span class="label">المستلم من العميل</span>
-          <div class="bills">
-            <button class="bill exact ${m.bills.length ? '' : 'on'}" data-action="pay-exact">بالضبط</button>
-            ${BILLS.map((b) => { const n = m.bills.filter((x) => x === b).length; return `<button class="bill ${n ? 'on' : ''}" data-action="pay-bill" data-v="${b}">${money(b, { symbol: false })}${n > 1 ? `<span class="bill-n">×${n}</span>` : ''}</button>`; }).join('')}
-          </div></div>
-          <div class="change-box ${short ? 'short' : ''}">
-            <div><div class="muted small">المستلم</div><b class="num">${money(Number.isSafeInteger(tendered) ? tendered : 0)}</b></div>
-            <div><div class="muted small">${short ? 'ناقص' : 'الباقي للعميل'}</div><b class="num big">${money(short || Math.max(0, tendered - (Number.isSafeInteger(amount) ? amount : 0)))}</b></div>
-          </div>` : field('رقم المرجع (اختياري)', '<input id="pay-ref" maxlength="40" dir="ltr" autocomplete="off">')}
+        ${isCash ? '' : field('رقم المرجع (اختياري)', '<input id="pay-ref" maxlength="40" dir="ltr" autocomplete="off">')}
         <div class="spacer"></div>
         ${amount < remaining ? `<button class="btn lg block" data-action="pay-add" ${valid ? '' : 'disabled'}>${icon('plus', 'sm')} إضافة دفعة ${money(Number.isSafeInteger(amount) ? amount : 0)}</button>` : ''}
         <button class="btn primary lg block" data-action="pay-confirm" ${(valid && amount === remaining) || (remaining === 0) ? '' : 'disabled'} ${s.busy ? 'disabled' : ''}>${s.busy ? 'جارٍ الحفظ…' : `${icon('check', 'sm')} تأكيد الدفع`}</button>
@@ -646,21 +636,10 @@ on({
     let total;
     try { total = cartTotals().total; } catch (e) { fail(e); return; }
     const cash = state.settings.paymentTypes.find((p) => p.active && p.kind === 'cash');
-    openModal({ type: 'pay', stage: 'pay', total, payments: [], typeId: cash?.id, amountText: String(total), bills: [], clientId: uid() });
+    openModal({ type: 'pay', stage: 'pay', total, payments: [], typeId: cash?.id, amountText: String(total), clientId: uid() });
   },
-  'pay-type': (el) => { const m = state.modal; m.typeId = el.dataset.id; m.bills = []; render(); },
+  'pay-type': (el) => { state.modal.typeId = el.dataset.id; render(); },
   'pay-amount': (el) => { state.modal.amountText = el.value; render(); },
-  'pay-exact': () => { state.modal.bills = []; render(); },
-  // فئة نقدية: تُضاف للمستلم ما دام أقل من المبلغ (50 + 10 ألف)، وإلا تبدأ اختياراً جديداً
-  'pay-bill': (el) => {
-    const m = state.modal;
-    const v = Number(el.dataset.v);
-    const remaining = m.total - m.payments.reduce((a, x) => a + x.amount, 0);
-    const amount = parseAmount(m.amountText) ?? remaining;
-    const sum = m.bills.reduce((a, b) => a + b, 0);
-    m.bills = m.bills.length && sum < amount ? [...m.bills, v] : [v];
-    render();
-  },
   'pay-add': () => {
     const m = state.modal;
     const p = currentPayment(m);
@@ -668,7 +647,6 @@ on({
     m.payments.push(p);
     const remaining = m.total - m.payments.reduce((a, x) => a + x.amount, 0);
     m.amountText = String(remaining);
-    m.bills = [];
     render();
   },
   'pay-remove': (el) => {
@@ -718,25 +696,12 @@ on({
   'pay-new': () => closeModal(),
 });
 
-// فئات الدينار العراقي المعروضة عند الدفع نقداً
-const BILLS = [5000, 10000, 25000, 50000];
-
-/** المستلم نقداً: المبلغ بالضبط ما لم تُختر فئات */
-function cashTendered(m, amount) {
-  return m.bills.length ? m.bills.reduce((a, b) => a + b, 0) : amount;
-}
-
 function currentPayment(m) {
   const type = state.settings.paymentTypes.find((p) => p.id === m.typeId);
   const remaining = m.total - m.payments.reduce((a, x) => a + x.amount, 0);
   const amount = parseAmount(m.amountText) ?? remaining;
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount > remaining) { toast('مبلغ غير صالح', 'bad'); return null; }
-  let tendered = amount;
-  if (type.kind === 'cash') {
-    tendered = cashTendered(m, amount);
-    if (tendered < amount) { toast('المستلم أقل من المبلغ', 'bad'); return null; }
-  }
-  return { typeId: type.id, typeName: type.name, amount, tendered };
+  return { typeId: type.id, typeName: type.name, amount, tendered: amount };
 }
 
 async function saveTicket(data) {

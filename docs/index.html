@@ -320,16 +320,6 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .pay-types { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
 .pay-type { min-height: 64px; border-radius: var(--r-lg); border: 1px solid var(--line-strong); background: var(--surface); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .pay-type.on { border-color: var(--primary); background: var(--brand-100); color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
-.bills { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-.bill { position: relative; min-height: 64px; border-radius: var(--r-lg); border: 1px solid var(--line-strong); background: var(--surface-2); font-family: var(--font-display); font-size: 1.1rem; font-variant-numeric: tabular-nums; transition: transform .08s ease; }
-.bill.exact { font-family: inherit; font-weight: 600; font-size: 1rem; }
-.bill.on { border-color: var(--primary); background: var(--brand-100); color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
-.bill:active { transform: scale(.96); }
-.bill-n { position: absolute; top: -8px; inset-inline-end: -6px; min-width: 26px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--primary); color: #fff; font-size: .75rem; display: grid; place-items: center; }
-.change-box { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface-2); border: 1px solid var(--line); }
-.change-box b { font-family: var(--font-display); font-size: 1.2rem; }
-.change-box b.big { font-size: 1.8rem; color: var(--primary); }
-.change-box.short b.big { color: var(--bad); }
 .done { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 40px 24px; text-align: center; }
 .done .tick { width: 76px; height: 76px; border-radius: 50%; background: var(--ok-soft); color: var(--ok); display: grid; place-items: center; }
 .done .tick svg { width: 40px; height: 40px; stroke-width: 2.4; }
@@ -460,7 +450,6 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
   .catalog-head { padding: 12px; }
   .pay-side { padding: 20px; }
   .pay-side .due { font-size: 2.2rem; }
-  .bills { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .grid-3 { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 700px) {
@@ -5365,9 +5354,7 @@ const modals = {
     const type = types.find((p) => p.id === m.typeId) ?? types[0];
     const isCash = type.kind === 'cash';
     const amount = parseAmount(m.amountText) ?? remaining;
-    const tendered = cashTendered(m, amount);
-    const short = isCash && Number.isSafeInteger(amount) ? Math.max(0, amount - tendered) : 0;
-    const valid = Number.isSafeInteger(amount) && amount > 0 && amount <= remaining && short === 0;
+    const valid = Number.isSafeInteger(amount) && amount > 0 && amount <= remaining;
     return `<div class="modal full" role="dialog" aria-modal="true" aria-label="الدفع" data-stop><div class="pay">
       <section class="pay-side">
         <div class="row"><button class="icon-btn" style="color:#fff" data-action="close-modal" aria-label="رجوع">${icon('arrow')}</button><span class="label" style="color:#b8bf98">${s.pos.cart.ticket ? esc(s.pos.cart.ticket.name) : 'طلب جديد'}</span></div>
@@ -5383,15 +5370,7 @@ const modals = {
       <section class="pay-main">
         <div class="pay-types">${types.map((p) => `<button class="pay-type ${p.id === type.id ? 'on' : ''}" data-action="pay-type" data-id="${p.id}">${icon(p.kind === 'cash' ? 'cash' : p.kind === 'card' ? 'card' : 'wallet')} ${esc(p.name)}</button>`).join('')}</div>
         ${field('المبلغ لهذه الدفعة', `<input class="amount-input" id="pay-amount" inputmode="numeric" value="${esc(m.amountText ?? String(remaining))}" data-input="pay-amount" autocomplete="off">`)}
-        ${isCash ? `<div class="stack" style="gap:8px"><span class="label">المستلم من العميل</span>
-          <div class="bills">
-            <button class="bill exact ${m.bills.length ? '' : 'on'}" data-action="pay-exact">بالضبط</button>
-            ${BILLS.map((b) => { const n = m.bills.filter((x) => x === b).length; return `<button class="bill ${n ? 'on' : ''}" data-action="pay-bill" data-v="${b}">${money(b, { symbol: false })}${n > 1 ? `<span class="bill-n">×${n}</span>` : ''}</button>`; }).join('')}
-          </div></div>
-          <div class="change-box ${short ? 'short' : ''}">
-            <div><div class="muted small">المستلم</div><b class="num">${money(Number.isSafeInteger(tendered) ? tendered : 0)}</b></div>
-            <div><div class="muted small">${short ? 'ناقص' : 'الباقي للعميل'}</div><b class="num big">${money(short || Math.max(0, tendered - (Number.isSafeInteger(amount) ? amount : 0)))}</b></div>
-          </div>` : field('رقم المرجع (اختياري)', '<input id="pay-ref" maxlength="40" dir="ltr" autocomplete="off">')}
+        ${isCash ? '' : field('رقم المرجع (اختياري)', '<input id="pay-ref" maxlength="40" dir="ltr" autocomplete="off">')}
         <div class="spacer"></div>
         ${amount < remaining ? `<button class="btn lg block" data-action="pay-add" ${valid ? '' : 'disabled'}>${icon('plus', 'sm')} إضافة دفعة ${money(Number.isSafeInteger(amount) ? amount : 0)}</button>` : ''}
         <button class="btn primary lg block" data-action="pay-confirm" ${(valid && amount === remaining) || (remaining === 0) ? '' : 'disabled'} ${s.busy ? 'disabled' : ''}>${s.busy ? 'جارٍ الحفظ…' : `${icon('check', 'sm')} تأكيد الدفع`}</button>
@@ -5596,21 +5575,10 @@ on({
     let total;
     try { total = cartTotals().total; } catch (e) { fail(e); return; }
     const cash = state.settings.paymentTypes.find((p) => p.active && p.kind === 'cash');
-    openModal({ type: 'pay', stage: 'pay', total, payments: [], typeId: cash?.id, amountText: String(total), bills: [], clientId: uid() });
+    openModal({ type: 'pay', stage: 'pay', total, payments: [], typeId: cash?.id, amountText: String(total), clientId: uid() });
   },
-  'pay-type': (el) => { const m = state.modal; m.typeId = el.dataset.id; m.bills = []; render(); },
+  'pay-type': (el) => { state.modal.typeId = el.dataset.id; render(); },
   'pay-amount': (el) => { state.modal.amountText = el.value; render(); },
-  'pay-exact': () => { state.modal.bills = []; render(); },
-  // فئة نقدية: تُضاف للمستلم ما دام أقل من المبلغ (50 + 10 ألف)، وإلا تبدأ اختياراً جديداً
-  'pay-bill': (el) => {
-    const m = state.modal;
-    const v = Number(el.dataset.v);
-    const remaining = m.total - m.payments.reduce((a, x) => a + x.amount, 0);
-    const amount = parseAmount(m.amountText) ?? remaining;
-    const sum = m.bills.reduce((a, b) => a + b, 0);
-    m.bills = m.bills.length && sum < amount ? [...m.bills, v] : [v];
-    render();
-  },
   'pay-add': () => {
     const m = state.modal;
     const p = currentPayment(m);
@@ -5618,7 +5586,6 @@ on({
     m.payments.push(p);
     const remaining = m.total - m.payments.reduce((a, x) => a + x.amount, 0);
     m.amountText = String(remaining);
-    m.bills = [];
     render();
   },
   'pay-remove': (el) => {
@@ -5668,25 +5635,12 @@ on({
   'pay-new': () => closeModal(),
 });
 
-// فئات الدينار العراقي المعروضة عند الدفع نقداً
-const BILLS = [5000, 10000, 25000, 50000];
-
-/** المستلم نقداً: المبلغ بالضبط ما لم تُختر فئات */
-function cashTendered(m, amount) {
-  return m.bills.length ? m.bills.reduce((a, b) => a + b, 0) : amount;
-}
-
 function currentPayment(m) {
   const type = state.settings.paymentTypes.find((p) => p.id === m.typeId);
   const remaining = m.total - m.payments.reduce((a, x) => a + x.amount, 0);
   const amount = parseAmount(m.amountText) ?? remaining;
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount > remaining) { toast('مبلغ غير صالح', 'bad'); return null; }
-  let tendered = amount;
-  if (type.kind === 'cash') {
-    tendered = cashTendered(m, amount);
-    if (tendered < amount) { toast('المستلم أقل من المبلغ', 'bad'); return null; }
-  }
-  return { typeId: type.id, typeName: type.name, amount, tendered };
+  return { typeId: type.id, typeName: type.name, amount, tendered: amount };
 }
 
 async function saveTicket(data) {

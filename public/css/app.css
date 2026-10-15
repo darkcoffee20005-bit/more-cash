@@ -317,16 +317,6 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .pay-types { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
 .pay-type { min-height: 64px; border-radius: var(--r-lg); border: 1px solid var(--line-strong); background: var(--surface); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .pay-type.on { border-color: var(--primary); background: var(--brand-100); color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
-.bills { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-.bill { position: relative; min-height: 64px; border-radius: var(--r-lg); border: 1px solid var(--line-strong); background: var(--surface-2); font-family: var(--font-display); font-size: 1.1rem; font-variant-numeric: tabular-nums; transition: transform .08s ease; }
-.bill.exact { font-family: inherit; font-weight: 600; font-size: 1rem; }
-.bill.on { border-color: var(--primary); background: var(--brand-100); color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
-.bill:active { transform: scale(.96); }
-.bill-n { position: absolute; top: -8px; inset-inline-end: -6px; min-width: 26px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--primary); color: #fff; font-size: .75rem; display: grid; place-items: center; }
-.change-box { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface-2); border: 1px solid var(--line); }
-.change-box b { font-family: var(--font-display); font-size: 1.2rem; }
-.change-box b.big { font-size: 1.8rem; color: var(--primary); }
-.change-box.short b.big { color: var(--bad); }
 .done { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 40px 24px; text-align: center; }
 .done .tick { width: 76px; height: 76px; border-radius: 50%; background: var(--ok-soft); color: var(--ok); display: grid; place-items: center; }
 .done .tick svg { width: 40px; height: 40px; stroke-width: 2.4; }
@@ -457,7 +447,6 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
   .catalog-head { padding: 12px; }
   .pay-side { padding: 20px; }
   .pay-side .due { font-size: 2.2rem; }
-  .bills { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .grid-3 { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 700px) {

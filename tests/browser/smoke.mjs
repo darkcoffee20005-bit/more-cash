@@ -87,7 +87,10 @@ try {
   const due = await page.textContent('.charge .amount');
   await page.click('[data-action="pos-charge"]');
   await page.waitForSelector('.pay');
-  await page.click('[data-action="pay-bill"] >> nth=3');
+  // زر التأكيد ظاهر بلا تمرير داخل نافذة الدفع
+  const box = await page.locator('[data-action="pay-confirm"]').boundingBox();
+  const vh = page.viewportSize().height;
+  if (!box || box.y + box.height > vh) errors.push(`pay-confirm below the fold (${box?.y}+${box?.height} > ${vh})`);
   await shot('06-payment');
   await page.click('[data-action="pay-confirm"]');
   await page.waitForSelector('.done');
@@ -187,8 +190,7 @@ try {
       await page.click('.tile:has-text("ماء")');
     }
     await page.click('[data-action="pos-charge"]');
-    await page.waitForSelector('.bills');
-    await page.click('[data-action="pay-bill"] >> nth=1');
+    await page.waitForSelector('.pay [data-action="pay-confirm"]');
     await shot(`20-${name}-pay`);
     await page.click('[data-action="pay-confirm"]');
     await page.waitForSelector('.done');
