@@ -17,6 +17,10 @@ export function setViews(v) { views = v; }
 export function on(map) { Object.assign(actions, map); }
 export const can = (perm) => !!state.employee?.permissions?.includes(perm);
 
+const renderedHooks = [];
+/** يُستدعى بعد كل رسم (لقياسات تعتمد على DOM الفعلي) */
+export function onRendered(fn) { renderedHooks.push(fn); }
+
 export function render() {
   if (scheduled || typeof document === 'undefined' || !views) return;
   scheduled = true;
@@ -27,8 +31,9 @@ export function render() {
     const focusId = active?.id && root.contains(active) ? active.id : null;
     const sel = focusId && 'selectionStart' in active ? [active.selectionStart, active.selectionEnd] : null;
     const scrolls = [...root.querySelectorAll('[data-keep-scroll]')].map((el) => [el.dataset.keepScroll, el.scrollTop]);
-    // نماذج غير مرتبطة بالحالة (الدخول وإنشاء الحساب): لا يضيع ما كتبه المستخدم عند إعادة الرسم
-    const kept = [...root.querySelectorAll('form[data-keep] [id]')].filter((el) => 'value' in el)
+    // حقول النماذج غير المرتبطة بالحالة (عميل جديد، فتح وردية، الدخول…): لا يضيع ما كُتب عند إعادة الرسم
+    // (اختفاء إشعار مثلاً يعيد الرسم). الحقول ذات data-input تُرسم من الحالة فلا تُستعاد
+    const kept = [...root.querySelectorAll('form [id]:not([data-input])')].filter((el) => 'value' in el && el.type !== 'file' && el.type !== 'submit' && el.type !== 'button')
       .map((el) => [el.id, el.type === 'checkbox' ? el.checked : el.value, el.type]);
     root.innerHTML = views.app(state) + modalHtml() + toastsHtml();
     for (const [id, v, type] of kept) {
@@ -46,6 +51,7 @@ export function render() {
     } else {
       root.querySelector('.modal [autofocus]')?.focus();
     }
+    for (const fn of renderedHooks) { try { fn(); } catch (e) { console.error(e); } }
   });
 }
 

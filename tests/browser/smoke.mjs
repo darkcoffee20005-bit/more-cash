@@ -25,6 +25,7 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'ar-IQ' });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  let lastStep = 'start';
   // 503 متوقع مرة واحدة: تصوير فاتورة بلا ANTHROPIC_API_KEY (يُتحقق من رسالته أدناه)
   let expected503 = 0;
   page.on('response', (r) => { if (r.status() === 503 && r.url().endsWith('/api/admin/inventory/scan')) expected503 += 1; });
@@ -33,9 +34,9 @@ try {
     if (/status of 503/.test(m.text()) && expected503 > 0) { expected503 -= 1; return; }
     errors.push(`console: ${m.text()}`);
   });
-  page.on('requestfailed', (r) => { if (!/fonts\.(googleapis|gstatic)/.test(r.url())) errors.push(`requestfailed: ${r.url()}`); });
+  page.on('requestfailed', (r) => { if (!/fonts\.(googleapis|gstatic)/.test(r.url())) errors.push(`requestfailed: ${r.url()} (${r.failure()?.errorText} @ ${page.url()} after ${lastStep})`); });
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
-  const shot = async (name) => { await page.waitForTimeout(260); await page.screenshot({ path: join(shots, `${name}.png`) }); };
+  const shot = async (name) => { lastStep = name; await page.waitForTimeout(260); await page.screenshot({ path: join(shots, `${name}.png`) }); };
 
   await page.goto(`http://127.0.0.1:${PORT}/`);
   await page.waitForSelector('.lp-hero');
@@ -63,6 +64,10 @@ try {
   await shot('03-pos-empty');
 
   await page.click('.tile:has-text("لاتيه")');
+  // النقر يضيف الصنف القياسي مباشرة؛ الحجم والإضافات بالضغط على سطره
+  if (await page.isVisible('.modal')) errors.push('item tap should not open the options window');
+  await page.click('.line:has-text("لاتيه")');
+  await page.waitForSelector('.modal [data-action="item-save"]');
   await page.waitForSelector('.modal .opt');
   await page.click('.modal .opt:has-text("كبير")');
   await page.click('.modal .opt:has-text("حليب شوفان")');
@@ -70,7 +75,6 @@ try {
   await shot('04-item-modal');
   await page.click('[data-action="item-save"]');
   await page.click('.tile:has-text("كرواسون")');
-  await page.click('[data-action="item-save"]');
   await page.click('.tile:has-text("ماء")');
   await page.click('[data-action="pos-customer"]');
   await page.fill('#cust-name', 'علي حسن');
@@ -87,6 +91,7 @@ try {
   await page.waitForSelector('.done');
   await shot('07-done');
   await page.click('[data-action="pay-new"]');
+  await page.waitForLoadState('networkidle');
 
   await page.goto(`http://127.0.0.1:${PORT}/#/kds`);
   await page.waitForSelector('.kds-card');
@@ -121,7 +126,6 @@ try {
     await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
     await page.waitForSelector('.tile');
     await page.click('.tile:has-text("كرواسون")');
-    await page.click('[data-action="item-save"]');
     await page.click('.tile:has-text("ماء")');
     const side = await page.evaluate(() => {
       const t = document.querySelector('.ticket').getBoundingClientRect();
@@ -147,18 +151,39 @@ try {
       await page.mouse.up();
       const w1 = await page.evaluate(() => document.querySelector('.ticket').getBoundingClientRect().width);
       if (Math.abs(w1 - w0 - 120) > 8) errors.push(`splitter drag: ${w0} → ${w1}`);
+      await page.waitForLoadState('networkidle');
       await page.reload();
       await page.waitForSelector('.tile');
       const w2 = await page.evaluate(() => document.querySelector('.ticket').getBoundingClientRect().width);
       if (Math.abs(w2 - w1) > 2) errors.push(`ticket width not kept after reload: ${w1} → ${w2}`);
       await page.click('.tile:has-text("كرواسون")');
-      await page.click('[data-action="item-save"]');
       await page.click('.tile:has-text("ماء")');
       await page.dblclick('.splitter');
       if (await page.evaluate(() => localStorage.getItem('morecash.ticketW')) !== null) errors.push('double-click should reset width');
       if (!(await page.isVisible('[data-action="fullscreen"]'))) errors.push('fullscreen button missing');
     }
     await shot(`19-${name}`);
+    if (name === 'ipad-landscape') {
+      for (const t of ['إسبريسو', 'أمريكانو', 'كابتشينو', 'موكا', 'فلات وايت', 'قهوة تركية', 'آيس لاتيه', 'كولد برو', 'شاي عراقي', 'كوكيز', 'تشيز كيك', 'هوت شوكليت', 'ماتشا لاتيه', 'آيس أمريكانو']) {
+        await page.click(`.tile:has-text("${t}")`);
+      }
+      const scroll = await page.evaluate(() => { const ul = document.querySelector('.ticket .lines'); const t = document.querySelector('.ticket'); return { lines: ul.scrollHeight - ul.clientHeight, ticket: t.scrollHeight - t.clientHeight, more: !document.querySelector('.more-lines').hidden }; });
+      if (scroll.lines > 1 || scroll.ticket > 1) errors.push(`order panel scrolls: ${JSON.stringify(scroll)}`);
+      if (!scroll.more) errors.push('long order should fold older lines into "+N"');
+      await shot('19b-long-order');
+      await page.click('.more-lines');
+      await page.waitForSelector('.modal tr.click');
+      await page.keyboard.press('Escape');
+      await page.click('[data-action="pos-clear"]');
+      await page.click('[data-action="pos-clear"]');
+      await page.click('[data-action="ticket-toggle"]');
+      await page.waitForSelector('.ticket-fab');
+      await page.click('.tile:has-text("كرواسون")');
+      await shot('19c-ticket-hidden');
+      await page.click('.ticket-fab');
+      await page.waitForSelector('.ticket .line');
+      await page.click('.tile:has-text("ماء")');
+    }
     await page.click('[data-action="pos-charge"]');
     await page.waitForSelector('.bills');
     await page.click('[data-action="pay-bill"] >> nth=1');
@@ -166,6 +191,7 @@ try {
     await page.click('[data-action="pay-confirm"]');
     await page.waitForSelector('.done');
     await page.click('[data-action="pay-new"]');
+    await page.waitForLoadState('networkidle');
   }
   await page.setViewportSize({ width: 1280, height: 800 });
 
@@ -195,8 +221,9 @@ try {
     await fetch('/api/admin/inventory/adjust', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'morecash' },
       body: JSON.stringify({ clientId: crypto.randomUUID(), variantId: cake.variantId, type: 'count', qty: 2 }) }).then((r) => r.json());
   });
+  // تحميل كامل للصفحة (لا تغيير hash ثم reload، فذلك يقطع طلب البيانات الجاري)
+  await page.goto('about:blank');
   await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
-  await page.reload();
   await page.waitForSelector('.low-banner');
   if (!(await page.isVisible('.rail .badge.bad'))) errors.push('low-stock badge missing on admin');
   await shot('24-low-banner');

@@ -77,9 +77,20 @@ test('شاشة الرمز ثم الكاشير: طلب بإضافات وخصم و
   await runAction('low-dismiss');
   assert.doesNotMatch(screen(), /class="low-banner/);
   assert.match(screen(), /class="splitter"/, 'مقبض تغيير حجم نافذة الطلب');
+  await runAction('ticket-toggle');
+  assert.match(screen(), /class="ticket-fab"/, 'إخفاء نافذة الطلب يُظهر زر إعادتها');
+  assert.match(screen(), /class="pos ticket-hidden/);
+  await runAction('ticket-toggle');
+  assert.doesNotMatch(screen(), /class="ticket-fab"/);
 
   const latte = state.catalog.items.find((i) => i.name === 'لاتيه');
+  // النقر على الصنف يضيفه بالشكل القياسي مباشرة، والتفاصيل بالضغط على سطره
   await runAction('pos-item', el({ id: latte.id }));
+  assert.equal(state.modal, null, 'لا نافذة عند اختيار الصنف');
+  assert.equal(state.pos.cart.lines.length, 1);
+  assert.equal(state.pos.cart.lines[0].variantId, latte.variants[0].id, 'الحجم القياسي');
+  assert.equal(state.pos.cart.lines[0].modifiers.length, 1, 'الحليب الإلزامي مختار تلقائياً');
+  await runAction('pos-line', el({ key: state.pos.cart.lines[0].key }));
   assert.equal(state.modal.type, 'item');
   assert.equal(state.modal.options.length, 1, 'الحليب الإلزامي مختار مسبقاً');
   html = screen(); clean(html, 'نافذة الصنف');
@@ -93,6 +104,7 @@ test('شاشة الرمز ثم الكاشير: طلب بإضافات وخصم و
   await runAction('item-qty', el({ d: '1' }));
   assert.equal(state.modal.options.length, 2, 'الحليب الواحد استُبدل لا أُضيف');
   await runAction('item-save');
+  assert.equal(state.pos.cart.lines.length, 1, 'التعديل يستبدل السطر نفسه');
   const water = state.catalog.items.find((i) => i.name === 'ماء');
   await runAction('pos-item', el({ id: water.id }));
   await runAction('pos-item', el({ id: water.id }));

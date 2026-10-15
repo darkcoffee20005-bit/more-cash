@@ -182,7 +182,9 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .rail {
   background: var(--brand-900); color: var(--on-brand-muted); display: flex; flex-direction: column; align-items: stretch; gap: 4px;
   padding: 12px 8px max(12px, env(safe-area-inset-bottom, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px));
+  min-height: 0; overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain;
 }
+.rail::-webkit-scrollbar { display: none; }
 .rail .mark { margin: 0 auto 14px; width: 46px; height: 46px; }
 .rail a {
   display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 2px; border-radius: var(--r-md);
@@ -247,12 +249,29 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .ticket-meta select { min-height: 38px; width: auto; padding: 0 10px; font-size: .9rem; border-radius: var(--r-sm); }
 .customer-chip { min-height: 38px; border-radius: var(--r-sm); border: 1px dashed var(--line-strong); background: transparent; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; }
 .customer-chip.set { border-style: solid; background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600; }
-.lines { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
-.line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); align-items: start; cursor: pointer; }
+.lines { flex: 1; min-height: 0; overflow: hidden; margin: 0; padding: 0; list-style: none; }
+/* نافذة الطلب لا تُمرَّر: صفوف مضغوطة، ثم تُطوى الأسطر الأقدم في سطر "+N" (fitLines) */
+.lines [hidden] { display: none !important; }
+.lines.dense .line { padding-top: 6px; padding-bottom: 6px; }
+.lines.dense .l-sub { display: none; }
+.more-lines { padding: 8px 14px; font-size: .85rem; font-weight: 600; color: var(--primary); background: var(--brand-100); cursor: pointer; text-align: center; }
+.line.flash { animation: flash .7s ease; }
+@keyframes flash { from { background: var(--brand-100); } to { background: transparent; } }
+/* إخفاء نافذة الطلب: الأصناف بعرض الشاشة وزر عائم لإعادتها */
+.pos.ticket-hidden { grid-template-columns: minmax(0, 1fr) !important; }
+.pos.ticket-hidden > .ticket, .pos.ticket-hidden > .splitter { display: none; }
+.pos { position: relative; }
+.ticket-fab { position: absolute; z-index: 5; bottom: max(16px, env(safe-area-inset-bottom, 0px)); inset-inline-start: 16px; display: inline-flex; align-items: center; gap: 10px;
+  min-height: 60px; padding: 0 20px; border-radius: 999px; border: none; background: var(--primary); color: #fff; font-weight: 700; font-size: 1.05rem; box-shadow: var(--shadow-2); }
+.ticket-fab .fab-count { min-width: 28px; height: 28px; padding: 0 8px; border-radius: 999px; background: #fff; color: var(--primary); display: grid; place-items: center; font-size: .9rem; }
+.ticket-fab .muted-on { opacity: .75; font-weight: 500; }
+.ticket-fab:active { transform: scale(.97); }
+.pos.ticket-hidden .tiles { padding-bottom: 96px; }
+.line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); align-items: start; cursor: pointer; }
 .line:hover { background: var(--surface-2); }
 .line .qty-badge { min-width: 30px; height: 30px; border-radius: 8px; background: var(--surface-3); display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums; font-size: .9rem; }
 .line .l-name { font-weight: 600; }
-.line .l-sub { font-size: .82rem; color: var(--muted); }
+.line .l-sub { font-size: .8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .line .l-disc { font-size: .8rem; color: var(--accent); }
 .line .l-total { font-family: var(--font-display); text-align: end; }
 .line .l-total s { display: block; font-size: .78rem; color: var(--muted); }

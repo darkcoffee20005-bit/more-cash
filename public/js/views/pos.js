@@ -3,7 +3,7 @@ import { calculateTicket, unitPrice } from '../../../shared/calc.js';
 import { esc, money, parseAmount, pct, time } from '../../../shared/format.js';
 import { del, get, post, uid } from '../api.js';
 import { icon } from '../icons.js';
-import { busy, can, closeModal, fail, field, modalFrame, on, openModal, render, set, state, toast } from '../ui.js';
+import { busy, can, closeModal, fail, field, modalFrame, on, onRendered, openModal, render, set, state, toast } from '../ui.js';
 import { printReceipt } from './receipts.js';
 
 // ---------------------------------------------------------------- البيانات
@@ -13,7 +13,7 @@ export async function loadBootstrap() {
   state.catalog = b.catalog;
   state.shift = b.shift;
   state.ticketsCount = b.ticketsCount;
-  if (!state.pos) state.pos = { categoryId: null, search: '', cart: emptyCart(), ticketW: loadTicketW() };
+  if (!state.pos) state.pos = { categoryId: null, search: '', cart: emptyCart(), ticketW: loadTicketW(), ticketHidden: loadTicketHidden() };
 }
 
 function emptyCart() {
@@ -53,6 +53,14 @@ function saveTicketW(v) {
 function clampTicketW(pos, w) {
   return Math.round(Math.max(TICKET_MIN, Math.min(w, pos.getBoundingClientRect().width - 340)));
 }
+const HIDDEN_KEY = 'morecash.ticketHidden';
+function loadTicketHidden() {
+  try { return localStorage.getItem(HIDDEN_KEY) === '1'; } catch { return false; }
+}
+function saveTicketHidden(v) {
+  try { if (v) localStorage.setItem(HIDDEN_KEY, '1'); else localStorage.removeItem(HIDDEN_KEY); } catch { /* تخزين غير متاح */ }
+}
+
 // بعد تدوير الشاشة لا يتجاوز العرض المحفوظ ما يترك للأصناف 340 بكسل
 const ticketWidthCss = (w) => `min(${w}px, calc(100% - 354px))`;
 function setTicketW(pos, w) {
@@ -60,7 +68,32 @@ function setTicketW(pos, w) {
   if (w) pos.style.setProperty('--ticket-w', ticketWidthCss(w)); else pos.style.removeProperty('--ticket-w');
 }
 
+/** إن لم تتسع الأسطر: أولاً وضع مضغوط، ثم تُطوى الأسطر الأقدم في سطر "+N" يفتح الطلب كاملاً */
+function fitLines() {
+  const ul = document.querySelector('.ticket .lines');
+  const more = ul?.querySelector('.more-lines');
+  if (!ul || !more) return;
+  const rows = [...ul.querySelectorAll('.line')];
+  ul.classList.remove('dense');
+  more.hidden = true;
+  for (const r of rows) r.hidden = false;
+  if (ul.scrollHeight <= ul.clientHeight + 1) return;
+  ul.classList.add('dense');
+  if (ul.scrollHeight <= ul.clientHeight + 1) return;
+  more.hidden = false;
+  let folded = 0;
+  for (const r of rows.slice(0, -1)) {
+    if (ul.scrollHeight <= ul.clientHeight + 1) break;
+    r.hidden = true;
+    folded += Number(r.querySelector('.qty-badge')?.textContent) || 1;
+    more.textContent = `+${folded} قطعة أخرى في الطلب — اضغط لعرض الكل`;
+  }
+}
+
 if (typeof document !== 'undefined') {
+  onRendered(fitLines);
+  onRendered(() => { if (state.pos?.flashKey) { const k = state.pos.flashKey; setTimeout(() => { if (state.pos.flashKey === k) state.pos.flashKey = null; }, 700); } });
+  window.addEventListener('resize', fitLines);
   document.addEventListener('pointerdown', (e) => {
     const bar = e.target.closest?.('.splitter');
     if (!bar) return;
@@ -104,7 +137,8 @@ export const routes = {
     if (!s.catalog) return '<div class="page"><p class="muted">جارٍ تحميل القائمة…</p></div>';
     if (!s.shift) return shiftGate();
     const w = s.pos.ticketW;
-    return `<div class="pos" ${w ? `style="--ticket-w:${ticketWidthCss(w)}"` : ''}>${catalogPane(s)}
+    return `<div class="pos ${s.pos.ticketHidden ? 'ticket-hidden' : ''}" ${w ? `style="--ticket-w:${ticketWidthCss(w)}"` : ''}>${catalogPane(s)}
+      ${s.pos.ticketHidden ? ticketFab(s) : ''}
       <div class="splitter" role="separator" aria-orientation="vertical" aria-label="اسحب لتغيير حجم نافذة الطلب" tabindex="0" title="اسحب لتغيير الحجم · نقرتان للحجم الافتراضي"><span></span></div>
       ${ticketPane(s)}</div>`;
   },
@@ -147,6 +181,14 @@ function catalogPane(s) {
   </section>`;
 }
 
+function ticketFab(s) {
+  const cart = s.pos.cart;
+  const count = cart.lines.reduce((a, l) => a + l.qty, 0);
+  return `<button class="ticket-fab" data-action="ticket-toggle" aria-label="فتح نافذة الطلب">
+    ${icon('sale', 'sm')}<span>${cart.ticket ? esc(cart.ticket.name) : 'الطلب'}</span>
+    ${count ? `<span class="fab-count">${count}</span><b class="num">${money(safeTotals().total)}</b>` : '<span class="muted-on">فارغ</span>'}</button>`;
+}
+
 const lowKey = (list) => list.map((x) => `${x.variantId}:${x.out ? 0 : 1}`).join(',');
 
 function lowBanner(s) {
@@ -183,7 +225,7 @@ function ticketPane(s) {
     const calc = t.lines[i];
     const sub = [l.variantName, ...l.modifiers.map((m) => m.name)].filter(Boolean).join(' · ');
     const discounted = calc && calc.discount > 0 && l.discountIds.length;
-    return `<li class="line" data-action="pos-line" data-key="${l.key}" role="button" tabindex="0">
+    return `<li class="line ${s.pos.flashKey === l.key ? 'flash' : ''}" data-action="pos-line" data-key="${l.key}" role="button" tabindex="0">
       <span class="qty-badge">${l.qty}</span>
       <div><div class="l-name">${esc(l.itemName)}</div>${sub ? `<div class="l-sub">${esc(sub)}</div>` : ''}
         ${l.note ? `<div class="l-sub">✎ ${esc(l.note)}</div>` : ''}
@@ -201,13 +243,14 @@ function ticketPane(s) {
         <span class="spacer"></span>
         ${s.settings.features.openTickets && can('pos.tickets') ? `<button class="btn sm" data-action="pos-tickets">${icon('ticket', 'sm')} التذاكر${s.ticketsCount ? ` (${s.ticketsCount})` : ''}</button>` : ''}
         <button class="icon-btn" data-action="pos-clear" title="مسح الطلب" ${cart.lines.length ? '' : 'disabled'}>${icon('trash', 'sm')}</button>
+        <button class="icon-btn" data-action="ticket-toggle" title="إخفاء نافذة الطلب" aria-label="إخفاء نافذة الطلب">${icon('arrow', 'sm')}</button>
       </div>
       <div class="ticket-meta">
         <select id="pos-dining" data-change="pos-dining" aria-label="نوع الطلب">${dining.map((d) => `<option value="${d.id}" ${cart.diningOption === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select>
         <button class="customer-chip ${customer ? 'set' : ''}" data-action="pos-customer">${icon('user', 'sm')} ${customer ? `${esc(customer.name)} · ${customer.points} نقطة` : 'إضافة عميل'}</button>
       </div>
     </div>
-    <ul class="lines" data-keep-scroll="lines">${lines || `<li class="empty">${icon('cup')}<p>اختر مشروباً لبدء الطلب</p></li>`}</ul>
+    <ul class="lines">${lines ? `<li class="more-lines" data-action="pos-all-lines" hidden></li>${lines}` : `<li class="empty">${icon('cup')}<p>اختر مشروباً لبدء الطلب</p></li>`}</ul>
     <div class="totals">
       <div class="t-row"><span>المجموع</span><span class="num">${money(t.gross)}</span></div>
       ${t.lineDiscount || t.ticketDiscount ? `<div class="t-row disc"><span>الخصم${ticketDiscNames.length ? ` (${esc(ticketDiscNames.join('، '))})` : ''}</span><span class="num">−${money(t.lineDiscount + t.ticketDiscount)}</span></div>` : ''}
@@ -236,6 +279,7 @@ export const modals = {
     const chosen = groups.flatMap((g) => g.options.filter((o) => m.options.includes(o.id)));
     const unit = unitPrice(variant.price, chosen.map((o) => o.price));
     const missing = groups.filter((g) => g.required && !g.options.some((o) => m.options.includes(o.id)));
+    const discounts = s.catalog.discounts.filter((d) => !d.restricted || can('pos.discount_restricted'));
     const body = `
       ${item.variants.length > 1 ? `<div class="opt-group"><h3>الحجم</h3><div class="opts">${item.variants.map((v) => `
         <button class="opt ${v.id === variant.id ? 'on' : ''}" data-action="item-variant" data-id="${v.id}">
@@ -245,27 +289,22 @@ export const modals = {
           <span>${esc(o.name)}</span><small>${o.price ? `+${money(o.price)}` : 'بلا إضافة'}</small></button>`).join('')}</div></div>`).join('')}
       <div class="row wrap"><h3 style="margin-inline-end:auto">الكمية</h3>
         <div class="stepper"><button data-action="item-qty" data-d="-1" aria-label="إنقاص">−</button><span>${m.qty}</span><button data-action="item-qty" data-d="1" aria-label="زيادة">+</button></div></div>
-      ${field('ملاحظة للباريستا', `<input id="item-note" maxlength="120" value="${esc(m.note ?? '')}" data-input="item-note" placeholder="مثلاً: حار جداً، بدون رغوة">`)}`;
+      ${field('ملاحظة للباريستا', `<input id="item-note" maxlength="120" value="${esc(m.note ?? '')}" data-input="item-note" placeholder="مثلاً: حار جداً، بدون رغوة">`)}
+      ${m.lineKey && can('pos.discount') && discounts.length ? `<div class="opt-group"><h3>خصم على هذا الصنف</h3><div class="opts">${discounts.map((d) => `
+        <button class="opt ${m.discountIds.includes(d.id) ? 'on' : ''}" data-action="item-discount" data-id="${d.id}"><span>${esc(d.name)}</span><small>${discountLabel(d)}${d.restricted ? ' · مقيد' : ''}</small></button>`).join('')}</div></div>` : ''}`;
     const foot = `${m.lineKey ? `<button class="btn danger" data-action="item-remove">${icon('trash', 'sm')} حذف</button>` : ''}
       <button class="btn primary lg" data-action="item-save" ${missing.length ? 'disabled' : ''}>${missing.length ? `اختر ${esc(missing[0].name)}` : `${m.lineKey ? 'حفظ' : 'إضافة'} · ${money(unit * m.qty)}`}</button>`;
     return modalFrame({ title: item.name, body, foot, cls: 'wide' });
   },
 
-  line(s) {
-    const line = s.pos.cart.lines.find((l) => l.key === s.modal.key);
-    if (!line) return '';
-    const item = itemById(line.itemId);
-    const editable = item && (item.variants.length > 1 || item.modifierIds.length);
-    const discounts = s.catalog.discounts.filter((d) => !d.restricted || can('pos.discount_restricted'));
-    const body = `
-      <div class="row wrap"><h3 style="margin-inline-end:auto">الكمية</h3>
-        <div class="stepper"><button data-action="line-qty" data-d="-1">−</button><span>${line.qty}</span><button data-action="line-qty" data-d="1">+</button></div></div>
-      ${field('ملاحظة', `<input id="line-note" maxlength="120" value="${esc(line.note ?? '')}" data-input="line-note">`)}
-      ${can('pos.discount') && discounts.length ? `<div class="opt-group"><h3>خصم على هذا الصنف</h3><div class="opts">${discounts.map((d) => `
-        <button class="opt ${line.discountIds.includes(d.id) ? 'on' : ''}" data-action="line-discount" data-id="${d.id}"><span>${esc(d.name)}</span><small>${discountLabel(d)}${d.restricted ? ' · مقيد' : ''}</small></button>`).join('')}</div></div>` : ''}
-      ${editable ? `<button class="btn" data-action="line-edit">${icon('edit', 'sm')} تغيير الحجم أو الإضافات</button>` : ''}`;
-    return modalFrame({ title: line.itemName, sub: esc([line.variantName, ...line.modifiers.map((m) => m.name)].filter(Boolean).join(' · ')), body,
-      foot: `<button class="btn danger" data-action="line-remove">${icon('trash', 'sm')} حذف الصنف</button><button class="btn primary" data-action="close-modal">تم</button>` });
+  'all-lines'(s) {
+    const t = safeTotals();
+    const rows = s.pos.cart.lines.map((l, i) => `<tr class="click" data-action="pos-line" data-key="${l.key}"><td class="num">${l.qty}×</td>
+      <td><b>${esc(l.itemName)}</b><div class="muted small">${esc([l.variantName, ...l.modifiers.map((x) => x.name)].filter(Boolean).join(' · '))}</div></td>
+      <td class="num">${money(t.lines[i] ? t.lines[i].gross - t.lines[i].discount : lineUnit(l) * l.qty)}</td></tr>`).join('');
+    return modalFrame({ title: `الطلب · ${s.pos.cart.lines.reduce((a, l) => a + l.qty, 0)} قطعة`, cls: 'wide',
+      body: `<div class="table-wrap"><table><tbody>${rows}</tbody></table></div><p class="muted small">اضغط على صنف لتعديل حجمه أو إضافاته.</p>`,
+      foot: `<button class="btn primary" data-action="close-modal">تم</button>` });
   },
 
   discounts(s) {
@@ -390,8 +429,9 @@ function addToCart(line) {
   const cart = state.pos.cart;
   const same = cart.lines.find((l) => l.variantId === line.variantId && !l.note && !line.note && !l.discountIds.length
     && l.modifiers.map((m) => m.id).sort().join() === line.modifiers.map((m) => m.id).sort().join());
-  if (same) same.qty += line.qty;
-  else cart.lines.push(line);
+  if (same) { same.qty += line.qty; return same.key; }
+  cart.lines.push(line);
+  return line.key;
 }
 
 function defaultOptions(item) {
@@ -408,13 +448,17 @@ on({
   }),
   'pos-search': (el) => { state.pos.search = el.value; render(); },
   'pos-cat': (el) => { state.pos.categoryId = el.dataset.id || null; state.pos.search = ''; render(); },
+  // النقر على الصنف يضيفه بالشكل القياسي (أول حجم + الخيارات الافتراضية) مباشرة؛ التفاصيل والإضافات بالضغط على سطره في الطلب
   'pos-item': (el) => {
     const item = itemById(el.dataset.id);
-    if (item.variants.length === 1 && item.modifierIds.length === 0) {
-      addToCart(cartLineFrom({ item, variant: item.variants[0], optionIds: [], qty: 1 }));
-      return render();
+    const options = defaultOptions(item);
+    const groups = item.modifierIds.map(modifierById).filter(Boolean);
+    if (groups.some((g) => g.required && !g.options.some((o) => options.includes(o.id)))) {
+      return openModal({ type: 'item', itemId: item.id, variantId: item.variants[0].id, options, qty: 1, note: '' });
     }
-    return openModal({ type: 'item', itemId: item.id, variantId: item.variants[0].id, options: defaultOptions(item), qty: 1, note: '' });
+    const line = cartLineFrom({ item, variant: item.variants[0], optionIds: options, qty: 1 });
+    state.pos.flashKey = addToCart(line);
+    return render();
   },
   'item-variant': (el) => { state.modal.variantId = el.dataset.id; render(); },
   'item-option': (el) => {
@@ -437,28 +481,23 @@ on({
     const cart = state.pos.cart;
     if (m.lineKey) {
       const idx = cart.lines.findIndex((l) => l.key === m.lineKey);
-      cart.lines[idx] = cartLineFrom({ item, variant, optionIds: m.options, qty: m.qty, note: m.note, discountIds: cart.lines[idx].discountIds, key: m.lineKey });
+      cart.lines[idx] = cartLineFrom({ item, variant, optionIds: m.options, qty: m.qty, note: m.note, discountIds: m.discountIds ?? cart.lines[idx].discountIds, key: m.lineKey });
     } else addToCart(cartLineFrom({ item, variant, optionIds: m.options, qty: m.qty, note: m.note }));
     closeModal();
   },
   'item-remove': () => { state.pos.cart.lines = state.pos.cart.lines.filter((l) => l.key !== state.modal.lineKey); closeModal(); },
-  'pos-line': (el) => openModal({ type: 'line', key: el.dataset.key }),
-  'line-qty': (el) => {
-    const line = state.pos.cart.lines.find((l) => l.key === state.modal.key);
-    line.qty = Math.max(1, Math.min(999, line.qty + Number(el.dataset.d)));
+  'pos-line': (el) => {
+    const line = state.pos.cart.lines.find((l) => l.key === el.dataset.key);
+    if (!line || !itemById(line.itemId)) return undefined;
+    return openModal({ type: 'item', itemId: line.itemId, variantId: line.variantId, options: line.modifiers.map((m) => m.id), qty: line.qty, note: line.note, lineKey: line.key, discountIds: [...line.discountIds] });
+  },
+  'item-discount': (el) => {
+    const m = state.modal;
+    m.discountIds = m.discountIds.includes(el.dataset.id) ? m.discountIds.filter((d) => d !== el.dataset.id) : [...m.discountIds, el.dataset.id];
     render();
   },
-  'line-note': (el) => { const line = state.pos.cart.lines.find((l) => l.key === state.modal.key); line.note = el.value.slice(0, 120); },
-  'line-discount': (el) => {
-    const line = state.pos.cart.lines.find((l) => l.key === state.modal.key);
-    line.discountIds = line.discountIds.includes(el.dataset.id) ? line.discountIds.filter((d) => d !== el.dataset.id) : [...line.discountIds, el.dataset.id];
-    render();
-  },
-  'line-remove': () => { state.pos.cart.lines = state.pos.cart.lines.filter((l) => l.key !== state.modal.key); closeModal(); },
-  'line-edit': () => {
-    const line = state.pos.cart.lines.find((l) => l.key === state.modal.key);
-    openModal({ type: 'item', itemId: line.itemId, variantId: line.variantId, options: line.modifiers.map((m) => m.id), qty: line.qty, note: line.note, lineKey: line.key });
-  },
+  'pos-all-lines': () => openModal({ type: 'all-lines' }),
+  'ticket-toggle': () => { state.pos.ticketHidden = !state.pos.ticketHidden; saveTicketHidden(state.pos.ticketHidden); render(); },
   'pos-discounts': () => openModal({ type: 'discounts' }),
   'ticket-discount': (el) => {
     const cart = state.pos.cart;
