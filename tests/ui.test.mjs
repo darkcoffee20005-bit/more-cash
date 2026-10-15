@@ -320,11 +320,12 @@ test('المدير: استرجاع جزئي، إغلاق وردية، ولوحة
   // الإعدادات: تفعيل ضريبة مضافة 10% ثم إعادتها
   await go('#/admin/settings');
   const st = state.view.admin.settings;
-  const form = { name: st.name, address: '', phone: '', header: '', footer: 'شكراً', showCustomer: true, taxMode: 'added', taxRate: '10', taxName: 'ضريبة',
+  const form = { name: st.name, address: '', phone: '', reportPhone: '0770 123 4567', header: '', footer: 'شكراً', showCustomer: true, taxMode: 'added', taxRate: '10', taxName: 'ضريبة',
     loyaltyEnabled: true, loyaltyRate: '5', cashVarianceAlert: '1000', dining: 'محلي، سفري', kds: true, openTickets: true };
   st.paymentTypes.forEach((p, i) => { form[`pt_name_${i}`] = p.name; form[`pt_kind_${i}`] = p.kind; form[`pt_active_${i}`] = p.active; });
   await runAction('settings-save', el(), {}, form);
   assert.equal(state.settings.tax.rateBp, 1000);
+  assert.equal(state.settings.reportPhone, '9647701234567', 'رقم واتساب بصيغة دولية');
   assert.equal(state.settings.diningOptions.length, 2);
 
   // إغلاق الوردية
@@ -332,6 +333,12 @@ test('المدير: استرجاع جزئي، إغلاق وردية، ولوحة
   const expected = state.view.shift.live.expectedCash;
   await runAction('shift-close', el(), {}, { actualCash: String(expected), note: '' });
   assert.equal(state.shift, null);
+  assert.equal(state.modal.type, 'shift-report', 'تقرير الوردية جاهز للإرسال بعد الإغلاق');
+  const report = screen();
+  clean(report, 'تقرير الوردية');
+  assert.match(report, /href="https:\/\/wa\.me\/9647701234567\?text=/);
+  assert.match(decodeURIComponent(report.match(/text=([^"]+)/)[1]), /صافي المبيعات/);
+  await runAction('shift-report-close');
   await go('#/pos');
   assert.match(text(screen()), /فتح وردية جديدة/);
   clean(screen(), 'بوابة الوردية');

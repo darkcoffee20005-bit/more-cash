@@ -275,6 +275,7 @@ const PAGES = {
       <form class="stack" data-form="settings-save">
         <section class="card pad stack"><h2>المقهى والإيصال</h2>
           <div class="grid-3">${field('الاسم', `<input name="name" id="st-name" required value="${esc(st.name)}">`)}${field('العنوان', `<input name="address" id="st-address" value="${esc(st.address)}">`)}${field('الهاتف', `<input name="phone" id="st-phone" dir="ltr" value="${esc(st.phone)}">`)}</div>
+          ${field('واتساب لاستلام تقرير الوردية', `<input name="reportPhone" id="st-report-phone" dir="ltr" inputmode="tel" value="${esc(st.reportPhone ?? '')}" placeholder="07701234567">`, 'عند إغلاق كل وردية يظهر زر يرسل التقرير لهذا الرقم على واتساب')}
           <div class="grid-2">${field('ترويسة الإيصال', `<input name="header" id="st-header" value="${esc(st.receipt.header)}">`)}${field('تذييل الإيصال', `<input name="footer" id="st-footer" value="${esc(st.receipt.footer)}">`)}</div>
           <label class="check"><input type="checkbox" name="showCustomer" ${st.receipt.showCustomer ? 'checked' : ''}> إظهار اسم العميل على الإيصال</label></section>
         <section class="card pad stack"><h2>الضريبة والولاء والنقد</h2>
@@ -853,7 +854,7 @@ on({
     const st = A().settings;
     const names = String(d.dining).split(/[،,]/).map((x) => x.trim()).filter(Boolean);
     const body = {
-      name: d.name, address: d.address, phone: d.phone,
+      name: d.name, address: d.address, phone: d.phone, reportPhone: d.reportPhone ?? '',
       receipt: { header: d.header, footer: d.footer, showCustomer: d.showCustomer },
       tax: { mode: d.taxMode, rateBp: d.taxMode === 'none' ? 0 : percentToBp(d.taxRate), name: d.taxName || 'ضريبة' },
       loyalty: { enabled: d.loyaltyEnabled, rateBp: percentToBp(d.loyaltyRate) },

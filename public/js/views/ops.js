@@ -3,6 +3,7 @@ import { dateTime, esc, money, parseAmount, time } from '../../../shared/format.
 import { get, post, uid } from '../api.js';
 import { icon } from '../icons.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
+import { printHtml } from './receipts.js';
 
 const PREP = { new: ['جديد', 'بدء التحضير'], preparing: ['قيد التحضير', 'جاهز'], ready: ['جاهز للتسليم', 'تم التسليم'] };
 const LATE_MIN = 8;
@@ -92,7 +93,48 @@ export const routes = {
   },
 };
 
+// ---------------------------------------------------------------- تقرير الوردية (يُرسل لصاحب المقهى)
+export function shiftReportText(x) {
+  const sm = x.summary ?? {};
+  const tz = state.settings?.tzOffsetMin ?? 180;
+  const lines = [
+    `🧾 تقرير الوردية #${x.number} — ${state.settings?.name ?? ''}`,
+    `فتح: ${dateTime(x.openedAt, tz)} (${x.openedByName ?? ''})`,
+    `إغلاق: ${dateTime(x.closedAt, tz)} (${x.closedByName ?? ''})`, '',
+    `صافي المبيعات: ${money(sm.net)} — ${sm.salesCount} إيصال`,
+    ...(sm.refundsCount ? [`المرتجعات: ${money(sm.refunds)} (${sm.refundsCount})`] : []),
+    ...(sm.discounts ? [`الخصومات: ${money(sm.discounts)}`] : []),
+    ...(sm.byPayment ?? []).map((p) => `• ${p.label}: ${money(p.net)}`), '',
+    '💵 الدرج:', `بداية: ${money(sm.startingCash)}`, `مبيعات نقدية: ${money(sm.cashSales)}`,
+    ...(sm.cashRefunds ? [`استرجاع نقدي: ${money(sm.cashRefunds)}`] : []),
+    ...(sm.payIn ? [`إدخال: ${money(sm.payIn)}`] : []), ...(sm.payOut ? [`سحب/مصروف: ${money(sm.payOut)}`] : []),
+    `المتوقع: ${money(sm.expectedCash)}`, `الفعلي: ${money(x.actualCash)}`,
+    `${x.difference === 0 ? '✅' : '⚠️'} الفرق: ${money(x.difference, { sign: true })}`,
+    ...(x.note ? [`ملاحظة: ${x.note}`] : []),
+  ];
+  return lines.join('\n');
+}
+
+function shiftReportHtml(x) {
+  return `<div class="paper80"><div class="c big">${esc(state.settings?.name ?? '')}</div>${shiftReportText(x).split('\n').map((l) => (l ? `<div>${esc(l)}</div>` : '<hr>')).join('')}</div>`;
+}
+
 export const modals = {
+  'shift-report'(s) {
+    const x = s.modal.shift;
+    const phone = s.settings?.reportPhone;
+    const wa = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(shiftReportText(x))}` : null;
+    return modalFrame({ title: `أُغلقت الوردية #${x.number}`, body: `
+      <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="kpi"><span class="label">صافي المبيعات</span><b>${money(x.summary?.net ?? 0)}</b></div>
+        <div class="kpi"><span class="label">النقد الفعلي</span><b>${money(x.actualCash)}</b></div>
+        <div class="kpi"><span class="label">الفرق</span><b style="color:${x.difference === 0 ? 'var(--ok)' : 'var(--bad)'}">${money(x.difference, { sign: true })}</b></div></div>
+      ${wa ? `<a class="btn primary lg block" href="${wa}" target="_blank" rel="noopener">${icon('arrow', 'sm')} إرسال التقرير على واتساب</a>`
+        : `<p class="muted small">${can('admin.settings') ? 'أضف رقم واتساب في الإعدادات ليُرسل التقرير بضغطة واحدة.' : 'لم يُضبط رقم واتساب للتقرير بعد (من الإعدادات).'}</p>`}
+      <div class="row"><button class="btn" style="flex:1" data-action="shift-report-share">مشاركة</button><button class="btn" style="flex:1" data-action="shift-report-print">${icon('print', 'sm')} طباعة</button></div>`,
+      foot: '<button class="btn" data-action="shift-report-close">تم</button>' });
+  },
+
   'cash-move'(s) {
     const t = s.modal.moveType;
     return modalFrame({ title: t === 'pay_in' ? 'إدخال نقد للدرج' : 'سحب نقد من الدرج', body: `<form class="stack" data-form="cash-move-submit">
@@ -154,7 +196,22 @@ on({
     state.view.shift = null;
     state.view.shiftCounted = '';
     toast(`أُغلقت الوردية. الفرق ${money(closed.difference, { sign: true })}`, closed.difference === 0 ? 'ok' : '');
+    // تقرير الوردية جاهز للإرسال لصاحب المقهى (واتساب/مشاركة/طباعة)
+    openModal({ type: 'shift-report', shift: closed });
   }),
+  'shift-report-share': async () => {
+    const text = shiftReportText(state.modal.shift);
+    if (navigator.share) {
+      try { await navigator.share({ title: 'تقرير الوردية', text }); } catch (e) { if (e?.name !== 'AbortError') toast('تعذرت المشاركة', 'bad'); }
+      return;
+    }
+    try { await navigator.clipboard.writeText(text); toast('نُسخ التقرير', 'ok'); } catch { toast('تعذر النسخ', 'bad'); }
+  },
+  'shift-report-print': () => printHtml(shiftReportHtml(state.modal.shift), 'معاينة تقرير الوردية'),
+  'shift-report-close': () => {
+    state.modal = null;
+    render();
+  },
   'customers-search': (el) => {
     const v = state.view.customers;
     v.search = el.value;

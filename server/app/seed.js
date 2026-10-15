@@ -5,6 +5,7 @@ export const DEFAULT_SETTINGS = {
   name: 'مقهاي',
   address: '',
   phone: '',
+  reportPhone: '',
   currency: 'IQD',
   tzOffsetMin: 180,
   tax: { mode: 'none', rateBp: 0, name: 'ضريبة' },

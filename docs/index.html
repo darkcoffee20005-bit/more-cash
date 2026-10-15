@@ -415,6 +415,8 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
 .alert-low a { color: inherit; font-weight: 700; }
 @media (max-width: 700px) { .rcv-row { grid-template-columns: 1fr 1fr auto; } .rcv-row select { grid-column: 1 / -1; } }
 
+tr.audit-warn td:nth-child(3) b { color: var(--warn); }
+
 /* تنبيه المخزون على شاشة البيع */
 .low-banner { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 12px; border-radius: var(--r-md); background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
 .low-banner.has-out { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
@@ -1060,6 +1062,8 @@ async function ensureIndexes(db) {
     ix('tickets', t({ updatedAt: -1 }), { name: 'by_updated' }),
     ix('sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
     ix('audit', t({ at: -1 }), { name: 'by_date' }),
+    ix('expenses', t({ day: -1 }), { name: 'by_day' }),
+    ix('expenses', t({ clientId: 1 }), { unique: true, name: 'uniq_client_id' }),
   ]);
 }
 
@@ -1370,6 +1374,7 @@ const DEFAULT_SETTINGS = {
   name: 'مقهاي',
   address: '',
   phone: '',
+  reportPhone: '',
   currency: 'IQD',
   tzOffsetMin: 180,
   tax: { mode: 'none', rateBp: 0, name: 'ضريبة' },
@@ -1625,7 +1630,7 @@ function publicEmployee(emp) {
   return { ...o, roleName: ROLES[emp.role], permissions: permissionsOf(emp.role) };
 }
 
-const settingsKeys = ['name', 'address', 'phone', 'tax', 'loyalty', 'paymentTypes', 'diningOptions', 'features', 'receipt', 'cashVarianceAlert'];
+const settingsKeys = ['name', 'address', 'phone', 'reportPhone', 'tax', 'loyalty', 'paymentTypes', 'diningOptions', 'features', 'receipt', 'cashVarianceAlert'];
 
 function createSettings(ctx) {
   const { db, now } = ctx;
@@ -1644,6 +1649,14 @@ function createSettings(ctx) {
     if ('name' in input) set.name = str(input.name, { field: 'name', min: 2, max: 60 });
     if ('address' in input) set.address = str(input.address, { field: 'address', max: 120 });
     if ('phone' in input) set.phone = str(input.phone, { field: 'phone', max: 30 });
+    if ('reportPhone' in input) {
+      // رقم واتساب لاستلام تقرير الوردية: يُخزَّن بصيغة دولية بأرقام فقط (07… العراقية → 9647…)
+      let d = normalizePin(String(input.reportPhone ?? '')).replace(/\D/g, '');
+      if (d.startsWith('00')) d = d.slice(2);
+      if (/^07\d{9}$/.test(d)) d = `964${d.slice(1)}`;
+      if (d && !/^\d{8,15}$/.test(d)) throw bad('INVALID_PHONE', 'reportPhone');
+      set.reportPhone = d;
+    }
     if ('tax' in input) {
       const mode = oneOf(input.tax?.mode, ['none', 'added', 'included'], 'tax.mode');
       const rateBp = mode === 'none' ? 0 : input.tax.rateBp;
@@ -2150,6 +2163,13 @@ function createCatalog(ctx) {
       // الأحجام المحذوفة تُعطَّل ولا تُحذف
       const removed = existingVariants.filter((e) => !variants.some((v) => v._id === e._id)).map((e) => e._id);
       if (removed.length) await C('variants').updateMany({ _id: { $in: removed } }, { $set: { active: false } });
+      // سجل العمليات: الأصناف الجديدة وتغييرات الأسعار (أكثر ما يهم المالك مراقبته)
+      const priceChanges = variants.map((v) => {
+        const old = existingVariants.find((e) => e._id === v._id);
+        return old && old.price !== v.price ? { variant: v.name, from: old.price, to: v.price } : null;
+      }).filter(Boolean);
+      if (!input.id) await audit({ ...ctx, actor }, 'item.create', { name: item.name });
+      else if (priceChanges.length || removed.length) await audit({ ...ctx, actor }, 'item.update', { name: item.name, priceChanges, removedSizes: removed.length });
       return getItem(itemId);
     }, 'NAME_OR_SKU_IN_USE');
   }
@@ -2542,7 +2562,12 @@ function createReports(ctx) {
     requirePerm(actor, 'admin.reports');
     const r = await range(from, to);
     const receipts = await receiptsIn(r.from, r.to);
-    return { from, to, ...buildReport(receipts, { tzOffsetMin: r.settings.tzOffsetMin }) };
+    const rep = buildReport(receipts, { tzOffsetMin: r.settings.tzOffsetMin });
+    const exp = await ctx.expenses.totalBetween(from, to);
+    // صافي الربح = الربح الإجمالي − المصروفات
+    rep.summary.expenses = exp.total;
+    rep.summary.netProfit = rep.summary.profit - exp.total;
+    return { from, to, ...rep };
   }
 
   /** تقرير يوم واحد للمشاركة أو الطباعة: المبيعات + الموارد المصروفة (من دفتر المخزون) + النواقص */
@@ -2571,8 +2596,12 @@ function createReports(ctx) {
     });
     const consumption = rows.filter((x) => x.used || x.loss)
       .sort((a, b) => Number(b.ingredient) - Number(a.ingredient) || b.cost - a.cost || a.name.localeCompare(b.name, 'ar'));
+    const exp = await ctx.expenses.totalBetween(date, date);
+    rep.summary.expenses = exp.total;
+    rep.summary.netProfit = rep.summary.profit - exp.total;
     return {
       date, shopName: r.settings.name, summary: rep.summary, byPayment: rep.byPayment, byItem: rep.byItem,
+      expenses: exp.rows.map((x) => ({ amount: x.amount, category: x.category, note: x.note ?? null })),
       consumption, consumptionCost: consumption.reduce((a, x) => a + x.cost, 0),
       lowStock: rows.filter((x) => x.low).sort((a, b) => a.name.localeCompare(b.name, 'ar')),
     };
@@ -2616,6 +2645,88 @@ function fillDays(byDay, startDate, n) {
 }
 
 return { createReports };
+})();
+
+// ---- server/app/expenses.js
+const __m_server_app_expenses_js = await (async () => {
+const { AppError, audit, bad, getSettings, id: checkId, int, isDup, notFound, oneOf, requirePerm, str } = __m_server_app_core_js;
+const { localDate } = __m_shared_format_js;
+// المصروفات (إيجار، رواتب، كهرباء…): تُطرح من الربح الإجمالي ليظهر صافي الربح الحقيقي.
+// المصروف المدفوع من درج النقد يُسجَّل أيضاً كسحب من الوردية المفتوحة حتى يبقى النقد المتوقع صحيحاً.
+
+
+
+const EXPENSE_CATEGORIES = Object.freeze({
+  rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', other: 'أخرى',
+});
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function createExpenses(ctx) {
+  const { db, now, newId } = ctx;
+  const C = () => db.collection('expenses');
+
+  async function create(actor, input = {}) {
+    requirePerm(actor, 'admin.reports');
+    const clientId = checkId(input.clientId, 'clientId');
+    const prior = await C().findOne({ clientId });
+    if (prior) return view(prior);
+    const amount = int(input.amount, { field: 'amount', min: 1, max: 1_000_000_000 });
+    const category = oneOf(input.category, Object.keys(EXPENSE_CATEGORIES), 'category');
+    const note = str(input.note, { field: 'note', max: 120, optional: true });
+    const settings = await getSettings(db);
+    const today = localDate(now(), settings.tzOffsetMin);
+    const day = input.date ? String(input.date) : today;
+    if (!DATE.test(day) || day > today) throw bad('INVALID_DATE', 'date');
+    const fromDrawer = input.fromDrawer === true;
+    if (fromDrawer) {
+      if (day !== today) throw bad('DRAWER_ONLY_TODAY');
+      // سحب من الدرج بنفس المفتاح: إعادة المحاولة لا تسحب مرتين
+      await ctx.shifts.move(actor, { type: 'pay_out', clientId: `exp-${clientId}`.slice(0, 64), amount, note: `مصروف: ${EXPENSE_CATEGORIES[category]}${note ? ` — ${note}` : ''}`.slice(0, 120) });
+    }
+    const doc = { _id: newId(), clientId, amount, category, note, day, fromDrawer, by: actor.id, byName: actor.name, createdAt: now() };
+    try {
+      await C().insertOne(doc);
+    } catch (e) {
+      if (isDup(e)) return view(await C().findOne({ clientId }));
+      throw e;
+    }
+    await audit({ ...ctx, actor }, 'expense.create', { amount, category: EXPENSE_CATEGORIES[category], note, fromDrawer });
+    return view(doc);
+  }
+
+  async function list(actor, { from, to } = {}) {
+    requirePerm(actor, 'admin.reports');
+    if (!DATE.test(from ?? '') || !DATE.test(to ?? '') || from > to) throw new AppError(400, 'INVALID_RANGE');
+    const rows = await C().find({ day: { $gte: from, $lte: to } }).sort({ day: -1, createdAt: -1 }).limit(1000).toArray();
+    const byCategory = {};
+    for (const r of rows) byCategory[r.category] = (byCategory[r.category] ?? 0) + r.amount;
+    return { rows: rows.map(view), total: rows.reduce((a, r) => a + r.amount, 0), byCategory };
+  }
+
+  /** مجموع المصروفات في فترة (للتقارير) */
+  async function totalBetween(from, to) {
+    const rows = await C().find({ day: { $gte: from, $lte: to } }).project({ amount: 1, category: 1, note: 1, day: 1 }).toArray();
+    return { total: rows.reduce((a, r) => a + r.amount, 0), rows };
+  }
+
+  async function remove(actor, expenseId) {
+    requirePerm(actor, 'admin.reports');
+    const doc = await C().findOne({ _id: checkId(expenseId) });
+    if (!doc) throw notFound();
+    await C().deleteOne({ _id: doc._id });
+    // السحب من الدرج (إن وُجد) يبقى في الوردية: النقد خرج فعلاً
+    await audit({ ...ctx, actor }, 'expense.delete', { amount: doc.amount, category: EXPENSE_CATEGORIES[doc.category], note: doc.note, day: doc.day });
+    return { ok: true };
+  }
+
+  return { create, list, remove, totalBetween };
+}
+
+function view(d) {
+  return { id: d._id, amount: d.amount, category: d.category, categoryName: EXPENSE_CATEGORIES[d.category], note: d.note, day: d.day, fromDrawer: d.fromDrawer, byName: d.byName, createdAt: d.createdAt };
+}
+
+return { EXPENSE_CATEGORIES, createExpenses };
 })();
 
 // ---- server/app/sales.js
@@ -3247,6 +3358,7 @@ const { createAuth, createSettings, publicEmployee } = __m_server_app_auth_js;
 const { createCatalog } = __m_server_app_catalog_js;
 const { createInventory } = __m_server_app_inventory_js;
 const { createReports } = __m_server_app_reports_js;
+const { createExpenses } = __m_server_app_expenses_js;
 const { createSales } = __m_server_app_sales_js;
 const { createShifts } = __m_server_app_shifts_js;
 // تجميع الخدمات وواجهة API كدالة نقية: handle(request) → response.
@@ -3260,10 +3372,12 @@ const { createShifts } = __m_server_app_shifts_js;
 
 
 
+
 function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, readInvoice = null }) {
   const ctx = { db, now, newId, pepper, log, readInvoice };
   ctx.inventory = createInventory(ctx);
   ctx.shifts = createShifts(ctx);
+  ctx.expenses = createExpenses(ctx);
   const auth = createAuth(ctx);
   const settings = createSettings(ctx);
   const catalog = createCatalog(ctx);
@@ -3313,6 +3427,20 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['GET', '/api/admin/dashboard', (actor) => reports.dashboard(actor)],
     ['GET', '/api/admin/reports', (actor, req) => reports.report(actor, req.query)],
     ['GET', '/api/admin/reports/daily', (actor, req) => reports.daily(actor, req.query)],
+    ['GET', '/api/admin/expenses', (actor, req) => ctx.expenses.list(actor, req.query)],
+    ['POST', '/api/admin/expenses', (actor, req) => ctx.expenses.create(actor, req.body)],
+    ['DELETE', '/api/admin/expenses/:id', (actor, req, p) => ctx.expenses.remove(actor, p.id)],
+    // سجل العمليات الحساسة: للمالك فقط
+    ['GET', '/api/admin/audit', async (actor, req) => {
+      requirePerm(actor, 'admin.settings');
+      const r = await toRange(req.query);
+      if (!r.from) throw new AppError(400, 'INVALID_RANGE');
+      const filter = { at: { $gte: r.from, $lt: r.to } };
+      const group = String(req.query.group ?? '');
+      if (/^[a-z]{2,20}$/.test(group)) filter.action = { $regex: `^${group}\\.` };
+      const rows = await db.collection('audit').find(filter).sort({ at: -1 }).limit(500).toArray();
+      return rows.map((x) => ({ id: x._id, action: x.action, at: x.at, byName: x.byName, data: x.data }));
+    }],
     ['GET', '/api/admin/items', async (actor) => { requireCatalog(actor); return catalog.listItems({ includeInactive: false }); }],
     ['POST', '/api/admin/items', (actor, req) => catalog.saveItem(actor, req.body)],
     ['DELETE', '/api/admin/items/:id', (actor, req, p) => catalog.archive(actor, 'items', p.id)],
@@ -4086,6 +4214,7 @@ const ERRORS = {
   INVALID_RANGE: 'فترة غير صالحة.',
   ALREADY_SET_UP: 'النظام مُعدّ مسبقاً.',
   INVALID_EMAIL: 'اكتب بريداً إلكترونياً صحيحاً.',
+  INVALID_PHONE: 'رقم الهاتف غير صحيح. مثال: 07701234567',
   WEAK_PASSWORD: 'كلمة المرور 8 أحرف على الأقل، ولا تكون أرقاماً فقط.',
   EMAIL_IN_USE: 'هذا البريد مسجّل لمقهى آخر. سجّل الدخول به بدلاً من ذلك.',
   BAD_CREDENTIALS: 'البريد أو كلمة المرور غير صحيحة.',
@@ -5114,7 +5243,9 @@ const { dateTime, esc, money, parseAmount, time } = __m_shared_format_js;
 const { get, post, uid } = __m_public_js_api_js;
 const { icon } = __m_public_js_icons_js;
 const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
+const { printHtml } = __m_public_js_views_receipts_js;
 // شاشة التحضير (KDS)، الوردية وإدارة النقد، والعملاء.
+
 
 
 
@@ -5208,7 +5339,48 @@ const routes = {
   },
 };
 
+// ---------------------------------------------------------------- تقرير الوردية (يُرسل لصاحب المقهى)
+function shiftReportText(x) {
+  const sm = x.summary ?? {};
+  const tz = state.settings?.tzOffsetMin ?? 180;
+  const lines = [
+    `🧾 تقرير الوردية #${x.number} — ${state.settings?.name ?? ''}`,
+    `فتح: ${dateTime(x.openedAt, tz)} (${x.openedByName ?? ''})`,
+    `إغلاق: ${dateTime(x.closedAt, tz)} (${x.closedByName ?? ''})`, '',
+    `صافي المبيعات: ${money(sm.net)} — ${sm.salesCount} إيصال`,
+    ...(sm.refundsCount ? [`المرتجعات: ${money(sm.refunds)} (${sm.refundsCount})`] : []),
+    ...(sm.discounts ? [`الخصومات: ${money(sm.discounts)}`] : []),
+    ...(sm.byPayment ?? []).map((p) => `• ${p.label}: ${money(p.net)}`), '',
+    '💵 الدرج:', `بداية: ${money(sm.startingCash)}`, `مبيعات نقدية: ${money(sm.cashSales)}`,
+    ...(sm.cashRefunds ? [`استرجاع نقدي: ${money(sm.cashRefunds)}`] : []),
+    ...(sm.payIn ? [`إدخال: ${money(sm.payIn)}`] : []), ...(sm.payOut ? [`سحب/مصروف: ${money(sm.payOut)}`] : []),
+    `المتوقع: ${money(sm.expectedCash)}`, `الفعلي: ${money(x.actualCash)}`,
+    `${x.difference === 0 ? '✅' : '⚠️'} الفرق: ${money(x.difference, { sign: true })}`,
+    ...(x.note ? [`ملاحظة: ${x.note}`] : []),
+  ];
+  return lines.join('\n');
+}
+
+function shiftReportHtml(x) {
+  return `<div class="paper80"><div class="c big">${esc(state.settings?.name ?? '')}</div>${shiftReportText(x).split('\n').map((l) => (l ? `<div>${esc(l)}</div>` : '<hr>')).join('')}</div>`;
+}
+
 const modals = {
+  'shift-report'(s) {
+    const x = s.modal.shift;
+    const phone = s.settings?.reportPhone;
+    const wa = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(shiftReportText(x))}` : null;
+    return modalFrame({ title: `أُغلقت الوردية #${x.number}`, body: `
+      <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="kpi"><span class="label">صافي المبيعات</span><b>${money(x.summary?.net ?? 0)}</b></div>
+        <div class="kpi"><span class="label">النقد الفعلي</span><b>${money(x.actualCash)}</b></div>
+        <div class="kpi"><span class="label">الفرق</span><b style="color:${x.difference === 0 ? 'var(--ok)' : 'var(--bad)'}">${money(x.difference, { sign: true })}</b></div></div>
+      ${wa ? `<a class="btn primary lg block" href="${wa}" target="_blank" rel="noopener">${icon('arrow', 'sm')} إرسال التقرير على واتساب</a>`
+        : `<p class="muted small">${can('admin.settings') ? 'أضف رقم واتساب في الإعدادات ليُرسل التقرير بضغطة واحدة.' : 'لم يُضبط رقم واتساب للتقرير بعد (من الإعدادات).'}</p>`}
+      <div class="row"><button class="btn" style="flex:1" data-action="shift-report-share">مشاركة</button><button class="btn" style="flex:1" data-action="shift-report-print">${icon('print', 'sm')} طباعة</button></div>`,
+      foot: '<button class="btn" data-action="shift-report-close">تم</button>' });
+  },
+
   'cash-move'(s) {
     const t = s.modal.moveType;
     return modalFrame({ title: t === 'pay_in' ? 'إدخال نقد للدرج' : 'سحب نقد من الدرج', body: `<form class="stack" data-form="cash-move-submit">
@@ -5270,7 +5442,22 @@ on({
     state.view.shift = null;
     state.view.shiftCounted = '';
     toast(`أُغلقت الوردية. الفرق ${money(closed.difference, { sign: true })}`, closed.difference === 0 ? 'ok' : '');
+    // تقرير الوردية جاهز للإرسال لصاحب المقهى (واتساب/مشاركة/طباعة)
+    openModal({ type: 'shift-report', shift: closed });
   }),
+  'shift-report-share': async () => {
+    const text = shiftReportText(state.modal.shift);
+    if (navigator.share) {
+      try { await navigator.share({ title: 'تقرير الوردية', text }); } catch (e) { if (e?.name !== 'AbortError') toast('تعذرت المشاركة', 'bad'); }
+      return;
+    }
+    try { await navigator.clipboard.writeText(text); toast('نُسخ التقرير', 'ok'); } catch { toast('تعذر النسخ', 'bad'); }
+  },
+  'shift-report-print': () => printHtml(shiftReportHtml(state.modal.shift), 'معاينة تقرير الوردية'),
+  'shift-report-close': () => {
+    state.modal = null;
+    render();
+  },
   'customers-search': (el) => {
     const v = state.view.customers;
     v.search = el.value;
@@ -5287,7 +5474,7 @@ on({
   }),
 });
 
-return { routes, modals, enter };
+return { routes, shiftReportText, modals, enter };
 })();
 
 // ---- public/js/views/account.js
@@ -5572,7 +5759,9 @@ const SECTIONS = [
   ['dashboard', 'المتابعة', 'chart', 'admin.reports'],
   ['daily', 'التقرير اليومي', 'receipt', 'admin.reports'],
   ['reports', 'التقارير', 'list', 'admin.reports'],
+  ['expenses', 'المصروفات', 'cash', 'admin.reports'],
   ['shifts', 'الورديات', 'clock', 'admin.reports'],
+  ['audit', 'سجل العمليات', 'list', 'admin.settings'],
   ['items', 'الأصناف', 'cup', 'admin.catalog'],
   ['categories', 'التصنيفات', 'layers', 'admin.catalog'],
   ['modifiers', 'الإضافات', 'plus', 'admin.catalog'],
@@ -5625,6 +5814,38 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  expenses(s, a) {
+    const e = a.expenses;
+    const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر'], ['lastmonth', 'الشهر الماضي']];
+    const head = `<div class="page-head"><h1>المصروفات</h1><button class="btn primary" data-action="exp-new">${icon('plus', 'sm')} مصروف</button></div>
+      <div class="toolbar"><div class="seg">${presets.map(([k, l]) => `<button class="${a.expPreset === k ? 'on' : ''}" data-action="exp-preset" data-k="${k}">${l}</button>`).join('')}</div></div>`;
+    if (!e) return `${head}<p class="muted">جارٍ التحميل…</p>`;
+    const cats = Object.entries(e.byCategory).sort((x, y) => y[1] - x[1]);
+    return `${head}
+      <div class="kpis"><div class="kpi lead"><span class="label">مجموع المصروفات</span><b>${money(e.total)}</b><span class="muted small">${e.rows.length} مصروف</span></div>
+        ${cats.slice(0, 3).map(([k, v]) => `<div class="kpi"><span class="label">${esc(EXPENSE_CATS[k] ?? k)}</span><b>${money(v)}</b></div>`).join('')}</div>
+      <div class="table-wrap"><table><thead><tr><th>اليوم</th><th>البند</th><th>ملاحظة</th><th>بواسطة</th><th class="num">المبلغ</th><th></th></tr></thead>
+      <tbody>${e.rows.map((x) => `<tr><td class="small">${esc(x.day)}</td><td><b>${esc(x.categoryName)}</b>${x.fromDrawer ? ' <span class="pill">من الدرج</span>' : ''}</td>
+        <td class="small">${esc(x.note ?? '')}</td><td class="small">${esc(x.byName ?? '')}</td><td class="num">${money(x.amount)}</td>
+        <td><button class="icon-btn" data-action="exp-delete" data-id="${x.id}" aria-label="حذف">${icon('trash', 'sm')}</button></td></tr>`).join('')
+        || '<tr><td colspan="6" class="muted">لا مصروفات في هذه الفترة</td></tr>'}</tbody></table></div>
+      <p class="muted small">المصروفات تُطرح من الربح الإجمالي في التقرير اليومي والتقارير ليظهر صافي الربح. المصروف المدفوع من الدرج يُسجَّل أيضاً كسحب من الوردية.</p>`;
+  },
+
+  audit(s, a) {
+    const groups = [['', 'الكل'], ['receipt', 'الاسترجاع'], ['discount', 'الخصومات'], ['inventory', 'المخزون'], ['item', 'الأصناف والأسعار'], ['shift', 'الورديات والنقد'], ['ticket', 'التذاكر'], ['employee', 'الموظفون'], ['settings', 'الإعدادات']];
+    const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر']];
+    const rows = a.audit;
+    return `<div class="page-head"><h1>سجل العمليات</h1><span class="muted small">كل عملية حساسة مع الموظف ووقتها. لا يمكن تعديل السجل أو حذفه.</span></div>
+      <div class="toolbar"><div class="seg">${presets.map(([k, l]) => `<button class="${a.auditPreset === k ? 'on' : ''}" data-action="audit-preset" data-k="${k}">${l}</button>`).join('')}</div></div>
+      <div class="row wrap">${groups.map(([k, l]) => `<button class="chip ${(a.auditGroup ?? '') === k ? 'on' : ''}" data-action="audit-group" data-k="${k}">${l}</button>`).join('')}</div>
+      <div class="table-wrap"><table><thead><tr><th>الوقت</th><th>الموظف</th><th>العملية</th><th>التفاصيل</th></tr></thead>
+      <tbody>${rows === undefined || rows === null ? '<tr><td colspan="4" class="muted">جارٍ التحميل…</td></tr>'
+        : rows.length ? rows.map((x) => `<tr class="${AUDIT_WARN.has(x.action) ? 'audit-warn' : ''}"><td class="small">${dateTime(x.at, tz())}</td><td>${esc(x.byName ?? '—')}</td>
+          <td><b>${esc(AUDIT_LABELS[x.action] ?? x.action)}</b></td><td class="small">${auditDetails(x)}</td></tr>`).join('')
+        : '<tr><td colspan="4" class="muted">لا عمليات في هذه الفترة</td></tr>'}</tbody></table></div>`;
+  },
+
   daily(s, a) {
     const d = a.daily;
     const head = `<div class="page-head"><h1>التقرير اليومي</h1>
@@ -5636,10 +5857,10 @@ const PAGES = {
     const kpi = (label, value, sub = '') => `<div class="kpi"><span class="muted small">${label}</span><b>${value}</b>${sub ? `<span class="muted small">${sub}</span>` : ''}</div>`;
     return `${head}
       <div class="kpis">
-        ${kpi('صافي المبيعات', money(sm.net), `${sm.salesCount} إيصال`)}
-        ${kpi('متوسط الفاتورة', money(sm.avgSale))}
-        ${kpi('الربح الإجمالي', money(sm.profit), sm.net ? `هامش ${Math.round((sm.profit / sm.net) * 100)}%` : '')}
-        ${kpi('تكلفة الموارد المصروفة', money(d.consumptionCost))}
+        ${kpi('صافي المبيعات', money(sm.net), `${sm.salesCount} إيصال · متوسط ${money(sm.avgSale)}`)}
+        ${kpi('الربح الإجمالي', money(sm.profit), `تكلفة الموارد ${money(d.consumptionCost)}`)}
+        ${kpi('المصروفات', money(sm.expenses), d.expenses.length ? d.expenses.map((x) => esc(EXPENSE_CATS[x.category] ?? x.category)).join('، ') : 'لا مصروفات')}
+        ${kpi('صافي الربح', `<span style="color:${sm.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sm.netProfit)}</span>`, 'بعد المصروفات')}
       </div>
       <div class="grid-2" style="align-items:start">
         <section class="card pad stack"><h2>طرق الدفع</h2>
@@ -5712,6 +5933,7 @@ const PAGES = {
       <tr><td><b>صافي المبيعات</b></td><td class="num"><b>${money(sm.net)}</b></td><td>صافي النقد</td><td class="num">${money(sm.cashNet)}</td></tr>
       <tr><td>تكلفة البضاعة</td><td class="num">${neg(sm.cogs)}</td><td>الضريبة</td><td class="num">${money(sm.tax)}</td></tr>
       <tr><td><b>الربح الإجمالي</b></td><td class="num"><b>${money(sm.profit)}</b></td><td>هامش الربح</td><td class="num">${sm.net ? `${Math.round((sm.profit / sm.net) * 100)}%` : '—'}</td></tr>
+      <tr><td>المصروفات</td><td class="num">${neg(sm.expenses ?? 0)}</td><td><b>صافي الربح</b></td><td class="num"><b>${money(sm.netProfit ?? sm.profit)}</b></td></tr>
     </tbody></table></div>`;
     const table = reportTable(tab, r);
     return `${head}${summary}
@@ -5799,6 +6021,7 @@ const PAGES = {
       <form class="stack" data-form="settings-save">
         <section class="card pad stack"><h2>المقهى والإيصال</h2>
           <div class="grid-3">${field('الاسم', `<input name="name" id="st-name" required value="${esc(st.name)}">`)}${field('العنوان', `<input name="address" id="st-address" value="${esc(st.address)}">`)}${field('الهاتف', `<input name="phone" id="st-phone" dir="ltr" value="${esc(st.phone)}">`)}</div>
+          ${field('واتساب لاستلام تقرير الوردية', `<input name="reportPhone" id="st-report-phone" dir="ltr" inputmode="tel" value="${esc(st.reportPhone ?? '')}" placeholder="07701234567">`, 'عند إغلاق كل وردية يظهر زر يرسل التقرير لهذا الرقم على واتساب')}
           <div class="grid-2">${field('ترويسة الإيصال', `<input name="header" id="st-header" value="${esc(st.receipt.header)}">`)}${field('تذييل الإيصال', `<input name="footer" id="st-footer" value="${esc(st.receipt.footer)}">`)}</div>
           <label class="check"><input type="checkbox" name="showCustomer" ${st.receipt.showCustomer ? 'checked' : ''}> إظهار اسم العميل على الإيصال</label></section>
         <section class="card pad stack"><h2>الضريبة والولاء والنقد</h2>
@@ -5828,6 +6051,43 @@ const PAGES = {
 };
 
 const neg = (v) => (v ? `−${money(v)}` : money(0));
+const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', other: 'أخرى' };
+
+// ---------------------------------------------------------------- سجل العمليات
+const AUDIT_LABELS = {
+  'receipt.refund': 'استرجاع', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
+  'inventory.receive': 'استلام مخزون', 'inventory.loss': 'هدر/تالف', 'inventory.count': 'جرد', 'inventory.adjust': 'تعديل مخزون', 'inventory.reconcile': 'مطابقة المخزون',
+  'item.create': 'صنف جديد', 'item.update': 'تعديل صنف/سعر', 'items.archive': 'أرشفة صنف', 'categories.archive': 'أرشفة تصنيف', 'modifiers.archive': 'أرشفة إضافة',
+  'shift.open': 'فتح وردية', 'shift.close': 'إغلاق وردية', 'shift.pay_in': 'إدخال نقد للدرج', 'shift.pay_out': 'سحب نقد من الدرج',
+  'ticket.delete': 'حذف تذكرة محفوظة', 'employee.create': 'موظف جديد', 'employee.update': 'تعديل موظف', 'settings.update': 'تعديل الإعدادات',
+  'expense.create': 'مصروف', 'expense.delete': 'حذف مصروف',
+};
+const AUDIT_WARN = new Set(['receipt.refund', 'discount.restricted', 'inventory.loss', 'inventory.adjust', 'shift.pay_out', 'ticket.delete', 'item.update', 'expense.delete']);
+
+function auditDetails(x) {
+  const d = x.data ?? {};
+  const parts = [];
+  if (d.sale) parts.push(`إيصال #${d.sale}${d.refund ? ` ← استرجاع #${d.refund}` : ''}`);
+  if (d.receipt) parts.push(`إيصال #${d.receipt}`);
+  if (Number.isSafeInteger(d.total)) parts.push(money(d.total));
+  if (d.discount) parts.push(esc(d.discount));
+  if (d.reason) parts.push(`السبب: ${esc(d.reason)}`);
+  if (d.name) parts.push(esc(d.name));
+  for (const c of d.priceChanges ?? []) parts.push(`${esc(c.variant || 'السعر')}: ${money(c.from)} ← ${money(c.to)}`);
+  if (d.removedSizes) parts.push(`حُذف ${d.removedSizes} حجم`);
+  if (Number.isSafeInteger(d.delta)) parts.push(`الكمية ${d.delta > 0 ? '+' : ''}${d.delta.toLocaleString('en-US')}`);
+  if (Number.isSafeInteger(d.amount)) parts.push(money(d.amount));
+  if (Number.isSafeInteger(d.difference)) parts.push(`الفرق ${money(d.difference, { sign: true })}`);
+  if (Number.isSafeInteger(d.startingCash)) parts.push(`بداية ${money(d.startingCash)}`);
+  if (d.role) parts.push(esc(ROLES[d.role] ?? d.role));
+  if (d.pinChanged) parts.push('تغيير الرمز');
+  if (d.active === false) parts.push('تعطيل');
+  if (d.category) parts.push(esc(d.category));
+  if (d.note) parts.push(esc(d.note));
+  if (Array.isArray(d.keys) && d.keys.length) parts.push(esc(d.keys.join('، ')));
+  return parts.join(' · ') || '—';
+}
+
 const qty = (n, unit) => `${Number(n).toLocaleString('en-US')} ${esc(unit ?? '')}`;
 
 // ---------------------------------------------------------------- التقرير اليومي: نص للمشاركة وورقة للطباعة
@@ -5836,6 +6096,7 @@ function dailyText(d) {
   const lines = [
     `📊 التقرير اليومي — ${d.shopName}`, `📅 ${d.date}`, '',
     `صافي المبيعات: ${money(sm.net)}`, `عدد الإيصالات: ${sm.salesCount}`, `متوسط الفاتورة: ${money(sm.avgSale)}`, `الربح الإجمالي: ${money(sm.profit)}`,
+    ...(sm.expenses ? [`المصروفات: ${money(sm.expenses)}`] : []), `💰 صافي الربح: ${money(sm.netProfit)}`,
     ...(sm.refundsCount ? [`المرتجعات: ${money(sm.refunds)} (${sm.refundsCount})`] : []),
     ...(sm.discounts ? [`الخصومات: ${money(sm.discounts)}`] : []),
     '', '💳 طرق الدفع:', ...d.byPayment.map((p) => `• ${p.label}: ${money(p.net)} (${p.count})`),
@@ -5856,6 +6117,7 @@ function dailyHtml(d) {
   return `<div class="paper80">
     <div class="c big">${esc(d.shopName)}</div><div class="c">التقرير اليومي · ${esc(d.date)}</div><hr>
     ${row('<b>صافي المبيعات د.ع</b>', `<b>${m(sm.net)}</b>`)}${row('الإيصالات', sm.salesCount)}${row('متوسط الفاتورة', m(sm.avgSale))}${row('الربح الإجمالي', m(sm.profit))}
+    ${sm.expenses ? row('المصروفات', `-${m(sm.expenses)}`) : ''}${row('<b>صافي الربح</b>', `<b>${m(sm.netProfit)}</b>`)}
     ${sm.refundsCount ? row(`المرتجعات (${sm.refundsCount})`, `-${m(sm.refunds)}`) : ''}${sm.discounts ? row('الخصومات', `-${m(sm.discounts)}`) : ''}
     <hr><b>طرق الدفع</b>${d.byPayment.map((p) => row(`${esc(p.label)} (${p.count})`, m(p.net))).join('')}
     <hr><b>الأصناف المباعة</b>${d.byItem.map((i) => row(`${i.qty - i.refundedQty}× ${esc(i.label)}`, m(i.net))).join('')}
@@ -5993,6 +6255,18 @@ const modals = {
         <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
   },
 
+  expense(s) {
+    const m = s.modal;
+    const today = localDate(Date.now(), tz());
+    return modalFrame({ title: 'مصروف جديد', body: `<form class="stack" data-form="exp-save" id="exp-form">
+      <div class="opt-group"><h3>البند</h3><div class="opts">${Object.entries(EXPENSE_CATS).map(([k, l]) => `<button type="button" class="opt ${m.category === k ? 'on' : ''}" data-action="exp-cat" data-k="${k}"><span>${l}</span></button>`).join('')}</div></div>
+      <div class="grid-2">${field('المبلغ (د.ع)', '<input class="amount-input" name="amount" id="exp-amount" inputmode="numeric" required autocomplete="off">')}
+        ${field('اليوم', `<input type="date" name="date" id="exp-date" value="${today}" max="${today}">`)}</div>
+      ${field('ملاحظة', '<input name="note" id="exp-note" maxlength="120" placeholder="مثلاً: راتب حيدر لشهر 10، فاتورة كهرباء">')}
+      ${s.shift && can('shift.cash') ? `<label class="check"><input type="checkbox" data-change="exp-drawer" ${m.fromDrawer ? 'checked' : ''}> دُفع نقداً من درج الوردية الحالية (يُسجَّل سحباً من الدرج)</label>` : ''}
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ المصروف</button></form>` });
+  },
+
   receive(s) {
     const m = s.modal;
     const items = A().stockItems ?? [];
@@ -6076,6 +6350,18 @@ async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
+    expenses: async () => {
+      if (!a.expPreset) a.expPreset = 'month';
+      const [from, to] = presetRange(a.expPreset);
+      a.expenses = null; render();
+      a.expenses = await get('/api/admin/expenses', { from, to });
+    },
+    audit: async () => {
+      if (!a.auditPreset) a.auditPreset = 'today';
+      const [from, to] = presetRange(a.auditPreset);
+      a.audit = null; render();
+      a.audit = await get('/api/admin/audit', { from, to, group: a.auditGroup || undefined });
+    },
     daily: async () => {
       if (!a.dailyDate) a.dailyDate = presetRange('today')[0];
       a.daily = null; render();
@@ -6111,6 +6397,25 @@ const percentToBp = (v) => { const s = String(v ?? '').trim(); if (!/^\d+(\.\d{1
 
 on({
   // التقارير
+  'exp-preset': (el) => { A().expPreset = el.dataset.k; loadSection('expenses').catch(fail); },
+  'exp-new': () => openModal({ type: 'expense', clientId: uid(), category: 'supplies', fromDrawer: false }),
+  'exp-cat': (el) => { state.modal.category = el.dataset.k; render(); },
+  'exp-drawer': (el) => { state.modal.fromDrawer = el.checked; },
+  'exp-save': (_el, _e, d) => busy(async () => {
+    const m = state.modal;
+    await post('/api/admin/expenses', { clientId: m.clientId, amount: num(d.amount, 'المبلغ'), category: m.category, note: d.note || null, date: d.date || undefined, fromDrawer: m.fromDrawer });
+    state.modal = null;
+    toast('سُجّل المصروف', 'ok');
+    await loadSection('expenses');
+  }),
+  'exp-delete': (el) => busy(async () => {
+    if (A().expConfirm !== el.dataset.id) { A().expConfirm = el.dataset.id; toast('اضغط مرة أخرى لتأكيد الحذف'); return; }
+    await del(`/api/admin/expenses/${el.dataset.id}`);
+    A().expConfirm = null;
+    await loadSection('expenses');
+  }),
+  'audit-preset': (el) => { A().auditPreset = el.dataset.k; loadSection('audit').catch(fail); },
+  'audit-group': (el) => { A().auditGroup = el.dataset.k; loadSection('audit').catch(fail); },
   'daily-date': (el) => { if (!el.value) return; A().dailyDate = el.value; loadSection('daily').catch(fail); },
   'daily-print': () => { const d = A().daily; if (d) printHtml(dailyHtml(d), 'معاينة التقرير اليومي'); },
   'daily-share': async () => {
@@ -6295,7 +6600,7 @@ on({
     const st = A().settings;
     const names = String(d.dining).split(/[،,]/).map((x) => x.trim()).filter(Boolean);
     const body = {
-      name: d.name, address: d.address, phone: d.phone,
+      name: d.name, address: d.address, phone: d.phone, reportPhone: d.reportPhone ?? '',
       receipt: { header: d.header, footer: d.footer, showCustomer: d.showCustomer },
       tax: { mode: d.taxMode, rateBp: d.taxMode === 'none' ? 0 : percentToBp(d.taxRate), name: d.taxName || 'ضريبة' },
       loyalty: { enabled: d.loyaltyEnabled, rateBp: percentToBp(d.loyaltyRate) },

@@ -134,7 +134,7 @@ export function publicEmployee(emp) {
   return { ...o, roleName: ROLES[emp.role], permissions: permissionsOf(emp.role) };
 }
 
-export const settingsKeys = ['name', 'address', 'phone', 'tax', 'loyalty', 'paymentTypes', 'diningOptions', 'features', 'receipt', 'cashVarianceAlert'];
+export const settingsKeys = ['name', 'address', 'phone', 'reportPhone', 'tax', 'loyalty', 'paymentTypes', 'diningOptions', 'features', 'receipt', 'cashVarianceAlert'];
 
 export function createSettings(ctx) {
   const { db, now } = ctx;
@@ -153,6 +153,14 @@ export function createSettings(ctx) {
     if ('name' in input) set.name = str(input.name, { field: 'name', min: 2, max: 60 });
     if ('address' in input) set.address = str(input.address, { field: 'address', max: 120 });
     if ('phone' in input) set.phone = str(input.phone, { field: 'phone', max: 30 });
+    if ('reportPhone' in input) {
+      // رقم واتساب لاستلام تقرير الوردية: يُخزَّن بصيغة دولية بأرقام فقط (07… العراقية → 9647…)
+      let d = normalizePin(String(input.reportPhone ?? '')).replace(/\D/g, '');
+      if (d.startsWith('00')) d = d.slice(2);
+      if (/^07\d{9}$/.test(d)) d = `964${d.slice(1)}`;
+      if (d && !/^\d{8,15}$/.test(d)) throw bad('INVALID_PHONE', 'reportPhone');
+      set.reportPhone = d;
+    }
     if ('tax' in input) {
       const mode = oneOf(input.tax?.mode, ['none', 'added', 'included'], 'tax.mode');
       const rateBp = mode === 'none' ? 0 : input.tax.rateBp;
