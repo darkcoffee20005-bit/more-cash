@@ -99,7 +99,7 @@ test('دورة بيع كاملة: وردية ← بيع بإضافات وخصم 
   assert.equal(total, 16200, '(15,500 + 2,500) − 10%');
   const clientId = randomUUID();
   const body = { clientId, lines, discountIds: [morning.id], customerId: customer.id, clientTotal: total,
-    payments: [{ typeId: 'card', amount: 6200 }, { typeId: 'cash', amount: 10000, tendered: 20000 }] };
+    payments: [{ typeId: 'qi', amount: 6200 }, { typeId: 'cash', amount: 10000, tendered: 20000 }] };
   const sale = (await sell(body)).body.receipt;
   assert.equal(sale.number, 1001);
   assert.equal(sale.totals.total, 16200);
@@ -169,7 +169,7 @@ test('دورة بيع كاملة: وردية ← بيع بإضافات وخصم 
   assert.equal(cur.movements.length, 1, 'حركة السحب المكررة سُجّلت مرة واحدة');
   // 50,000 + 10,000 (نقد البيع 1) + 200 (البيع 2) − 2,250 (استرجاع نقدي) − 3,000 (سحب)
   // استرجاعا اللاتيه ذهبا لطريقة الدفع الأولى في الإيصال (بطاقة) فلا يمسّان الدرج
-  assert.equal(r1.payments[0].typeId, 'card');
+  assert.equal(r1.payments[0].typeId, 'qi');
   const expected = 50000 + 10000 + 200 - 2250 - 3000;
   assert.equal(cur.live.expectedCash, expected);
   assert.equal((await call('sara', 'POST', '/api/shifts/close', { actualCash: expected - 5000 })).body.error, 'VARIANCE_NOTE_REQUIRED');
@@ -186,7 +186,7 @@ test('دورة بيع كاملة: وردية ← بيع بإضافات وخصم 
   assert.equal(rep.summary.gross - rep.summary.refunds - rep.summary.discounts, rep.summary.net);
   const cashRow = rep.byPayment.find((p) => p.key === 'cash');
   assert.equal(cashRow.net, 10200 - 2250);
-  assert.equal(rep.byPayment.find((p) => p.key === 'card').net, 6200 - r1.totals.total - r2.totals.total);
+  assert.equal(rep.byPayment.find((p) => p.key === 'qi').net, 6200 - r1.totals.total - r2.totals.total);
 });
 
 test('التذاكر المفتوحة: حفظ، تعارض تعديل متزامن، وتحويلها لبيع يحذفها', async () => {
@@ -291,4 +291,42 @@ test('استكمال آثار إيصال انقطع تطبيقه', async () => {
   assert.equal(stock, 45);
   await app.start();
   assert.equal((await ok('owner', 'GET', '/api/admin/inventory')).rows.find((r) => r.name === 'ماء — قنينة').stock, 45, 'الاستكمال لا يتكرر');
+});
+
+test('التقرير اليومي: الموارد المصروفة من الوصفات تُطرح من المخزون وتظهر مع المبيعات', async () => {
+  const { ok, call } = await boot();
+  const { catalog, settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  assert.deepEqual(settings.paymentTypes.map((p) => p.name), ['نقد', 'كي'], 'طرق الدفع: نقد أو كي');
+  await ok('owner', 'POST', '/api/shifts/open', { startingCash: 0 });
+  const latte = findItem(catalog, 'لاتيه');
+  const big = latte.variants.find((v) => v.name === 'كبير'); // بن 18غ، حليب 300مل، كوب 12 أونصة
+  const milkOpt = catalog.modifiers.find((m) => m.name === 'نوع الحليب').options[0].id;
+  const lines = [{ variantId: big.id, qty: 2, modifierOptionIds: [milkOpt] }];
+  const total = clientTotal(catalog, settings, lines);
+  await ok('owner', 'POST', '/api/sales', { clientId: randomUUID(), lines, discountIds: [], diningOption: 'takeaway', clientTotal: total, payments: [{ typeId: 'qi', amount: total }] });
+
+  const d = await ok('owner', 'GET', '/api/admin/reports/daily', null, { date: '2026-10-14' });
+  assert.equal(d.summary.salesCount, 1);
+  assert.equal(d.summary.net, total);
+  assert.equal(d.byPayment[0].label, 'كي');
+  const row = (name) => d.consumption.find((c) => c.name === name);
+  assert.equal(row('بن إسبريسو').used, 36);
+  assert.equal(row('حليب كامل').used, 600);
+  assert.equal(row('كوب 12 أونصة').used, 2);
+  assert.equal(row('بن إسبريسو').stock, 5000 - 36, 'طُرحت من المخزون');
+  assert.equal(row('بن إسبريسو').unit, 'غ');
+  assert.ok(d.consumptionCost > 0);
+  assert.equal(d.consumption.find((c) => c.name === 'ثلج'), undefined, 'ما لم يُصرف لا يظهر');
+  assert.equal((await call('owner', 'GET', '/api/admin/reports/daily', null, { date: 'أمس' })).body.error, 'INVALID_RANGE');
+});
+
+test('مقهى بطرق الدفع القديمة الافتراضية ينتقل إلى نقد أو كي', async () => {
+  const { ok, db } = await boot();
+  const store = (await db.collection('settings').find({}).toArray()).find((s) => s.paymentTypes);
+  await db.collection('settings').updateOne({ _id: store._id }, { $set: { paymentTypes: [
+    { id: 'cash', name: 'نقد', kind: 'cash', active: true }, { id: 'card', name: 'بطاقة', kind: 'card', active: true },
+    { id: 'zain', name: 'زين كاش', kind: 'other', active: true }, { id: 'fib', name: 'FIB', kind: 'other', active: true },
+  ] } });
+  const { settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  assert.deepEqual(settings.paymentTypes.map((p) => p.id), ['cash', 'qi']);
 });

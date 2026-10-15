@@ -122,6 +122,14 @@ try {
       return { ticketRight: t.left > c.left, sameRow: Math.abs(t.top - c.top) < 2 };
     });
     if (!side.ticketRight || !side.sameRow) errors.push(`${name}: ticket panel is not on the right side`);
+    const fit = await page.evaluate(() => {
+      const t = document.querySelector('.ticket').getBoundingClientRect().width;
+      const c = document.querySelector('.catalog').getBoundingClientRect().width;
+      const pay = document.querySelector('.charge').getBoundingClientRect();
+      return { narrower: t < c && t > c * 0.7, payVisible: pay.bottom <= innerHeight + 1, noScroll: document.documentElement.scrollHeight <= innerHeight + 1 };
+    });
+    if (!fit.narrower) errors.push(`${name}: ticket should be slightly narrower than the items area`);
+    if (!fit.payVisible || !fit.noScroll) errors.push(`${name}: pay button needs scrolling`);
     await shot(`19-${name}`);
     await page.click('[data-action="pos-charge"]');
     await page.waitForSelector('.bills');
@@ -133,7 +141,11 @@ try {
   }
   await page.setViewportSize({ width: 1280, height: 800 });
 
-  // الوضع الداكن وعرض الهاتف
+  await page.goto(`http://127.0.0.1:${PORT}/#/admin/daily`);
+  await page.waitForSelector('.kpis');
+  await shot('21-daily-report');
+
+  // الألوان فاتحة حتى لو كان الجهاز في الوضع الداكن، وعرض الهاتف
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
   await page.waitForSelector('.tile');

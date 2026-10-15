@@ -24,6 +24,7 @@ export async function ensureIndexes(db) {
     ix('shifts', t({ openedAt: -1 }), { name: 'by_opened' }),
     ix('stock_moves', t({ key: 1 }), { unique: true, name: 'uniq_key' }),
     ix('stock_moves', t({ variantId: 1, at: -1 }), { name: 'by_variant' }),
+    ix('stock_moves', t({ at: -1 }), { name: 'by_date' }),
     ix('point_moves', t({ key: 1 }), { unique: true, name: 'uniq_key' }),
     ix('customers', t({ phone: 1 }), { unique: true, name: 'uniq_phone', partialFilterExpression: { phone: { $type: 'string' } } }),
     ix('customers', t({ name: 1 }), { name: 'by_name' }),

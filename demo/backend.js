@@ -95,7 +95,7 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
           return { qty: l.qty, unitPrice: unitPrice(v.price, prices) };
         });
         const total = calculateTicket(priced, { discounts: discountIds.map((id) => catalog.discounts.find((d) => d.id === id)), tax: settings.tax }).total;
-        const type = rand() < 0.62 ? 'cash' : rand() < 0.6 ? 'card' : pick(['zain', 'fib']);
+        const type = rand() < 0.62 ? 'cash' : 'qi';
         const tendered = type === 'cash' ? Math.ceil(total / 5000) * 5000 : total;
         const sale = await call('POST', '/api/sales', {
           clientId: crypto.randomUUID(), lines, discountIds, customerId: customer?.id ?? null, diningOption: pick(['dine_in', 'takeaway', 'takeaway']),

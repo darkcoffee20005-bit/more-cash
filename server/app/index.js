@@ -61,6 +61,7 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
 
     ['GET', '/api/admin/dashboard', (actor) => reports.dashboard(actor)],
     ['GET', '/api/admin/reports', (actor, req) => reports.report(actor, req.query)],
+    ['GET', '/api/admin/reports/daily', (actor, req) => reports.daily(actor, req.query)],
     ['GET', '/api/admin/items', async (actor) => { requireCatalog(actor); return catalog.listItems({ includeInactive: false }); }],
     ['POST', '/api/admin/items', (actor, req) => catalog.saveItem(actor, req.body)],
     ['DELETE', '/api/admin/items/:id', (actor, req, p) => catalog.archive(actor, 'items', p.id)],

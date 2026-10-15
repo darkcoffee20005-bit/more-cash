@@ -1,4 +1,5 @@
 // التقارير ولوحة المتابعة: تُبنى من الإيصالات في الفترة (فهرس createdAt) عبر shared/reports.js.
+import { costOf } from '../../shared/calc.js';
 import { dayRange, localDate } from '../../shared/format.js';
 import { buildReport } from '../../shared/reports.js';
 import { bad, getSettings, requirePerm } from './core.js';
@@ -29,6 +30,39 @@ export function createReports(ctx) {
     return { from, to, ...buildReport(receipts, { tzOffsetMin: r.settings.tzOffsetMin }) };
   }
 
+  /** تقرير يوم واحد للمشاركة أو الطباعة: المبيعات + الموارد المصروفة (من دفتر المخزون) + النواقص */
+  async function daily(actor, { date } = {}) {
+    requirePerm(actor, 'admin.reports');
+    const r = await range(date, date);
+    const opts = { tzOffsetMin: r.settings.tzOffsetMin };
+    const rep = buildReport(await receiptsIn(r.from, r.to), opts);
+    const moves = await db.collection('stock_moves').find({ at: { $gte: r.from, $lt: r.to }, reason: { $in: ['sale', 'refund', 'loss'] } })
+      .project({ variantId: 1, delta: 1, reason: 1 }).toArray();
+    const use = new Map();
+    for (const m of moves) {
+      const u = use.get(m.variantId) ?? { used: 0, loss: 0 };
+      if (m.reason === 'loss') u.loss -= m.delta; else u.used -= m.delta;
+      use.set(m.variantId, u);
+    }
+    const tracked = await db.collection('variants').find({ trackStock: true, active: true }).toArray();
+    const items = new Map((await db.collection('items').find({ _id: { $in: [...new Set(tracked.map((v) => v.itemId))] } }).toArray()).map((i) => [i._id, i]));
+    const rows = tracked.filter((v) => items.get(v.itemId)?.active !== false).map((v) => {
+      const item = items.get(v.itemId);
+      const u = use.get(v._id) ?? { used: 0, loss: 0 };
+      return {
+        variantId: v._id, name: v.name ? `${item.name} — ${v.name}` : item.name, unit: item.unit ?? 'قطعة', ingredient: !item.forSale,
+        used: u.used, loss: u.loss, cost: costOf(Math.max(0, u.used + u.loss), v.costMilli ?? 0), stock: v.stock, lowStock: v.lowStock, low: v.stock <= v.lowStock,
+      };
+    });
+    const consumption = rows.filter((x) => x.used || x.loss)
+      .sort((a, b) => Number(b.ingredient) - Number(a.ingredient) || b.cost - a.cost || a.name.localeCompare(b.name, 'ar'));
+    return {
+      date, shopName: r.settings.name, summary: rep.summary, byPayment: rep.byPayment, byItem: rep.byItem,
+      consumption, consumptionCost: consumption.reduce((a, x) => a + x.cost, 0),
+      lowStock: rows.filter((x) => x.low).sort((a, b) => a.name.localeCompare(b.name, 'ar')),
+    };
+  }
+
   async function dashboard(actor) {
     requirePerm(actor, 'admin.reports');
     const settings = await getSettings(db);
@@ -53,7 +87,7 @@ export function createReports(ctx) {
     };
   }
 
-  return { report, dashboard };
+  return { report, daily, dashboard };
 }
 
 function fillDays(byDay, startDate, n) {

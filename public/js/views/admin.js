@@ -5,11 +5,13 @@ import { ROLES } from '../../../shared/perms.js';
 import { del, get, post, put, uid } from '../api.js';
 import { icon } from '../icons.js';
 import { accountCard, loadAccount } from './account.js';
+import { printHtml } from './receipts.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 
 const COLORS = { olive: 'أخضر', petrol: 'أخضر داكن', sage: 'مريمية', teal: 'نعناعي', sand: 'ذهبي', clay: 'طيني', mocha: 'موكا', slate: 'رمادي' };
 const SECTIONS = [
   ['dashboard', 'المتابعة', 'chart', 'admin.reports'],
+  ['daily', 'التقرير اليومي', 'receipt', 'admin.reports'],
   ['reports', 'التقارير', 'list', 'admin.reports'],
   ['shifts', 'الورديات', 'clock', 'admin.reports'],
   ['items', 'الأصناف', 'cup', 'admin.catalog'],
@@ -64,6 +66,41 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  daily(s, a) {
+    const d = a.daily;
+    const head = `<div class="page-head"><h1>التقرير اليومي</h1>
+      <div class="row wrap"><input type="date" id="daily-date" value="${esc(a.dailyDate ?? '')}" data-change="daily-date" aria-label="اليوم" style="width:auto">
+        <button class="btn" data-action="daily-share" ${d ? '' : 'disabled'}>${icon('arrow', 'sm')} مشاركة</button>
+        <button class="btn primary" data-action="daily-print" ${d ? '' : 'disabled'}>${icon('print', 'sm')} طباعة</button></div></div>`;
+    if (!d) return `${head}<p class="muted">جارٍ التحميل…</p>`;
+    const sm = d.summary;
+    const kpi = (label, value, sub = '') => `<div class="kpi"><span class="muted small">${label}</span><b>${value}</b>${sub ? `<span class="muted small">${sub}</span>` : ''}</div>`;
+    return `${head}
+      <div class="kpis">
+        ${kpi('صافي المبيعات', money(sm.net), `${sm.salesCount} إيصال`)}
+        ${kpi('متوسط الفاتورة', money(sm.avgSale))}
+        ${kpi('الربح الإجمالي', money(sm.profit), sm.net ? `هامش ${Math.round((sm.profit / sm.net) * 100)}%` : '')}
+        ${kpi('تكلفة الموارد المصروفة', money(d.consumptionCost))}
+      </div>
+      <div class="grid-2" style="align-items:start">
+        <section class="card pad stack"><h2>طرق الدفع</h2>
+          ${d.byPayment.length ? d.byPayment.map((p) => `<div class="r-line"><span>${esc(p.label)} <span class="muted small">${p.count} عملية</span></span><span class="num">${money(p.net)}</span></div>`).join('') : '<p class="muted">لا مدفوعات</p>'}
+          ${sm.refundsCount ? `<div class="r-line"><span>المرتجعات <span class="muted small">${sm.refundsCount}</span></span><span class="num">${neg(sm.refunds)}</span></div>` : ''}
+          ${sm.discounts ? `<div class="r-line"><span>الخصومات</span><span class="num">${neg(sm.discounts)}</span></div>` : ''}</section>
+        <section class="card pad stack"><h2>الأصناف المباعة</h2>
+          ${d.byItem.length ? `<div class="table-wrap"><table><thead><tr><th>الصنف</th><th class="num">الكمية</th><th class="num">الصافي</th></tr></thead><tbody>
+            ${d.byItem.map((i) => `<tr><td>${esc(i.label)}</td><td class="num">${i.qty - i.refundedQty}</td><td class="num">${money(i.net)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا مبيعات</p>'}</section>
+      </div>
+      <section class="card pad stack"><h2>الموارد المصروفة اليوم</h2>
+        <p class="muted small">محسوبة من الكميات التقريبية في وصفة كل صنف، ومطروحة من المخزون تلقائياً مع كل بيع.</p>
+        ${d.consumption.length ? `<div class="table-wrap"><table><thead><tr><th>المادة</th><th class="num">المصروف</th><th class="num">الهدر</th><th class="num">المتبقي</th><th class="num">التكلفة</th></tr></thead><tbody>
+          ${d.consumption.map((c) => `<tr><td>${esc(c.name)} ${c.ingredient ? '<span class="pill olive">مكون</span>' : ''}</td><td class="num">${qty(c.used, c.unit)}</td><td class="num">${c.loss ? qty(c.loss, c.unit) : '—'}</td>
+            <td class="num"><span class="${c.low ? 'pill warn' : ''}">${qty(c.stock, c.unit)}</span></td><td class="num">${money(c.cost)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لم يُصرف شيء من المخزون في هذا اليوم</p>'}
+      </section>
+      ${d.lowStock.length ? `<section class="card pad stack"><h2>${icon('alert', 'sm')} مواد تحت حد التنبيه</h2>
+        <div class="row wrap">${d.lowStock.map((c) => `<span class="pill warn">${esc(c.name)}: ${qty(c.stock, c.unit)}</span>`).join('')}</div></section>` : ''}`;
+  },
+
   dashboard(s, a) {
     const d = a.dashboard;
     if (!d) return '<p class="muted">جارٍ التحميل…</p>';
@@ -227,6 +264,42 @@ const PAGES = {
 };
 
 const neg = (v) => (v ? `−${money(v)}` : money(0));
+const qty = (n, unit) => `${Number(n).toLocaleString('en-US')} ${esc(unit ?? '')}`;
+
+// ---------------------------------------------------------------- التقرير اليومي: نص للمشاركة وورقة للطباعة
+function dailyText(d) {
+  const sm = d.summary;
+  const lines = [
+    `📊 التقرير اليومي — ${d.shopName}`, `📅 ${d.date}`, '',
+    `صافي المبيعات: ${money(sm.net)}`, `عدد الإيصالات: ${sm.salesCount}`, `متوسط الفاتورة: ${money(sm.avgSale)}`, `الربح الإجمالي: ${money(sm.profit)}`,
+    ...(sm.refundsCount ? [`المرتجعات: ${money(sm.refunds)} (${sm.refundsCount})`] : []),
+    ...(sm.discounts ? [`الخصومات: ${money(sm.discounts)}`] : []),
+    '', '💳 طرق الدفع:', ...d.byPayment.map((p) => `• ${p.label}: ${money(p.net)} (${p.count})`),
+    '', '☕ الأصناف المباعة:', ...d.byItem.map((i) => `• ${i.label}: ${i.qty - i.refundedQty} — ${money(i.net)}`),
+  ];
+  if (d.consumption.length) {
+    lines.push('', '📦 الموارد المصروفة:', ...d.consumption.map((c) => `• ${c.name}: ${Number(c.used).toLocaleString('en-US')} ${c.unit}${c.loss ? ` (+هدر ${c.loss})` : ''} — المتبقي ${Number(c.stock).toLocaleString('en-US')}`));
+    lines.push(`تكلفة الموارد: ${money(d.consumptionCost)}`);
+  }
+  if (d.lowStock.length) lines.push('', '⚠️ تحت حد التنبيه:', ...d.lowStock.map((c) => `• ${c.name}: ${Number(c.stock).toLocaleString('en-US')} ${c.unit}`));
+  return lines.join('\n');
+}
+
+function dailyHtml(d) {
+  const sm = d.summary;
+  const m = (v) => money(v, { symbol: false });
+  const row = (a, b) => `<div class="row80"><span>${a}</span><span>${b}</span></div>`;
+  return `<div class="paper80">
+    <div class="c big">${esc(d.shopName)}</div><div class="c">التقرير اليومي · ${esc(d.date)}</div><hr>
+    ${row('<b>صافي المبيعات د.ع</b>', `<b>${m(sm.net)}</b>`)}${row('الإيصالات', sm.salesCount)}${row('متوسط الفاتورة', m(sm.avgSale))}${row('الربح الإجمالي', m(sm.profit))}
+    ${sm.refundsCount ? row(`المرتجعات (${sm.refundsCount})`, `-${m(sm.refunds)}`) : ''}${sm.discounts ? row('الخصومات', `-${m(sm.discounts)}`) : ''}
+    <hr><b>طرق الدفع</b>${d.byPayment.map((p) => row(`${esc(p.label)} (${p.count})`, m(p.net))).join('')}
+    <hr><b>الأصناف المباعة</b>${d.byItem.map((i) => row(`${i.qty - i.refundedQty}× ${esc(i.label)}`, m(i.net))).join('')}
+    ${d.consumption.length ? `<hr><b>الموارد المصروفة</b>${d.consumption.map((c) => row(esc(c.name), `${Number(c.used + c.loss).toLocaleString('en-US')} ${esc(c.unit)}`)).join('')}${row('التكلفة', m(d.consumptionCost))}` : ''}
+    ${d.lowStock.length ? `<hr><b>تحت حد التنبيه</b>${d.lowStock.map((c) => row(esc(c.name), `${Number(c.stock).toLocaleString('en-US')} ${esc(c.unit)}`)).join('')}` : ''}
+    <hr><div class="c">طُبع ${esc(dateTime(Date.now(), tz()))}</div>
+  </div>`;
+}
 
 function simpleList(title, kind, list, headers, cells) {
   return `<div class="page-head"><h1>${title}</h1><button class="btn primary" data-action="${kind}-new">${icon('plus', 'sm')} إضافة</button></div>
@@ -277,10 +350,11 @@ export const modals = {
       ${it.forSale && !v.recipe?.length ? `<label class="check"><input type="checkbox" data-change="v-track" data-i="${i}" ${v.trackStock ? 'checked' : ''}> تتبع مخزون هذا الصنف (مخبوزات، ماء)</label>` : ''}
       ${v.trackStock || !it.forSale ? `<div class="row wrap"><input id="v-low-${i}" data-input="v-field" data-i="${i}" data-k="lowStock" value="${esc(v.lowStock)}" inputmode="numeric" placeholder="حد التنبيه" style="max-width:160px" aria-label="حد التنبيه">
         ${!v.id ? `<input id="v-init-${i}" data-input="v-field" data-i="${i}" data-k="initialStock" value="${esc(v.initialStock ?? '')}" inputmode="numeric" placeholder="الرصيد الافتتاحي" style="max-width:180px" aria-label="الرصيد الافتتاحي">` : '<span class="muted small">عدّل الرصيد من شاشة المخزون</span>'}</div>` : ''}
-      ${it.forSale && !v.trackStock ? `<div class="stack" style="gap:8px"><span class="label">الوصفة — تُخصم من المخزون مع كل بيع</span>
+      ${it.forSale && !v.trackStock ? `<div class="stack" style="gap:8px"><span class="label">الكميات التقريبية لكل وحدة مباعة — تُطرح من المخزون تلقائياً مع كل بيع، وتظهر في التقرير اليومي</span>
         ${(v.recipe ?? []).map((r, j) => `<div class="row"><select data-change="r-field" data-i="${i}" data-j="${j}" data-k="variantId" id="r-v-${i}-${j}" style="flex:2" aria-label="المكون">
           ${ingredients.map((g) => `<option value="${g.id}" ${g.id === r.variantId ? 'selected' : ''}>${esc(g.name)} (${esc(g.unit)})</option>`).join('')}</select>
           <input data-input="r-field" data-i="${i}" data-j="${j}" data-k="qty" id="r-q-${i}-${j}" value="${esc(r.qty)}" inputmode="numeric" style="flex:1" aria-label="الكمية">
+          <span class="muted small" style="min-width:36px">${esc(ingredients.find((g) => g.id === r.variantId)?.unit ?? '')}</span>
           <button type="button" class="icon-btn" data-action="r-remove" data-i="${i}" data-j="${j}" aria-label="حذف المكون">${icon('x', 'sm')}</button></div>`).join('')}
         ${ingredients.length ? `<button type="button" class="btn sm" data-action="r-add" data-i="${i}">${icon('plus', 'sm')} مكون</button>` : '<span class="muted small">أضف مكونات من تبويب "المكونات" أولاً</span>'}</div>` : ''}
     </div>`).join('');
@@ -376,6 +450,11 @@ async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
+    daily: async () => {
+      if (!a.dailyDate) a.dailyDate = presetRange('today')[0];
+      a.daily = null; render();
+      a.daily = await get('/api/admin/reports/daily', { date: a.dailyDate });
+    },
     reports: async () => {
       if (!a.from) { a.preset = 'today'; [a.from, a.to] = presetRange('today'); }
       a.report = null; render();
@@ -406,6 +485,18 @@ const percentToBp = (v) => { const s = String(v ?? '').trim(); if (!/^\d+(\.\d{1
 
 on({
   // التقارير
+  'daily-date': (el) => { if (!el.value) return; A().dailyDate = el.value; loadSection('daily').catch(fail); },
+  'daily-print': () => { const d = A().daily; if (d) printHtml(dailyHtml(d), 'معاينة التقرير اليومي'); },
+  'daily-share': async () => {
+    const d = A().daily;
+    if (!d) return;
+    const text = dailyText(d);
+    if (navigator.share) {
+      try { await navigator.share({ title: `التقرير اليومي ${d.date}`, text }); } catch (e) { if (e?.name !== 'AbortError') toast('تعذرت المشاركة', 'bad'); }
+      return;
+    }
+    try { await navigator.clipboard.writeText(text); toast('نُسخ التقرير — الصقه في واتساب أو أي تطبيق'); } catch { toast('تعذر النسخ', 'bad'); }
+  },
   'report-preset': (el) => { const a = A(); a.preset = el.dataset.k; [a.from, a.to] = presetRange(el.dataset.k); loadSection('reports').catch(fail); },
   'report-from': (el) => { const a = A(); a.from = el.value; a.preset = null; if (a.to && a.from <= a.to) loadSection('reports').catch(fail); },
   'report-to': (el) => { const a = A(); a.to = el.value; a.preset = null; if (a.from && a.from <= a.to) loadSection('reports').catch(fail); },

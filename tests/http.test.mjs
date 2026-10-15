@@ -43,8 +43,8 @@ test('إنشاء حساب، كوكي الجهاز والموظف، وحماية 
   assert.equal(signup.status, 200);
   const cookies = signup.headers.getSetCookie();
   assert.equal(cookies.length, 2);
-  assert.match(cookies.find((c) => c.startsWith('mc_device=')), /^mc_device=[0-9a-f]{64}; Path=\/; HttpOnly; SameSite=Strict; Max-Age=7776000$/);
-  assert.match(cookies.find((c) => c.startsWith('mc_session=')), /^mc_session=[0-9a-f]{64}; Path=\/; HttpOnly; SameSite=Strict; Max-Age=43200$/);
+  assert.match(cookies.find((c) => c.startsWith('mc_device=')), /^mc_device=[0-9a-f]{64}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=7776000$/);
+  assert.match(cookies.find((c) => c.startsWith('mc_session=')), /^mc_session=[0-9a-f]{64}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=43200$/);
   const jar = cookies.map((c) => c.split(';')[0]).join('; ');
   const device = cookies.find((c) => c.startsWith('mc_device=')).split(';')[0];
 

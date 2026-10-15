@@ -93,7 +93,7 @@ export const modals = {
       </form>` });
   },
   'receipt-preview'(s) {
-    return modalFrame({ title: 'معاينة الإيصال', body: `<div style="background:#fff;border-radius:8px;padding:8px">${s.modal.html}</div>
+    return modalFrame({ title: s.modal.title ?? 'معاينة الإيصال', body: `<div style="background:#fff;border-radius:8px;padding:8px">${s.modal.html}</div>
       <p class="muted small">الطباعة متاحة في التطبيق المثبت على جهازك؛ هذه معاينة فقط.</p>` });
   },
 };
@@ -178,8 +178,12 @@ export function receiptHtml(r, settings) {
 }
 
 export function printReceipt(r) {
-  const html = receiptHtml(r);
-  if (globalThis.MORECASH_BACKEND) { openModal({ type: 'receipt-preview', html }); return; }
+  printHtml(receiptHtml(r));
+}
+
+/** طباعة ورقة 80 مم (الإيصال أو التقرير اليومي). النسخة التجريبية تعرض معاينة بدل نافذة الطباعة */
+export function printHtml(html, title = 'معاينة الإيصال') {
+  if (globalThis.MORECASH_BACKEND) { openModal({ type: 'receipt-preview', html, title }); return; }
   let area = document.getElementById('print-area');
   if (!area) { area = document.createElement('div'); area.id = 'print-area'; document.body.appendChild(area); }
   area.innerHTML = html;

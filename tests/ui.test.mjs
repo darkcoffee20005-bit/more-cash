@@ -112,7 +112,7 @@ test('شاشة الرمز ثم الكاشير: طلب بإضافات وخصم و
   await runAction('pos-charge');
   html = screen(); clean(html, 'الدفع');
   assert.equal(state.modal.total, 14850);
-  await runAction('pay-type', el({ id: 'card' }));
+  await runAction('pay-type', el({ id: 'qi' }));
   await runAction('pay-amount', el({}, { value: '4850' }));
   await runAction('pay-add');
   assert.equal(state.modal.payments.length, 1);
@@ -191,12 +191,30 @@ test('المدير: استرجاع جزئي، إغلاق وردية، ولوحة
   assert.equal(state.modal, null);
   assert.equal(state.view.receipts.detail.refunds.length, 1);
 
-  for (const sub of ['dashboard', 'reports', 'shifts', 'items', 'categories', 'modifiers', 'discounts', 'inventory', 'employees', 'settings']) {
+  for (const sub of ['dashboard', 'daily', 'reports', 'shifts', 'items', 'categories', 'modifiers', 'discounts', 'inventory', 'employees', 'settings']) {
     await go(`#/admin/${sub}`);
     const html = screen();
     clean(html, `الإدارة/${sub}`);
     assert.ok(html.length > 1500, `قسم ${sub} مرسوم`);
   }
+  // التقرير اليومي: مبيعات اليوم + الموارد المصروفة، معاينة الطباعة، والمشاركة (نسخ عند غياب navigator.share)
+  await go('#/admin/daily');
+  const daily = state.view.admin.daily;
+  assert.ok(daily.summary.salesCount > 0, 'مبيعات اليوم في التقرير');
+  assert.ok(daily.consumption.some((c) => c.ingredient && c.used > 0), 'موارد مصروفة من الوصفات');
+  assert.match(text(screen()), /الموارد المصروفة اليوم/);
+  await runAction('daily-print');
+  assert.equal(state.modal.type, 'receipt-preview');
+  assert.match(text(screen()), /التقرير اليومي/);
+  await runAction('close-modal');
+  let copied = '';
+  const nav = globalThis.navigator;
+  Object.defineProperty(globalThis, 'navigator', { value: { clipboard: { writeText: async (t) => { copied = t; } } }, configurable: true });
+  await runAction('daily-share');
+  Object.defineProperty(globalThis, 'navigator', { value: nav, configurable: true });
+  assert.match(copied, /صافي المبيعات/);
+  assert.match(copied, /الموارد المصروفة/);
+
   await go('#/admin/reports');
   for (const k of ['items', 'categories', 'employees', 'payments', 'modifiers', 'discounts', 'dining', 'days']) {
     await runAction('report-tab', el({ k }));
@@ -213,7 +231,7 @@ test('المدير: استرجاع جزئي، إغلاق وردية، ولوحة
   const latte = state.view.admin.items.find((i) => i.name === 'لاتيه');
   await runAction('item-edit', el({ id: latte.id }));
   clean(screen(), 'محرر الصنف');
-  assert.match(text(screen()), /الوصفة/);
+  assert.match(text(screen()), /الكميات التقريبية لكل وحدة مباعة/);
   await runAction('v-field', el({ i: '0', k: 'price' }, { value: '5250' }));
   await runAction('item-submit');
   assert.equal(state.modal, null);

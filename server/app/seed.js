@@ -11,9 +11,7 @@ export const DEFAULT_SETTINGS = {
   loyalty: { enabled: true, rateBp: 500 },
   paymentTypes: [
     { id: 'cash', name: 'نقد', kind: 'cash', active: true },
-    { id: 'card', name: 'بطاقة', kind: 'card', active: true },
-    { id: 'zain', name: 'زين كاش', kind: 'other', active: true },
-    { id: 'fib', name: 'FIB', kind: 'other', active: true },
+    { id: 'qi', name: 'كي', kind: 'card', active: true },
   ],
   diningOptions: [
     { id: 'dine_in', name: 'محلي' },

@@ -68,7 +68,9 @@ export async function handleApiRequest(app, req, res, { secureCookie = false, tr
         token: readCookie(req.headers.cookie, COOKIE), deviceToken: readCookie(req.headers.cookie, DEVICE_COOKIE), ip,
       });
       const headers = { 'Cache-Control': 'no-store' };
-      const attrs = `Path=/; HttpOnly; SameSite=Strict${secureCookie ? '; Secure' : ''}`;
+      // Lax لا Strict: Safari لا يرسل كوكي Strict إن فُتح الموقع من رابط في تطبيق آخر (حتى بعد التحديث)،
+      // فيظهر الجهاز كأنه غير مربوط. الحماية من CSRF قائمة بترويسة X-Requested-With و JSON أعلاه.
+      const attrs = `Path=/; HttpOnly; SameSite=Lax${secureCookie ? '; Secure' : ''}`;
       const cookies = [];
       if (result.setToken !== undefined) {
         cookies.push(result.setToken ? `${COOKIE}=${result.setToken}; ${attrs}; Max-Age=${12 * 3600}` : `${COOKIE}=; ${attrs}; Max-Age=0`);
