@@ -20,6 +20,7 @@
 - استلام المشتريات: يدوياً أو بتصوير فاتورة (`server/app/invoice.js`، نموذج claude-opus-5-5، يعمل فقط إن وُجد ANTHROPIC_API_KEY). القراءة لا تكتب شيئاً؛ المستخدم يراجع ثم `POST /api/admin/inventory/receive`. لا تستورد invoice.js من خدمات المقهى (النسخة التجريبية تُبنى منها للمتصفح) — يُمرَّر `readInvoice` من نقاط الدخول.
 - لوحة المزوّد `#/platform` (`server/app/platform-admin.js`): للبريد في PLATFORM_ADMINS فقط؛ كل المقاهي ونشاطها، إيقاف/تفعيل (`tenants.disabled` → SHOP_DISABLED)، وكلمة مرور مؤقتة (`mustChangePassword`). هي الطبقة الوحيدة التي تقرأ عبر المقاهي.
 - المصروفات (`server/app/expenses.js`) تُطرح من الربح الإجمالي → `netProfit` في التقارير. سجل العمليات `GET /api/admin/audit` للمالك.
+- العمل بلا إنترنت: `public/sw.js` (نسخة التطبيق، الشبكة أولاً، لا يخزّن /api) و`public/js/offline.js` (آخر جلسة وقائمة محفوظة، وطابور مبيعات يُرسل عند عودة الاتصال). الخادم يقبل `offlineAt` ضمن الوردية وآخر 72 ساعة. المبيعات المرفوضة عند الإرسال تظهر للمراجعة.
 - طرق الدفع الافتراضية: نقد أو كي. الكوكيز SameSite=Lax (Strict يكسر Safari عند الفتح من رابط).
 
 ## قواعد لا تُكسر

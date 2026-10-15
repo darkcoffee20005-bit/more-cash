@@ -149,10 +149,17 @@ export function createSales(ctx) {
     }
 
     const earned = settings.loyalty?.enabled && t.customer ? pointsEarned(t.totals.net, settings.loyalty.rateBp) : 0;
+    // بيع سُجّل على الجهاز بلا إنترنت: يُحفظ بوقته الفعلي (ضمن الوردية وآخر 72 ساعة) لا بوقت وصوله
+    let createdAt = now();
+    let offline = false;
+    if (input.offlineAt) {
+      const at = new Date(input.offlineAt);
+      if (!Number.isNaN(at.getTime()) && at <= createdAt && at >= new Date(shift.openedAt) && createdAt - at <= 72 * 3600_000) { createdAt = at; offline = true; }
+    }
     const receipt = {
       _id: newId(),
       number: RECEIPT_BASE + (await nextSeq(db, 'receipt')),
-      clientId, type: 'sale', status: 'paid', createdAt: now(),
+      clientId, type: 'sale', status: 'paid', createdAt, ...(offline ? { offline: true } : {}),
       shiftId: shift._id, employeeId: actor.id, employeeName: actor.name,
       diningOption: t.dining.name, diningOptionId: t.dining.id,
       customerId: t.customer?._id ?? null, customerName: t.customer?.name ?? null,

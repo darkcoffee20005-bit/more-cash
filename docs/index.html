@@ -417,6 +417,12 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
 
 tr.audit-warn td:nth-child(3) b { color: var(--warn); }
 
+/* حالة الاتصال على شاشة البيع */
+.net-banner { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--r-md); background: var(--brand-100); color: var(--primary); font-size: .9rem; }
+.net-banner.off { background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
+.net-banner .low-text { flex: 1; min-width: 0; color: var(--ink-2); }
+.net-banner.off .low-text b { color: var(--warn); }
+
 /* تنبيه المخزون على شاشة البيع */
 .low-banner { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 12px; border-radius: var(--r-md); background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
 .low-banner.has-out { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
@@ -2888,10 +2894,17 @@ function createSales(ctx) {
     }
 
     const earned = settings.loyalty?.enabled && t.customer ? pointsEarned(t.totals.net, settings.loyalty.rateBp) : 0;
+    // بيع سُجّل على الجهاز بلا إنترنت: يُحفظ بوقته الفعلي (ضمن الوردية وآخر 72 ساعة) لا بوقت وصوله
+    let createdAt = now();
+    let offline = false;
+    if (input.offlineAt) {
+      const at = new Date(input.offlineAt);
+      if (!Number.isNaN(at.getTime()) && at <= createdAt && at >= new Date(shift.openedAt) && createdAt - at <= 72 * 3600_000) { createdAt = at; offline = true; }
+    }
     const receipt = {
       _id: newId(),
       number: RECEIPT_BASE + (await nextSeq(db, 'receipt')),
-      clientId, type: 'sale', status: 'paid', createdAt: now(),
+      clientId, type: 'sale', status: 'paid', createdAt, ...(offline ? { offline: true } : {}),
       shiftId: shift._id, employeeId: actor.id, employeeName: actor.name,
       diningOption: t.dining.name, diningOptionId: t.dining.id,
       customerId: t.customer?._id ?? null, customerName: t.customer?.name ?? null,
@@ -4378,6 +4391,9 @@ function errorText(e) {
 
 function fail(e) {
   if (!e?.code) console.error(e);
+  // بلا إنترنت: شريط الحالة على شاشة البيع يكفي، لا إشعار خطأ مع كل طلب
+  if (e?.code === 'NETWORK' && state.online === false) return;
+  if (e?.code === 'NETWORK' && state.pos) { state.online = false; render(); }
   if (e?.code === 'SHOP_DISABLED') {
     // أوقف المزوّد هذا المقهى: شاشة توضيح بدل أخطاء متكررة
     Object.assign(state, { shop: { ...(state.shop ?? {}), disabled: true }, employee: null, modal: null });
@@ -4453,6 +4469,104 @@ function mark(cls = 'mark') {
 const wordmark = (href = '#/') => `<a class="wordmark" href="${href}" aria-label="مور كاش — الرئيسية">${mark()}<span>مور كاش</span></a>`;
 
 return { mark, wordmark };
+})();
+
+// ---- public/js/offline.js
+const __m_public_js_offline_js = await (async () => {
+const { post } = __m_public_js_api_js;
+const { render, state, toast } = __m_public_js_ui_js;
+// العمل بلا إنترنت: نسخة محفوظة من القائمة والجلسة، وطابور مبيعات يُرسل تلقائياً عند عودة الاتصال.
+// كل بيع يحمل clientId فريداً، فإعادة إرساله (حتى لو وصل سابقاً وانقطع الرد) لا تكرره على الخادم.
+
+
+
+const QUEUE = 'morecash.queue';
+const FAILED = 'morecash.queueFailed';
+const BOOT = 'morecash.bootstrap';
+const SESSION = 'morecash.session';
+
+function read(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+}
+function write(key, value) {
+  try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(value)); } catch { /* التخزين ممتلئ أو غير متاح */ }
+}
+
+const pendingSales = () => read(QUEUE, []);
+const failedSales = () => read(FAILED, []);
+
+// ---------------------------------------------------------------- نسخ محفوظة
+function rememberBootstrap(shopId, data) { if (shopId) write(BOOT, { shopId, data, at: Date.now() }); }
+function savedBootstrap(shopId) {
+  const b = read(BOOT, null);
+  return b && b.shopId === shopId ? b.data : null;
+}
+/** آخر مقهى وموظف على هذا الجهاز: لفتح البرنامج بلا إنترنت */
+function rememberSession(shop, employee) { write(SESSION, shop ? { shop, employee: employee ?? null } : null); }
+const savedSession = () => read(SESSION, null);
+
+// ---------------------------------------------------------------- الطابور
+function queueSale(body, summary) {
+  const q = pendingSales();
+  if (!q.some((x) => x.body.clientId === body.clientId)) q.push({ body: { ...body, offlineAt: new Date().toISOString() }, summary, queuedAt: Date.now() });
+  write(QUEUE, q);
+  render();
+}
+
+let flushing = false;
+/** يرسل المبيعات المحفوظة بالترتيب. يتوقف عند انقطاع الشبكة أو انتهاء جلسة الموظف ويعيد المحاولة لاحقاً */
+async function flushSales() {
+  if (flushing || !pendingSales().length) return;
+  flushing = true;
+  let sent = 0;
+  try {
+    for (;;) {
+      const [item] = pendingSales();
+      if (!item) break;
+      try {
+        await post('/api/sales', item.body);
+        sent += 1;
+      } catch (e) {
+        if (e.code === 'NETWORK' || e.status === 0 || e.status === 401 || e.status >= 500) break;
+        // رفضه الخادم (سعر تغيّر، وردية أُغلقت…): يُنقل للمراجعة ولا يوقف بقية الطابور
+        write(FAILED, [...failedSales(), { ...item, error: e.code, detail: e.detail ?? null, failedAt: Date.now() }]);
+      }
+      write(QUEUE, pendingSales().filter((x) => x.body.clientId !== item.body.clientId));
+    }
+  } finally {
+    flushing = false;
+    if (sent) toast(`أُرسلت ${sent} ${sent === 1 ? 'عملية بيع محفوظة' : 'عمليات بيع محفوظة'}`, 'ok');
+    render();
+  }
+}
+
+function discardFailed(clientId) {
+  write(FAILED, failedSales().filter((x) => x.body.clientId !== clientId));
+  render();
+}
+
+function retryFailed(clientId) {
+  const item = failedSales().find((x) => x.body.clientId === clientId);
+  if (!item) return;
+  write(FAILED, failedSales().filter((x) => x.body.clientId !== clientId));
+  write(QUEUE, [...pendingSales(), { body: item.body, summary: item.summary, queuedAt: item.queuedAt }]);
+  flushSales();
+}
+
+// ---------------------------------------------------------------- حالة الاتصال
+function initOffline() {
+  if (typeof window === 'undefined') return;
+  state.online = navigator.onLine !== false;
+  window.addEventListener('online', () => { state.online = true; render(); flushSales(); });
+  window.addEventListener('offline', () => { state.online = false; render(); });
+  setInterval(() => { if (pendingSales().length) flushSales(); }, 20_000);
+  // نسخة التطبيق على الجهاز (Service Worker) — ليس في النسخة التجريبية
+  if ('serviceWorker' in navigator && !globalThis.MORECASH_BACKEND && window.isSecureContext) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+}
+
+return { pendingSales, failedSales, rememberBootstrap, savedBootstrap, rememberSession, savedSession, queueSale, flushSales, discardFailed, retryFailed, initOffline };
 })();
 
 // ---- public/js/views/receipts.js
@@ -4664,7 +4778,9 @@ const { del, get, post, uid } = __m_public_js_api_js;
 const { icon } = __m_public_js_icons_js;
 const { busy, can, closeModal, fail, field, modalFrame, on, onRendered, openModal, render, set, state, toast } = __m_public_js_ui_js;
 const { printReceipt } = __m_public_js_views_receipts_js;
+const { discardFailed, failedSales, pendingSales, queueSale, rememberBootstrap, retryFailed, savedBootstrap } = __m_public_js_offline_js;
 // شاشة البيع: الأصناف ← التذكرة ← الدفع. الحساب للعرض بنفس كود الخادم (shared/calc.js).
+
 
 
 
@@ -4674,7 +4790,18 @@ const { printReceipt } = __m_public_js_views_receipts_js;
 
 // ---------------------------------------------------------------- البيانات
 async function loadBootstrap() {
-  const b = await get('/api/pos/bootstrap');
+  let b;
+  try {
+    b = await get('/api/pos/bootstrap');
+    state.online = true;
+    rememberBootstrap(state.shop?.id, b);
+  } catch (e) {
+    // بلا إنترنت: آخر قائمة وإعدادات ووردية محفوظة على هذا الجهاز
+    const saved = e.code === 'NETWORK' ? savedBootstrap(state.shop?.id) : null;
+    if (!saved) throw e;
+    state.online = false;
+    b = saved;
+  }
   state.settings = b.settings;
   state.catalog = b.catalog;
   state.shift = b.shift;
@@ -4839,6 +4966,7 @@ function catalogPane(s) {
       <div class="pos-top"><h1>${esc(s.settings?.name ?? '')}</h1>
         ${s.shift ? `<span class="pill ok">${icon('clock', 'sm')} وردية #${s.shift.number}</span>` : ''}
         <span class="clock">${time(Date.now(), tz)}</span></div>
+      ${offlineBanner(s)}
       ${lowBanner(s)}
       <div class="search-box">${icon('search', 'sm')}<input type="search" id="pos-search" placeholder="ابحث باسم الصنف أو SKU" value="${esc(search)}" data-input="pos-search" autocomplete="off"></div>
       <div class="cats" role="tablist">${cats.join('')}</div>
@@ -4855,6 +4983,18 @@ function ticketFab(s) {
   return `<button class="ticket-fab" data-action="ticket-toggle" aria-label="فتح نافذة الطلب">
     ${icon('sale', 'sm')}<span>${cart.ticket ? esc(cart.ticket.name) : 'الطلب'}</span>
     ${count ? `<span class="fab-count">${count}</span><b class="num">${money(safeTotals().total)}</b>` : '<span class="muted-on">فارغ</span>'}</button>`;
+}
+
+function offlineBanner(s) {
+  const pending = pendingSales().length;
+  const failed = failedSales().length;
+  if (s.online !== false && !pending && !failed) return '';
+  const parts = [];
+  if (s.online === false) parts.push('<b>بدون إنترنت</b> — البيع يعمل والمبيعات تُحفظ على الجهاز');
+  if (pending) parts.push(s.online === false ? `${pending} بانتظار الإرسال` : `جارٍ إرسال ${pending} ${pending === 1 ? 'عملية محفوظة' : 'عمليات محفوظة'}…`);
+  return `<div class="net-banner ${s.online === false ? 'off' : ''}" role="status">${icon(s.online === false ? 'alert' : 'clock', 'sm')}
+    <span class="low-text">${parts.join(' · ') || ''}${failed ? `${parts.length ? ' · ' : ''}<b>${failed} لم تُقبل</b>` : ''}</span>
+    ${failed ? '<button class="btn sm" data-action="offline-review">مراجعة</button>' : ''}</div>`;
 }
 
 const lowKey = (list) => list.map((x) => `${x.variantId}:${x.out ? 0 : 1}`).join(',');
@@ -4973,6 +5113,16 @@ const modals = {
       foot: `<button class="btn danger solid" data-action="line-remove">${icon('trash', 'sm')} حذف من الطلب</button>` });
   },
 
+  'offline-failed'(s) {
+    const list = failedSales();
+    const reason = (x) => ({ TOTAL_MISMATCH: 'تغيّر سعر أو خصم قبل الإرسال', NO_OPEN_SHIFT: 'أُغلقت الوردية قبل الإرسال', OUT_OF_STOCK: 'نفد المخزون', UNKNOWN_VARIANT: 'صنف لم يعد في القائمة' }[x.error] ?? x.error);
+    return modalFrame({ title: 'مبيعات محفوظة لم يقبلها الخادم', cls: 'wide', body: list.length ? `<p class="muted small">بيعت هذه الطلبات بلا إنترنت، ثم رفضها الخادم عند الإرسال. راجعها: أعد المحاولة بعد حل السبب، أو احذفها وسجّلها يدوياً.</p>
+      <div class="table-wrap"><table><thead><tr><th>الوقت</th><th>الموظف</th><th class="num">المبلغ</th><th>السبب</th><th></th></tr></thead><tbody>
+      ${list.map((x) => `<tr><td class="small">${time(x.queuedAt, s.settings?.tzOffsetMin ?? 180)}</td><td>${esc(x.summary?.employee ?? '')}</td><td class="num">${money(x.summary?.total ?? 0)}</td><td class="small">${esc(reason(x))}</td>
+        <td><div class="row" style="gap:6px;justify-content:flex-end"><button class="btn sm" data-action="offline-retry" data-id="${x.body.clientId}">إعادة</button><button class="btn sm danger" data-action="offline-discard" data-id="${x.body.clientId}">حذف</button></div></td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">لا شيء للمراجعة.</p>', foot: '<button class="btn" data-action="close-modal">إغلاق</button>' });
+  },
+
   'all-lines'(s) {
     const t = safeTotals();
     const rows = s.pos.cart.lines.map((l, i) => `<tr class="click" data-action="pos-line" data-key="${l.key}"><td class="num">${l.qty}×</td>
@@ -5084,10 +5234,11 @@ function doneView(m) {
   const change = m.receipt.payments.reduce((a, p) => a + (p.change ?? 0), 0);
   return `<div class="modal" role="dialog" aria-modal="true" aria-label="تم الدفع" data-stop><div class="done">
     <div class="tick">${icon('check')}</div>
-    <h2>تم الدفع · إيصال #${m.receipt.number}</h2>
+    <h2>${m.offline ? 'تم البيع · محفوظ على الجهاز' : `تم الدفع · إيصال #${m.receipt.number}`}</h2>
+    ${m.offline ? '<p class="muted small">لا يوجد إنترنت الآن. سيُرسل البيع تلقائياً ويأخذ رقم إيصاله عند عودة الاتصال.</p>' : ''}
     ${change ? `<div><div class="muted">الباقي للعميل</div><div class="change num">${money(change)}</div></div>` : `<p class="muted">${money(m.receipt.totals.total)}</p>`}
     ${m.receipt.pointsEarned ? `<span class="pill olive">${icon('star', 'sm')} +${m.receipt.pointsEarned} نقطة لـ ${esc(m.receipt.customerName)}</span>` : ''}
-    <div class="row" style="width:100%"><button class="btn lg" style="flex:1" data-action="pay-print">${icon('print', 'sm')} طباعة</button>
+    <div class="row" style="width:100%">${m.offline ? '' : `<button class="btn lg" style="flex:1" data-action="pay-print">${icon('print', 'sm')} طباعة</button>`}
       <button class="btn primary lg" style="flex:1.4" data-action="pay-new" autofocus>طلب جديد</button></div>
   </div></div>`;
 }
@@ -5175,6 +5326,12 @@ on({
     render();
   },
   'line-remove': () => { state.pos.cart.lines = state.pos.cart.lines.filter((l) => l.key !== state.modal.key); closeModal(); },
+  'offline-review': () => openModal({ type: 'offline-failed' }),
+  'offline-retry': (el) => { retryFailed(el.dataset.id); render(); },
+  'offline-discard': (el) => {
+    if (state.view.confirmDiscard !== el.dataset.id) { state.view.confirmDiscard = el.dataset.id; toast('اضغط مرة أخرى لحذف البيع المحفوظ نهائياً'); return; }
+    discardFailed(el.dataset.id);
+  },
   'pos-all-lines': () => openModal({ type: 'all-lines' }),
   'ticket-toggle': () => { state.pos.ticketHidden = !state.pos.ticketHidden; saveTicketHidden(state.pos.ticketHidden); render(); },
   'pos-discounts': () => openModal({ type: 'discounts' }),
@@ -5318,7 +5475,21 @@ on({
       diningOption: cart.diningOption, ticketId: cart.ticket?.id ?? null, ticketName: cart.ticket?.name ?? null,
       clientTotal: m.total, payments: payments.map((p) => ({ typeId: p.typeId, amount: p.amount, tendered: p.tendered })),
     };
-    const r = await post('/api/sales', body);
+    let r;
+    try {
+      r = await post('/api/sales', body);
+      state.online = true;
+    } catch (e) {
+      if (e.code !== 'NETWORK') throw e;
+      // انقطع الإنترنت: يُحفظ البيع على الجهاز ويُرسل تلقائياً عند عودة الاتصال (نفس clientId → لا تكرار)
+      state.online = false;
+      const change = payments.reduce((a, p) => a + Math.max(0, (p.tendered ?? p.amount) - p.amount), 0);
+      queueSale(body, { total: m.total, lines: cart.lines.reduce((a, l) => a + l.qty, 0), employee: state.employee?.name ?? '' });
+      state.modal = { type: 'pay', stage: 'done', offline: true, receipt: { number: null, totals: { total: m.total }, payments: [{ change }], pointsEarned: 0 } };
+      if (cart.ticket) state.ticketsCount = Math.max(0, state.ticketsCount - 1);
+      state.pos.cart = emptyCart();
+      return;
+    }
     state.modal = { type: 'pay', stage: 'done', receipt: r.receipt };
     if (cart.ticket) state.ticketsCount = Math.max(0, state.ticketsCount - 1);
     state.pos.cart = emptyCart();
@@ -6928,6 +7099,7 @@ const { get, post } = __m_public_js_api_js;
 const { icon } = __m_public_js_icons_js;
 const { bindEvents, busy, can, errorText, fail, field, initials, on, render, set, setViews, state, toast } = __m_public_js_ui_js;
 const { mark } = __m_public_js_brand_js;
+const { flushSales, initOffline, rememberSession, savedSession } = __m_public_js_offline_js;
 const pos = __m_public_js_views_pos_js;
 const receipts = __m_public_js_views_receipts_js;
 const ops = __m_public_js_views_ops_js;
@@ -6935,6 +7107,7 @@ const admin = __m_public_js_views_admin_js;
 const account = __m_public_js_views_account_js;
 const platform = __m_public_js_views_platform_js;
 // التشغيل، التوجيه، شاشتا الإعداد والدخول، والهيكل العام.
+
 
 
 
@@ -7042,8 +7215,10 @@ if (doc) for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) doc.ad
 async function loadSession(employee) {
   state.employee = employee;
   state.view = {};
+  if (state.online !== false) rememberSession(state.shop, employee);
   if (can('pos.sell') || can('kds.use')) await pos.loadBootstrap().catch(fail);
   await navigate();
+  flushSales();
 }
 
 on({
@@ -7065,7 +7240,9 @@ on({
     else if (e.key === 'Enter') submitPin();
   },
   lock: async () => {
+    if (state.online === false) { toast('لا يمكن تبديل الموظف بدون إنترنت. البيع مستمر باسم الموظف الحالي.', 'bad'); return; }
     await post('/api/auth/logout', {}).catch(() => {});
+    rememberSession(state.shop, null);
     state.employee = null;
     state.modal = null;
     state.view = { pin: '' };
@@ -7097,8 +7274,11 @@ async function boot() {
   setViews(views);
   bindEvents(document.getElementById('app'));
   window.addEventListener('hashchange', () => navigate());
+  initOffline();
   try {
     const s = await get('/api/state');
+    state.online = true;
+    rememberSession(s.shop, s.employee);
     state.shop = s.shop;
     state.authPage = parseHash().route;
     state.ready = true;
@@ -7107,6 +7287,15 @@ async function boot() {
     else render();
   } catch (e) {
     state.ready = true;
+    // بلا إنترنت: يفتح المقهى المحفوظ على هذا الجهاز باسم آخر موظف، والمبيعات تُحفظ حتى يعود الاتصال
+    const saved = e.code === 'NETWORK' ? savedSession() : null;
+    if (saved?.shop) {
+      state.online = false;
+      state.shop = saved.shop;
+      if (saved.employee) { await loadSession(saved.employee); return; }
+      render();
+      return;
+    }
     if (e.code === 'DB_NOT_CONFIGURED' || e.code === 'DB_UNAVAILABLE' || e.code === 'NETWORK') state.fatal = errorText(e);
     else fail(e);
     render();

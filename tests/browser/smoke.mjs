@@ -26,15 +26,17 @@ try {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   let lastStep = 'start';
+  let offlineWindow = false; // أثناء قطع الشبكة عمداً: أخطاء الاتصال متوقعة
   // 503 متوقع مرة واحدة: تصوير فاتورة بلا ANTHROPIC_API_KEY (يُتحقق من رسالته أدناه)
   let expected503 = 0;
   page.on('response', (r) => { if (r.status() === 503 && r.url().endsWith('/api/admin/inventory/scan')) expected503 += 1; });
   page.on('console', (m) => {
     if (m.type() !== 'error' || /fonts\.g|ERR_FAILED/.test(m.text())) return;
+    if (offlineWindow && /ERR_INTERNET_DISCONNECTED/.test(m.text())) return;
     if (/status of 503/.test(m.text()) && expected503 > 0) { expected503 -= 1; return; }
     errors.push(`console: ${m.text()}`);
   });
-  page.on('requestfailed', (r) => { if (!/fonts\.(googleapis|gstatic)/.test(r.url())) errors.push(`requestfailed: ${r.url()} (${r.failure()?.errorText} @ ${page.url()} after ${lastStep})`); });
+  page.on('requestfailed', (r) => { if (offlineWindow && /ERR_INTERNET_DISCONNECTED/.test(r.failure()?.errorText ?? '')) return; if (!/fonts\.(googleapis|gstatic)/.test(r.url())) errors.push(`requestfailed: ${r.url()} (${r.failure()?.errorText} @ ${page.url()} after ${lastStep})`); });
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   const shot = async (name) => { lastStep = name; await page.waitForTimeout(260); await page.screenshot({ path: join(shots, `${name}.png`) }); };
 
@@ -195,6 +197,41 @@ try {
   }
   await page.setViewportSize({ width: 1280, height: 800 });
 
+  // العمل بلا إنترنت: بيع، إعادة تحميل الصفحة بلا اتصال، بيع ثانٍ، ثم الإرسال التلقائي عند عودة الاتصال
+  {
+    const ctx0 = page.context();
+    await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
+    await page.waitForSelector('.tile');
+    await page.evaluate(() => navigator.serviceWorker?.ready);
+    await page.reload(); // يصبح التطبيق تحت تحكم Service Worker ويحفظ ملفاته
+    await page.waitForSelector('.tile');
+    const before = await page.evaluate(async () => (await (await fetch('/api/receipts?limit=200')).json()).length);
+    offlineWindow = true;
+    await ctx0.setOffline(true);
+    await page.click('.tile:has-text("كوكيز")');
+    await page.click('[data-action="pos-charge"]');
+    await page.click('[data-action="pay-confirm"]');
+    await page.waitForSelector('.done:has-text("محفوظ على الجهاز")');
+    await page.click('[data-action="pay-new"]');
+    await page.waitForSelector('.net-banner.off');
+    await page.reload();
+    await page.waitForSelector('.tile', { timeout: 15000 });
+    if (!(await page.isVisible('.net-banner.off'))) errors.push('offline: banner missing after reload');
+    await page.click('.tile:has-text("ماء")');
+    await page.click('[data-action="pos-charge"]');
+    await page.click('[data-action="pay-confirm"]');
+    await page.waitForSelector('.done:has-text("محفوظ على الجهاز")');
+    await page.click('[data-action="pay-new"]');
+    if (!(await page.textContent('.net-banner')).includes('2 بانتظار الإرسال')) errors.push(`offline: queue count — ${await page.textContent('.net-banner')}`);
+    await shot('26-offline');
+    await ctx0.setOffline(false);
+    await page.waitForSelector('.net-banner', { state: 'detached', timeout: 30000 }).catch(() => errors.push('offline: queue not flushed after reconnect'));
+    offlineWindow = false;
+    const after = await page.evaluate(async () => await (await fetch('/api/receipts?limit=200')).json());
+    if (after.slice(0, 2).some((r) => r.type !== 'sale')) errors.push('offline: synced receipts missing');
+    if (after.length !== before + 2) errors.push(`offline: expected ${before + 2} receipts, got ${after.length}`);
+  }
+
   // لوحة المزوّد في سياق منفصل (جلسة مستقلة)
   {
     const pc = await browser.newContext({ viewport: { width: 1280, height: 800 } });
@@ -223,8 +260,7 @@ try {
   await page.waitForSelector('[data-action="rcv-open"]');
   await page.setInputFiles('#rcv-file', { name: 'invoice.png', mimeType: 'image/png',
     buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
-  await page.waitForSelector('.toast.bad');
-  if (!/غير مفعّلة/.test(await page.textContent('.toast.bad'))) errors.push('scan without key: unclear message');
+  await page.waitForSelector('.toast.bad:has-text("غير مفعّلة")', { timeout: 10000 }).catch(() => errors.push('scan without key: unclear message'));
   await page.waitForSelector('.rcv-row');
   await page.selectOption('#rcv-v-0', { label: 'بن إسبريسو (غ)' });
   await page.fill('#rcv-q-0', '1000');

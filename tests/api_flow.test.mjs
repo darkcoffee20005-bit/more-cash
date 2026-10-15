@@ -463,3 +463,24 @@ test('المصروفات: صافي الربح، الدفع من الدرج، ا�
   const log = await ok('owner', 'GET', '/api/admin/audit', null, { from: '2026-10-14', to: '2026-10-14', group: 'expense' });
   assert.deepEqual(log.map((x) => x.action).sort(), ['expense.create', 'expense.create', 'expense.delete']);
 });
+
+test('بيع بلا إنترنت: يُسجَّل بوقته الفعلي ضمن الوردية، ولا يتكرر عند إعادة الإرسال', async () => {
+  const { ok, tick } = await boot();
+  const { catalog, settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  const shift = await ok('owner', 'POST', '/api/shifts/open', { startingCash: 0 });
+  const water = findItem(catalog, 'ماء');
+  const lines = [{ variantId: water.variants[0].id, qty: 1 }];
+  const total = clientTotal(catalog, settings, lines);
+  const body = (offlineAt) => ({ clientId: randomUUID(), lines, discountIds: [], diningOption: 'takeaway', clientTotal: total, payments: [{ typeId: 'cash', amount: total, tendered: total }], offlineAt });
+  tick(2 * 3600_000); // وصل بعد ساعتين من البيع الفعلي
+  const soldAt = new Date(new Date(shift.openedAt).getTime() + 30 * 60_000).toISOString();
+  const b = body(soldAt);
+  const r = (await ok('owner', 'POST', '/api/sales', b)).receipt;
+  assert.equal(new Date(r.createdAt).toISOString(), soldAt, 'وقت البيع الفعلي');
+  assert.equal(r.offline, true);
+  assert.equal((await ok('owner', 'POST', '/api/sales', b)).duplicate, true, 'إعادة الإرسال لا تكرر');
+  // وقت قبل فتح الوردية أو في المستقبل: يُتجاهل ويُستخدم وقت الوصول
+  const early = (await ok('owner', 'POST', '/api/sales', body('2026-10-13T00:00:00Z'))).receipt;
+  assert.notEqual(new Date(early.createdAt).toISOString(), '2026-10-13T00:00:00.000Z');
+  assert.equal(early.offline, undefined);
+});

@@ -146,6 +146,9 @@ export function errorText(e) {
 
 export function fail(e) {
   if (!e?.code) console.error(e);
+  // بلا إنترنت: شريط الحالة على شاشة البيع يكفي، لا إشعار خطأ مع كل طلب
+  if (e?.code === 'NETWORK' && state.online === false) return;
+  if (e?.code === 'NETWORK' && state.pos) { state.online = false; render(); }
   if (e?.code === 'SHOP_DISABLED') {
     // أوقف المزوّد هذا المقهى: شاشة توضيح بدل أخطاء متكررة
     Object.assign(state, { shop: { ...(state.shop ?? {}), disabled: true }, employee: null, modal: null });

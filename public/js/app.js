@@ -10,6 +10,7 @@ import * as admin from './views/admin.js';
 import * as account from './views/account.js';
 import * as platform from './views/platform.js';
 import { mark } from './brand.js';
+import { flushSales, initOffline, rememberSession, savedSession } from './offline.js';
 
 const modules = [pos, receipts, ops, admin, account, platform];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
@@ -106,8 +107,10 @@ if (doc) for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) doc.ad
 async function loadSession(employee) {
   state.employee = employee;
   state.view = {};
+  if (state.online !== false) rememberSession(state.shop, employee);
   if (can('pos.sell') || can('kds.use')) await pos.loadBootstrap().catch(fail);
   await navigate();
+  flushSales();
 }
 
 on({
@@ -129,7 +132,9 @@ on({
     else if (e.key === 'Enter') submitPin();
   },
   lock: async () => {
+    if (state.online === false) { toast('لا يمكن تبديل الموظف بدون إنترنت. البيع مستمر باسم الموظف الحالي.', 'bad'); return; }
     await post('/api/auth/logout', {}).catch(() => {});
+    rememberSession(state.shop, null);
     state.employee = null;
     state.modal = null;
     state.view = { pin: '' };
@@ -161,8 +166,11 @@ export async function boot() {
   setViews(views);
   bindEvents(document.getElementById('app'));
   window.addEventListener('hashchange', () => navigate());
+  initOffline();
   try {
     const s = await get('/api/state');
+    state.online = true;
+    rememberSession(s.shop, s.employee);
     state.shop = s.shop;
     state.authPage = parseHash().route;
     state.ready = true;
@@ -171,6 +179,15 @@ export async function boot() {
     else render();
   } catch (e) {
     state.ready = true;
+    // بلا إنترنت: يفتح المقهى المحفوظ على هذا الجهاز باسم آخر موظف، والمبيعات تُحفظ حتى يعود الاتصال
+    const saved = e.code === 'NETWORK' ? savedSession() : null;
+    if (saved?.shop) {
+      state.online = false;
+      state.shop = saved.shop;
+      if (saved.employee) { await loadSession(saved.employee); return; }
+      render();
+      return;
+    }
     if (e.code === 'DB_NOT_CONFIGURED' || e.code === 'DB_UNAVAILABLE' || e.code === 'NETWORK') state.fatal = errorText(e);
     else fail(e);
     render();

@@ -5,10 +5,22 @@ import { del, get, post, uid } from '../api.js';
 import { icon } from '../icons.js';
 import { busy, can, closeModal, fail, field, modalFrame, on, onRendered, openModal, render, set, state, toast } from '../ui.js';
 import { printReceipt } from './receipts.js';
+import { discardFailed, failedSales, pendingSales, queueSale, rememberBootstrap, retryFailed, savedBootstrap } from '../offline.js';
 
 // ---------------------------------------------------------------- البيانات
 export async function loadBootstrap() {
-  const b = await get('/api/pos/bootstrap');
+  let b;
+  try {
+    b = await get('/api/pos/bootstrap');
+    state.online = true;
+    rememberBootstrap(state.shop?.id, b);
+  } catch (e) {
+    // بلا إنترنت: آخر قائمة وإعدادات ووردية محفوظة على هذا الجهاز
+    const saved = e.code === 'NETWORK' ? savedBootstrap(state.shop?.id) : null;
+    if (!saved) throw e;
+    state.online = false;
+    b = saved;
+  }
   state.settings = b.settings;
   state.catalog = b.catalog;
   state.shift = b.shift;
@@ -173,6 +185,7 @@ function catalogPane(s) {
       <div class="pos-top"><h1>${esc(s.settings?.name ?? '')}</h1>
         ${s.shift ? `<span class="pill ok">${icon('clock', 'sm')} وردية #${s.shift.number}</span>` : ''}
         <span class="clock">${time(Date.now(), tz)}</span></div>
+      ${offlineBanner(s)}
       ${lowBanner(s)}
       <div class="search-box">${icon('search', 'sm')}<input type="search" id="pos-search" placeholder="ابحث باسم الصنف أو SKU" value="${esc(search)}" data-input="pos-search" autocomplete="off"></div>
       <div class="cats" role="tablist">${cats.join('')}</div>
@@ -189,6 +202,18 @@ function ticketFab(s) {
   return `<button class="ticket-fab" data-action="ticket-toggle" aria-label="فتح نافذة الطلب">
     ${icon('sale', 'sm')}<span>${cart.ticket ? esc(cart.ticket.name) : 'الطلب'}</span>
     ${count ? `<span class="fab-count">${count}</span><b class="num">${money(safeTotals().total)}</b>` : '<span class="muted-on">فارغ</span>'}</button>`;
+}
+
+function offlineBanner(s) {
+  const pending = pendingSales().length;
+  const failed = failedSales().length;
+  if (s.online !== false && !pending && !failed) return '';
+  const parts = [];
+  if (s.online === false) parts.push('<b>بدون إنترنت</b> — البيع يعمل والمبيعات تُحفظ على الجهاز');
+  if (pending) parts.push(s.online === false ? `${pending} بانتظار الإرسال` : `جارٍ إرسال ${pending} ${pending === 1 ? 'عملية محفوظة' : 'عمليات محفوظة'}…`);
+  return `<div class="net-banner ${s.online === false ? 'off' : ''}" role="status">${icon(s.online === false ? 'alert' : 'clock', 'sm')}
+    <span class="low-text">${parts.join(' · ') || ''}${failed ? `${parts.length ? ' · ' : ''}<b>${failed} لم تُقبل</b>` : ''}</span>
+    ${failed ? '<button class="btn sm" data-action="offline-review">مراجعة</button>' : ''}</div>`;
 }
 
 const lowKey = (list) => list.map((x) => `${x.variantId}:${x.out ? 0 : 1}`).join(',');
@@ -307,6 +332,16 @@ export const modals = {
       foot: `<button class="btn danger solid" data-action="line-remove">${icon('trash', 'sm')} حذف من الطلب</button>` });
   },
 
+  'offline-failed'(s) {
+    const list = failedSales();
+    const reason = (x) => ({ TOTAL_MISMATCH: 'تغيّر سعر أو خصم قبل الإرسال', NO_OPEN_SHIFT: 'أُغلقت الوردية قبل الإرسال', OUT_OF_STOCK: 'نفد المخزون', UNKNOWN_VARIANT: 'صنف لم يعد في القائمة' }[x.error] ?? x.error);
+    return modalFrame({ title: 'مبيعات محفوظة لم يقبلها الخادم', cls: 'wide', body: list.length ? `<p class="muted small">بيعت هذه الطلبات بلا إنترنت، ثم رفضها الخادم عند الإرسال. راجعها: أعد المحاولة بعد حل السبب، أو احذفها وسجّلها يدوياً.</p>
+      <div class="table-wrap"><table><thead><tr><th>الوقت</th><th>الموظف</th><th class="num">المبلغ</th><th>السبب</th><th></th></tr></thead><tbody>
+      ${list.map((x) => `<tr><td class="small">${time(x.queuedAt, s.settings?.tzOffsetMin ?? 180)}</td><td>${esc(x.summary?.employee ?? '')}</td><td class="num">${money(x.summary?.total ?? 0)}</td><td class="small">${esc(reason(x))}</td>
+        <td><div class="row" style="gap:6px;justify-content:flex-end"><button class="btn sm" data-action="offline-retry" data-id="${x.body.clientId}">إعادة</button><button class="btn sm danger" data-action="offline-discard" data-id="${x.body.clientId}">حذف</button></div></td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">لا شيء للمراجعة.</p>', foot: '<button class="btn" data-action="close-modal">إغلاق</button>' });
+  },
+
   'all-lines'(s) {
     const t = safeTotals();
     const rows = s.pos.cart.lines.map((l, i) => `<tr class="click" data-action="pos-line" data-key="${l.key}"><td class="num">${l.qty}×</td>
@@ -418,10 +453,11 @@ function doneView(m) {
   const change = m.receipt.payments.reduce((a, p) => a + (p.change ?? 0), 0);
   return `<div class="modal" role="dialog" aria-modal="true" aria-label="تم الدفع" data-stop><div class="done">
     <div class="tick">${icon('check')}</div>
-    <h2>تم الدفع · إيصال #${m.receipt.number}</h2>
+    <h2>${m.offline ? 'تم البيع · محفوظ على الجهاز' : `تم الدفع · إيصال #${m.receipt.number}`}</h2>
+    ${m.offline ? '<p class="muted small">لا يوجد إنترنت الآن. سيُرسل البيع تلقائياً ويأخذ رقم إيصاله عند عودة الاتصال.</p>' : ''}
     ${change ? `<div><div class="muted">الباقي للعميل</div><div class="change num">${money(change)}</div></div>` : `<p class="muted">${money(m.receipt.totals.total)}</p>`}
     ${m.receipt.pointsEarned ? `<span class="pill olive">${icon('star', 'sm')} +${m.receipt.pointsEarned} نقطة لـ ${esc(m.receipt.customerName)}</span>` : ''}
-    <div class="row" style="width:100%"><button class="btn lg" style="flex:1" data-action="pay-print">${icon('print', 'sm')} طباعة</button>
+    <div class="row" style="width:100%">${m.offline ? '' : `<button class="btn lg" style="flex:1" data-action="pay-print">${icon('print', 'sm')} طباعة</button>`}
       <button class="btn primary lg" style="flex:1.4" data-action="pay-new" autofocus>طلب جديد</button></div>
   </div></div>`;
 }
@@ -509,6 +545,12 @@ on({
     render();
   },
   'line-remove': () => { state.pos.cart.lines = state.pos.cart.lines.filter((l) => l.key !== state.modal.key); closeModal(); },
+  'offline-review': () => openModal({ type: 'offline-failed' }),
+  'offline-retry': (el) => { retryFailed(el.dataset.id); render(); },
+  'offline-discard': (el) => {
+    if (state.view.confirmDiscard !== el.dataset.id) { state.view.confirmDiscard = el.dataset.id; toast('اضغط مرة أخرى لحذف البيع المحفوظ نهائياً'); return; }
+    discardFailed(el.dataset.id);
+  },
   'pos-all-lines': () => openModal({ type: 'all-lines' }),
   'ticket-toggle': () => { state.pos.ticketHidden = !state.pos.ticketHidden; saveTicketHidden(state.pos.ticketHidden); render(); },
   'pos-discounts': () => openModal({ type: 'discounts' }),
@@ -652,7 +694,21 @@ on({
       diningOption: cart.diningOption, ticketId: cart.ticket?.id ?? null, ticketName: cart.ticket?.name ?? null,
       clientTotal: m.total, payments: payments.map((p) => ({ typeId: p.typeId, amount: p.amount, tendered: p.tendered })),
     };
-    const r = await post('/api/sales', body);
+    let r;
+    try {
+      r = await post('/api/sales', body);
+      state.online = true;
+    } catch (e) {
+      if (e.code !== 'NETWORK') throw e;
+      // انقطع الإنترنت: يُحفظ البيع على الجهاز ويُرسل تلقائياً عند عودة الاتصال (نفس clientId → لا تكرار)
+      state.online = false;
+      const change = payments.reduce((a, p) => a + Math.max(0, (p.tendered ?? p.amount) - p.amount), 0);
+      queueSale(body, { total: m.total, lines: cart.lines.reduce((a, l) => a + l.qty, 0), employee: state.employee?.name ?? '' });
+      state.modal = { type: 'pay', stage: 'done', offline: true, receipt: { number: null, totals: { total: m.total }, payments: [{ change }], pointsEarned: 0 } };
+      if (cart.ticket) state.ticketsCount = Math.max(0, state.ticketsCount - 1);
+      state.pos.cart = emptyCart();
+      return;
+    }
     state.modal = { type: 'pay', stage: 'done', receipt: r.receipt };
     if (cart.ticket) state.ticketsCount = Math.max(0, state.ticketsCount - 1);
     state.pos.cart = emptyCart();
