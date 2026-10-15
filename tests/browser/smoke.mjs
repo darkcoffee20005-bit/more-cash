@@ -269,6 +269,21 @@ try {
   await page.click('[data-action="rcv-submit"]');
   await page.waitForSelector('.toast.ok');
   await shot('23-inventory');
+  // إضافة مادة جديدة من صفحة المخزون
+  await page.click('[data-action="mat-new"]');
+  await page.fill('#mat-name', 'هيل مطحون');
+  await page.click('[data-action="mat-unit"][data-u="غ"]');
+  await page.fill('#mat-stock', '٥٠٠');
+  await page.fill('#mat-cost', '12.5');
+  await page.fill('#mat-low', '100');
+  await shot('23b-new-material');
+  await page.click('form[data-form="mat-save"] button[type=submit]');
+  await page.waitForSelector('td:has-text("هيل مطحون")');
+  const matRow = await page.locator('tr', { hasText: 'هيل مطحون' }).innerText();
+  if (!matRow.includes('500') || !matRow.includes('12.5')) errors.push(`new material row wrong: ${matRow}`);
+  await page.click('[data-action="rcv-open"]');
+  await page.waitForSelector('#rcv-v-0 option:has-text("هيل مطحون")', { state: 'attached' }).catch(() => errors.push('new material missing from receive list'));
+  await page.click('[data-action="close-modal"]');
   // جرد يُنزل مادة تحت الحد → تنبيه على شاشة البيع وشارة على الإدارة
   await page.evaluate(async () => {
     const inv = await (await fetch('/api/admin/inventory')).json();

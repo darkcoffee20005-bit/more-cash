@@ -10,6 +10,7 @@ import { rememberSession } from '../offline.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 
 const COLORS = { olive: 'أخضر', petrol: 'أخضر داكن', sage: 'مريمية', teal: 'نعناعي', sand: 'ذهبي', clay: 'طيني', mocha: 'موكا', slate: 'رمادي' };
+const MAT_UNITS = ['غ', 'كغم', 'مل', 'لتر', 'قطعة', 'كوب', 'علبة'];
 const SECTIONS = [
   ['dashboard', 'المتابعة', 'chart', 'admin.reports'],
   ['daily', 'التقرير اليومي', 'receipt', 'admin.reports'],
@@ -265,6 +266,7 @@ const PAGES = {
     const rows = inv.rows.filter((r) => f === 'all' || (f === 'low' ? r.low : f === 'ing' ? r.ingredient : !r.ingredient));
     return `<div class="page-head"><h1>المخزون</h1><span class="muted">قيمة المخزون ${money(inv.totalValue)}</span>
         <div class="row wrap">
+          ${can('admin.catalog') ? `<button class="btn" data-action="mat-new">${icon('plus', 'sm')} مادة جديدة</button>` : ''}
           <button class="btn primary" data-action="rcv-open">${icon('plus', 'sm')} استلام مشتريات</button>
           <label class="btn"><input type="file" accept="image/*" capture="environment" hidden data-change="rcv-scan" id="rcv-file">${icon('camera', 'sm')} تصوير فاتورة</label>
           <button class="btn sm ghost" data-action="inv-reconcile">${icon('check', 'sm')} مطابقة مع الدفتر</button></div></div>
@@ -527,6 +529,17 @@ export const modals = {
         ${type === 'receive' ? field(`تكلفة الوحدة (د.ع لكل ${esc(r.unit)})`, '<input name="cost" id="adj-cost" inputmode="decimal" placeholder="اتركه فارغاً للإبقاء على التكلفة">', 'تُحدَّث التكلفة بالمتوسط المرجح') : ''}
         ${field('ملاحظة', `<input name="note" id="adj-note" maxlength="120" ${type === 'loss' ? 'required' : ''} placeholder="${type === 'loss' ? 'منتهي الصلاحية، انسكب…' : 'المورد، رقم الفاتورة…'}">`)}
         <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
+  },
+
+  'mat-new'(s) {
+    return modalFrame({ title: 'مادة جديدة', sub: 'مكوّن يُشترى ويُصرف من المخزون: بن، حليب، أكواب، سكر…', body: `<form class="stack" data-form="mat-save" id="mat-form">
+      ${field('اسم المادة', '<input name="name" id="mat-name" required maxlength="50" placeholder="مثلاً: حليب كامل الدسم" autocomplete="off">')}
+      ${field('وحدة القياس', '<input name="unit" id="mat-unit" required maxlength="10" placeholder="غ، مل، قطعة" autocomplete="off">', 'الوصفات والاستلام والتقارير تستخدم هذه الوحدة')}
+      <div class="row wrap" style="gap:6px;margin-top:-6px">${MAT_UNITS.map((u) => `<button type="button" class="chip" data-action="mat-unit" data-u="${u}">${u}</button>`).join('')}</div>
+      <div class="grid-3">${field('الرصيد الحالي', '<input name="initialStock" id="mat-stock" inputmode="numeric" placeholder="0" autocomplete="off">')}
+        ${field('تكلفة الوحدة (د.ع)', '<input name="cost" id="mat-cost" inputmode="decimal" placeholder="مثلاً: 2.5" autocomplete="off">')}
+        ${field('حد التنبيه', '<input name="lowStock" id="mat-low" inputmode="numeric" placeholder="0" autocomplete="off">', 'تنبيه عند الوصول له')}</div>
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>إضافة المادة</button></form>` });
   },
 
   'branch-new'(s) {
@@ -837,6 +850,19 @@ on({
   'modifier-archive': () => busy(async () => { await del(`/api/admin/modifiers/${state.modal.doc.id}`); state.modal = null; state.catalog = null; await loadSection('modifiers'); }),
 
   // المخزون
+  'mat-new': () => openModal({ type: 'mat-new' }),
+  'mat-unit': (el) => { const input = document.getElementById('mat-unit'); if (input) input.value = el.dataset.u; },
+  'mat-save': (_el, _e, d) => busy(async () => {
+    const cost = String(d.cost ?? '').trim();
+    await post('/api/admin/items', {
+      forSale: false, name: d.name, unit: String(d.unit ?? '').trim(),
+      variants: [{ name: '', initialStock: num(d.initialStock, 'الرصيد'), lowStock: num(d.lowStock, 'حد التنبيه'), ...(cost ? { cost } : {}) }],
+    });
+    state.modal = null;
+    toast(`أُضيفت المادة: ${d.name}`, 'ok');
+    A().items = null;
+    await loadSection('inventory');
+  }),
   'inv-filter': (el) => { A().invFilter = el.dataset.f; render(); },
   'rcv-open': async () => {
     await ensureStockItems();
