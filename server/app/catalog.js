@@ -179,6 +179,13 @@ export function createCatalog(ctx) {
       // الأحجام المحذوفة تُعطَّل ولا تُحذف
       const removed = existingVariants.filter((e) => !variants.some((v) => v._id === e._id)).map((e) => e._id);
       if (removed.length) await C('variants').updateMany({ _id: { $in: removed } }, { $set: { active: false } });
+      // سجل العمليات: الأصناف الجديدة وتغييرات الأسعار (أكثر ما يهم المالك مراقبته)
+      const priceChanges = variants.map((v) => {
+        const old = existingVariants.find((e) => e._id === v._id);
+        return old && old.price !== v.price ? { variant: v.name, from: old.price, to: v.price } : null;
+      }).filter(Boolean);
+      if (!input.id) await audit({ ...ctx, actor }, 'item.create', { name: item.name });
+      else if (priceChanges.length || removed.length) await audit({ ...ctx, actor }, 'item.update', { name: item.name, priceChanges, removedSizes: removed.length });
       return getItem(itemId);
     }, 'NAME_OR_SKU_IN_USE');
   }

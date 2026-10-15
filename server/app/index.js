@@ -62,6 +62,17 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['GET', '/api/admin/dashboard', (actor) => reports.dashboard(actor)],
     ['GET', '/api/admin/reports', (actor, req) => reports.report(actor, req.query)],
     ['GET', '/api/admin/reports/daily', (actor, req) => reports.daily(actor, req.query)],
+    // سجل العمليات الحساسة: للمالك فقط
+    ['GET', '/api/admin/audit', async (actor, req) => {
+      requirePerm(actor, 'admin.settings');
+      const r = await toRange(req.query);
+      if (!r.from) throw new AppError(400, 'INVALID_RANGE');
+      const filter = { at: { $gte: r.from, $lt: r.to } };
+      const group = String(req.query.group ?? '');
+      if (/^[a-z]{2,20}$/.test(group)) filter.action = { $regex: `^${group}\\.` };
+      const rows = await db.collection('audit').find(filter).sort({ at: -1 }).limit(500).toArray();
+      return rows.map((x) => ({ id: x._id, action: x.action, at: x.at, byName: x.byName, data: x.data }));
+    }],
     ['GET', '/api/admin/items', async (actor) => { requireCatalog(actor); return catalog.listItems({ includeInactive: false }); }],
     ['POST', '/api/admin/items', (actor, req) => catalog.saveItem(actor, req.body)],
     ['DELETE', '/api/admin/items/:id', (actor, req, p) => catalog.archive(actor, 'items', p.id)],

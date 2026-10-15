@@ -412,6 +412,8 @@ tfoot td { font-weight: 700; background: var(--surface-2); }
 .alert-low a { color: inherit; font-weight: 700; }
 @media (max-width: 700px) { .rcv-row { grid-template-columns: 1fr 1fr auto; } .rcv-row select { grid-column: 1 / -1; } }
 
+tr.audit-warn td:nth-child(3) b { color: var(--warn); }
+
 /* تنبيه المخزون على شاشة البيع */
 .low-banner { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 12px; border-radius: var(--r-md); background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
 .low-banner.has-out { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }

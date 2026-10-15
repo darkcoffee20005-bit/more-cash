@@ -14,6 +14,7 @@ const SECTIONS = [
   ['daily', 'التقرير اليومي', 'receipt', 'admin.reports'],
   ['reports', 'التقارير', 'list', 'admin.reports'],
   ['shifts', 'الورديات', 'clock', 'admin.reports'],
+  ['audit', 'سجل العمليات', 'list', 'admin.settings'],
   ['items', 'الأصناف', 'cup', 'admin.catalog'],
   ['categories', 'التصنيفات', 'layers', 'admin.catalog'],
   ['modifiers', 'الإضافات', 'plus', 'admin.catalog'],
@@ -66,6 +67,20 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  audit(s, a) {
+    const groups = [['', 'الكل'], ['receipt', 'الاسترجاع'], ['discount', 'الخصومات'], ['inventory', 'المخزون'], ['item', 'الأصناف والأسعار'], ['shift', 'الورديات والنقد'], ['ticket', 'التذاكر'], ['employee', 'الموظفون'], ['settings', 'الإعدادات']];
+    const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر']];
+    const rows = a.audit;
+    return `<div class="page-head"><h1>سجل العمليات</h1><span class="muted small">كل عملية حساسة مع الموظف ووقتها. لا يمكن تعديل السجل أو حذفه.</span></div>
+      <div class="toolbar"><div class="seg">${presets.map(([k, l]) => `<button class="${a.auditPreset === k ? 'on' : ''}" data-action="audit-preset" data-k="${k}">${l}</button>`).join('')}</div></div>
+      <div class="row wrap">${groups.map(([k, l]) => `<button class="chip ${(a.auditGroup ?? '') === k ? 'on' : ''}" data-action="audit-group" data-k="${k}">${l}</button>`).join('')}</div>
+      <div class="table-wrap"><table><thead><tr><th>الوقت</th><th>الموظف</th><th>العملية</th><th>التفاصيل</th></tr></thead>
+      <tbody>${rows === undefined || rows === null ? '<tr><td colspan="4" class="muted">جارٍ التحميل…</td></tr>'
+        : rows.length ? rows.map((x) => `<tr class="${AUDIT_WARN.has(x.action) ? 'audit-warn' : ''}"><td class="small">${dateTime(x.at, tz())}</td><td>${esc(x.byName ?? '—')}</td>
+          <td><b>${esc(AUDIT_LABELS[x.action] ?? x.action)}</b></td><td class="small">${auditDetails(x)}</td></tr>`).join('')
+        : '<tr><td colspan="4" class="muted">لا عمليات في هذه الفترة</td></tr>'}</tbody></table></div>`;
+  },
+
   daily(s, a) {
     const d = a.daily;
     const head = `<div class="page-head"><h1>التقرير اليومي</h1>
@@ -269,6 +284,41 @@ const PAGES = {
 };
 
 const neg = (v) => (v ? `−${money(v)}` : money(0));
+// ---------------------------------------------------------------- سجل العمليات
+const AUDIT_LABELS = {
+  'receipt.refund': 'استرجاع', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
+  'inventory.receive': 'استلام مخزون', 'inventory.loss': 'هدر/تالف', 'inventory.count': 'جرد', 'inventory.adjust': 'تعديل مخزون', 'inventory.reconcile': 'مطابقة المخزون',
+  'item.create': 'صنف جديد', 'item.update': 'تعديل صنف/سعر', 'items.archive': 'أرشفة صنف', 'categories.archive': 'أرشفة تصنيف', 'modifiers.archive': 'أرشفة إضافة',
+  'shift.open': 'فتح وردية', 'shift.close': 'إغلاق وردية', 'shift.pay_in': 'إدخال نقد للدرج', 'shift.pay_out': 'سحب نقد من الدرج',
+  'ticket.delete': 'حذف تذكرة محفوظة', 'employee.create': 'موظف جديد', 'employee.update': 'تعديل موظف', 'settings.update': 'تعديل الإعدادات',
+  'expense.create': 'مصروف', 'expense.delete': 'حذف مصروف',
+};
+const AUDIT_WARN = new Set(['receipt.refund', 'discount.restricted', 'inventory.loss', 'inventory.adjust', 'shift.pay_out', 'ticket.delete', 'item.update', 'expense.delete']);
+
+function auditDetails(x) {
+  const d = x.data ?? {};
+  const parts = [];
+  if (d.sale) parts.push(`إيصال #${d.sale}${d.refund ? ` ← استرجاع #${d.refund}` : ''}`);
+  if (d.receipt) parts.push(`إيصال #${d.receipt}`);
+  if (Number.isSafeInteger(d.total)) parts.push(money(d.total));
+  if (d.discount) parts.push(esc(d.discount));
+  if (d.reason) parts.push(`السبب: ${esc(d.reason)}`);
+  if (d.name) parts.push(esc(d.name));
+  for (const c of d.priceChanges ?? []) parts.push(`${esc(c.variant || 'السعر')}: ${money(c.from)} ← ${money(c.to)}`);
+  if (d.removedSizes) parts.push(`حُذف ${d.removedSizes} حجم`);
+  if (Number.isSafeInteger(d.delta)) parts.push(`الكمية ${d.delta > 0 ? '+' : ''}${d.delta.toLocaleString('en-US')}`);
+  if (Number.isSafeInteger(d.amount)) parts.push(money(d.amount));
+  if (Number.isSafeInteger(d.difference)) parts.push(`الفرق ${money(d.difference, { sign: true })}`);
+  if (Number.isSafeInteger(d.startingCash)) parts.push(`بداية ${money(d.startingCash)}`);
+  if (d.role) parts.push(esc(ROLES[d.role] ?? d.role));
+  if (d.pinChanged) parts.push('تغيير الرمز');
+  if (d.active === false) parts.push('تعطيل');
+  if (d.category) parts.push(esc(d.category));
+  if (d.note) parts.push(esc(d.note));
+  if (Array.isArray(d.keys) && d.keys.length) parts.push(esc(d.keys.join('، ')));
+  return parts.join(' · ') || '—';
+}
+
 const qty = (n, unit) => `${Number(n).toLocaleString('en-US')} ${esc(unit ?? '')}`;
 
 // ---------------------------------------------------------------- التقرير اليومي: نص للمشاركة وورقة للطباعة
@@ -517,6 +567,12 @@ async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
+    audit: async () => {
+      if (!a.auditPreset) a.auditPreset = 'today';
+      const [from, to] = presetRange(a.auditPreset);
+      a.audit = null; render();
+      a.audit = await get('/api/admin/audit', { from, to, group: a.auditGroup || undefined });
+    },
     daily: async () => {
       if (!a.dailyDate) a.dailyDate = presetRange('today')[0];
       a.daily = null; render();
@@ -552,6 +608,8 @@ const percentToBp = (v) => { const s = String(v ?? '').trim(); if (!/^\d+(\.\d{1
 
 on({
   // التقارير
+  'audit-preset': (el) => { A().auditPreset = el.dataset.k; loadSection('audit').catch(fail); },
+  'audit-group': (el) => { A().auditGroup = el.dataset.k; loadSection('audit').catch(fail); },
   'daily-date': (el) => { if (!el.value) return; A().dailyDate = el.value; loadSection('daily').catch(fail); },
   'daily-print': () => { const d = A().daily; if (d) printHtml(dailyHtml(d), 'معاينة التقرير اليومي'); },
   'daily-share': async () => {

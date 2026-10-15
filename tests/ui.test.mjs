@@ -231,7 +231,7 @@ test('المدير: استرجاع جزئي، إغلاق وردية، ولوحة
   assert.equal(state.modal, null);
   assert.equal(state.view.receipts.detail.refunds.length, 1);
 
-  for (const sub of ['dashboard', 'daily', 'reports', 'shifts', 'items', 'categories', 'modifiers', 'discounts', 'inventory', 'employees', 'settings']) {
+  for (const sub of ['dashboard', 'daily', 'reports', 'shifts', 'audit', 'items', 'categories', 'modifiers', 'discounts', 'inventory', 'employees', 'settings']) {
     await go(`#/admin/${sub}`);
     const html = screen();
     clean(html, `الإدارة/${sub}`);

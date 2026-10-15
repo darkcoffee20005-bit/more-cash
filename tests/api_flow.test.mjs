@@ -400,3 +400,28 @@ test('قراءة الفاتورة بدون مفتاح API: رسالة واضحة
   assert.equal(r.status, 503);
   assert.equal(r.body.error, 'SCAN_NOT_CONFIGURED');
 });
+
+test('سجل العمليات: الاسترجاع وتغيير السعر يظهران للمالك فقط', async () => {
+  const { ok, call } = await boot();
+  const { catalog, settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  await ok('owner', 'POST', '/api/shifts/open', { startingCash: 0 });
+  const water = findItem(catalog, 'ماء');
+  const lines = [{ variantId: water.variants[0].id, qty: 2 }];
+  const total = clientTotal(catalog, settings, lines);
+  const sale = (await ok('owner', 'POST', '/api/sales', { clientId: randomUUID(), lines, discountIds: [], diningOption: 'takeaway', clientTotal: total, payments: [{ typeId: 'cash', amount: total, tendered: total }] })).receipt;
+  await ok('owner', 'POST', `/api/receipts/${sale.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'خطأ في الطلب' });
+  const item = (await ok('owner', 'GET', '/api/admin/items')).find((i) => i.name === 'ماء');
+  await ok('owner', 'POST', '/api/admin/items', { ...item, variants: item.variants.map((v) => ({ ...v, price: 750 })) });
+  await ok('owner', 'POST', '/api/admin/employees', { name: 'زينب', role: 'manager', pin: '2580' });
+
+  const log = await ok('owner', 'GET', '/api/admin/audit', null, { from: '2026-10-14', to: '2026-10-14' });
+  const refund = log.find((x) => x.action === 'receipt.refund');
+  assert.equal(refund.data.reason, 'خطأ في الطلب');
+  assert.equal(refund.byName, 'أحمد');
+  const price = log.find((x) => x.action === 'item.update');
+  assert.deepEqual(price.data.priceChanges.map((c) => [c.from, c.to]), [[500, 750]]);
+  const onlyRefunds = await ok('owner', 'GET', '/api/admin/audit', null, { from: '2026-10-14', to: '2026-10-14', group: 'receipt' });
+  assert.ok(onlyRefunds.length >= 1 && onlyRefunds.every((x) => x.action.startsWith('receipt.')));
+  await ok('mgr', 'POST', '/api/auth/pin', { pin: '2580' });
+  assert.equal((await call('mgr', 'GET', '/api/admin/audit', null, { from: '2026-10-14', to: '2026-10-14' })).status, 403, 'المدير لا يرى السجل');
+});
