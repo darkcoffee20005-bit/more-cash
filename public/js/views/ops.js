@@ -23,7 +23,8 @@ export const routes = {
         ${o.customerName || o.ticketName ? `<div class="who small">${esc(o.ticketName ?? o.customerName)}</div>` : ''}
         <ul>${o.lines.map((l) => `<li class="${l.refundedQty >= l.qty ? 'void' : ''}"><b class="num">${l.qty}×</b><div><b>${esc(l.name)}</b> ${esc(l.variant ?? '')}
           ${l.modifiers.length ? `<div class="muted small">${l.modifiers.map(esc).join(' · ')}</div>` : ''}${l.note ? `<div class="small" style="color:var(--warn)">✎ ${esc(l.note)}</div>` : ''}</div></li>`).join('')}</ul>
-        <button class="btn ${o.prep.status === 'ready' ? 'primary' : 'olive'}" data-action="kds-advance" data-id="${o.id}" data-from="${o.prep.status}">${PREP[o.prep.status][1]}</button>
+        <div class="kds-actions"><button class="btn ${o.prep.status === 'ready' ? 'primary' : 'olive'}" data-action="kds-advance" data-id="${o.id}" data-from="${o.prep.status}">${PREP[o.prep.status][1]}</button>
+          ${can('pos.refund') && o.lines.some((l) => l.refundedQty < l.qty) ? `<button class="btn danger" data-action="kds-cancel" data-id="${o.id}" aria-label="إلغاء أو استرجاع الطلب #${o.number}">${icon('refund', 'sm')} إلغاء</button>` : ''}</div>
       </article>`;
     }).join('');
     return `<div class="page" style="max-width:none">
@@ -119,7 +120,35 @@ function shiftReportHtml(x) {
   return `<div class="paper80"><div class="c big">${esc(state.settings?.name ?? '')}</div>${shiftReportText(x).split('\n').map((l) => (l ? `<div>${esc(l)}</div>` : '<hr>')).join('')}</div>`;
 }
 
+const CANCEL_REASONS = ['ألغى الزبون الطلب', 'طلب خاطئ', 'تأخر الطلب', 'مشكلة بالجودة', 'أُرجع الطلب'];
+
 export const modals = {
+  'kds-cancel'(s) {
+    const m = s.modal;
+    const o = (s.view.kds ?? []).find((x) => x.id === m.id);
+    if (!o) return modalFrame({ title: 'الطلب غير موجود', body: '<p class="muted">ربما سُلّم أو أُلغي من جهاز آخر.</p>' });
+    const notStarted = o.prep.status === 'new';
+    const types = s.settings.paymentTypes.filter((p) => p.active);
+    const refundTotal = o.lines.reduce((a, l, i) => a + (m.qty[i] ? Math.round((l.total * m.qty[i]) / l.qty) : 0), 0);
+    const any = Object.values(m.qty).some((q) => q > 0);
+    return modalFrame({ title: `إلغاء / استرجاع الطلب #${o.number}`, sub: notStarted ? 'لم يبدأ تحضيره بعد' : PREP[o.prep.status][0], body: `
+      <div class="stack" style="gap:6px">${o.lines.map((l, i) => {
+        const left = l.qty - l.refundedQty;
+        if (!left) return '';
+        const q = m.qty[i] ?? 0;
+        return `<div class="row card" style="padding:6px 10px"><div style="flex:1;min-width:0"><b>${esc(l.name)}</b> ${esc(l.variant ?? '')} <span class="muted small">(${left} من ${l.qty})</span></div>
+          <div class="stepper"><button data-action="kds-cancel-qty" data-i="${i}" data-d="-1" aria-label="أقل">−</button><span>${q}</span><button data-action="kds-cancel-qty" data-i="${i}" data-d="1" ${q >= left ? 'disabled' : ''} aria-label="أكثر">+</button></div></div>`;
+      }).join('')}</div>
+      <form class="stack" data-form="kds-cancel-submit" id="kds-cancel-form">
+        <div class="stack" style="gap:6px"><span class="label">السبب</span><div class="row wrap" style="gap:6px">${CANCEL_REASONS.map((r) => `<button type="button" class="chip ${m.reason === r ? 'on' : ''}" data-action="kds-cancel-reason" data-r="${r}">${r}</button>`).join('')}</div></div>
+        <div class="grid-2">${field('ملاحظة (اختياري)', '<input name="note" id="kds-cancel-note" maxlength="80" autocomplete="off">')}
+        ${types.length > 1 ? field('إرجاع المبلغ', `<select name="paymentTypeId" id="kds-cancel-type">${types.map((p) => `<option value="${p.id}" ${p.id === o.paymentTypeId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`) : ''}</div>
+        ${notStarted ? '<label class="check"><input type="checkbox" name="restockIngredients" id="kds-cancel-ing" checked> إرجاع مكونات المشروبات للمخزون (لم تُحضَّر بعد)</label>' : ''}
+        <label class="check"><input type="checkbox" name="restock" id="kds-cancel-restock" ${notStarted ? 'checked' : ''}> إرجاع الأصناف الجاهزة للمخزون (مخبوزات، ماء)</label>
+      </form>`,
+    foot: `<button class="btn danger solid lg" type="submit" form="kds-cancel-form" ${any && m.reason && !s.busy ? '' : 'disabled'}>${icon('refund', 'sm')} ${any ? `إرجاع ${money(refundTotal)} للزبون` : 'اختر الأصناف'}</button>` });
+  },
+
   'shift-report'(s) {
     const x = s.modal.shift;
     const phone = s.settings?.reportPhone;
@@ -174,6 +203,36 @@ async function loadCustomers() { state.view.customers.list = await get('/api/cus
 
 on({
   'kds-refresh': () => loadKds().catch(fail),
+  'kds-cancel': (el) => {
+    const o = (state.view.kds ?? []).find((x) => x.id === el.dataset.id);
+    if (!o) return;
+    const qty = {};
+    o.lines.forEach((l, i) => { if (l.qty > l.refundedQty) qty[i] = l.qty - l.refundedQty; });
+    openModal({ type: 'kds-cancel', id: o.id, qty, reason: null, clientId: uid() });
+  },
+  'kds-cancel-qty': (el) => {
+    const m = state.modal;
+    const o = state.view.kds.find((x) => x.id === m.id);
+    const i = Number(el.dataset.i);
+    const left = o.lines[i].qty - o.lines[i].refundedQty;
+    m.qty[i] = Math.max(0, Math.min(left, (m.qty[i] ?? 0) + Number(el.dataset.d)));
+    render();
+  },
+  'kds-cancel-reason': (el) => { state.modal.reason = el.dataset.r; render(); },
+  'kds-cancel-submit': (_el, _e, d) => busy(async () => {
+    const m = state.modal;
+    const o = state.view.kds.find((x) => x.id === m.id);
+    const lines = Object.entries(m.qty).filter(([, q]) => q > 0).map(([i, q]) => ({ index: Number(i), qty: q }));
+    if (!lines.length || !m.reason) return;
+    const reason = d.note ? `${m.reason} — ${d.note}` : m.reason;
+    const res = await post(`/api/receipts/${o.id}/refund`, {
+      clientId: m.clientId, lines, reason, source: 'kds', paymentTypeId: d.paymentTypeId || o.paymentTypeId || undefined,
+      restock: !!d.restock, restockIngredients: !!d.restockIngredients,
+    });
+    state.modal = null;
+    toast(`أُلغي من الطلب #${o.number} · أُرجع ${money(res.receipt.totals.total)} (إيصال #${res.receipt.number})`, 'ok');
+    await loadKds();
+  }),
   'kds-advance': (el) => busy(async () => {
     const r = await post(`/api/kds/${el.dataset.id}/advance`, { from: el.dataset.from });
     if (r.status === 'served') toast('سُلّم الطلب', 'ok');

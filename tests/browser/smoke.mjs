@@ -100,6 +100,22 @@ try {
 
   await page.goto(`http://127.0.0.1:${PORT}/#/kds`);
   await page.waitForSelector('.kds-card');
+  // إلغاء من شاشة التحضير: السبب إلزامي، وزر التنفيذ يُظهر المبلغ المسترجع
+  {
+    const before = await page.locator('.kds-card').count();
+    await page.click('.kds-card >> nth=0 >> [data-action="kds-cancel"]');
+    await page.waitForSelector('form[data-form="kds-cancel-submit"]');
+    if (!(await page.isDisabled('button[form="kds-cancel-form"]'))) errors.push('kds cancel allowed without a reason');
+    await page.click('[data-action="kds-cancel-reason"] >> nth=0');
+    const label = await page.textContent('button[form="kds-cancel-form"]');
+    if (!/إرجاع .*د\.ع/.test(label)) errors.push(`kds cancel button label: ${label}`);
+    const fb = await page.locator('button[form="kds-cancel-form"]').boundingBox();
+    if (!fb || fb.y + fb.height > page.viewportSize().height) errors.push('kds cancel confirm below the fold');
+    await shot('08a-kds-cancel');
+    await page.click('button[form="kds-cancel-form"]');
+    await page.waitForSelector('.toast.ok:has-text("أُلغي")');
+    await page.waitForFunction((n) => document.querySelectorAll('.kds-card').length === n - 1, before).catch(() => errors.push('cancelled order still on KDS'));
+  }
   await shot('08-kds');
   await page.goto(`http://127.0.0.1:${PORT}/#/receipts`);
   await page.waitForSelector('tr.click');

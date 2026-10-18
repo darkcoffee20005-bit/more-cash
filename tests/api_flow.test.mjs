@@ -484,3 +484,50 @@ test('بيع بلا إنترنت: يُسجَّل بوقته الفعلي ضمن 
   assert.notEqual(new Date(early.createdAt).toISOString(), '2026-10-13T00:00:00.000Z');
   assert.equal(early.offline, undefined);
 });
+
+test('إلغاء من شاشة التحضير: قبل التحضير تعود المكونات، والطلب الملغى كاملاً يختفي من الشاشة', async () => {
+  const { ok, call } = await boot();
+  const { catalog, settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  await ok('owner', 'POST', '/api/shifts/open', { startingCash: 0 });
+  const big = findItem(catalog, 'لاتيه').variants.find((v) => v.name === 'كبير'); // بن 18غ، حليب 300مل، كوب
+  const milkOpt = catalog.modifiers.find((m) => m.name === 'نوع الحليب').options[0].id;
+  const croissant = findItem(catalog, 'كرواسون').variants[0];
+  const lines = [{ variantId: big.id, qty: 2, modifierOptionIds: [milkOpt] }, { variantId: croissant.id, qty: 1 }];
+  const total = clientTotal(catalog, settings, lines);
+  const sell = async () => (await ok('owner', 'POST', '/api/sales', { clientId: randomUUID(), lines, discountIds: [], clientTotal: total, payments: [{ typeId: 'cash', amount: total }] })).receipt;
+  const stock = async (n) => (await ok('owner', 'GET', '/api/admin/inventory')).rows.find((r) => r.name.startsWith(n)).stock;
+  const coffee0 = await stock('بن إسبريسو');
+  const croissant0 = await stock('كرواسون');
+
+  // طلب لم يبدأ تحضيره: إلغاء كامل مع إرجاع المكونات والصنف الجاهز
+  const a = await sell();
+  assert.equal(await stock('بن إسبريسو'), coffee0 - 36);
+  const kds = await ok('owner', 'GET', '/api/kds');
+  const card = kds.find((o) => o.id === a.id);
+  assert.equal(card.paymentTypeId, 'cash');
+  assert.equal(card.lines[0].total + card.lines[1].total, total, 'مبالغ الأسطر تكفي لعرض المبلغ المسترجع');
+  const body = { clientId: randomUUID(), lines: [{ index: 0, qty: 2 }, { index: 1, qty: 1 }], reason: 'ألغى الزبون الطلب', source: 'kds', restock: true, restockIngredients: true };
+  const r = (await ok('owner', 'POST', `/api/receipts/${a.id}/refund`, body)).receipt;
+  assert.equal(r.totals.total, total);
+  assert.equal(await stock('بن إسبريسو'), coffee0, 'عادت مكونات المشروب');
+  assert.equal(await stock('كرواسون'), croissant0, 'عاد الصنف الجاهز');
+  assert.equal((await ok('owner', 'POST', `/api/receipts/${a.id}/refund`, body)).duplicate, true, 'النقرة المكررة لا تُرجع مرتين');
+  assert.equal(await stock('بن إسبريسو'), coffee0);
+  assert.equal((await ok('owner', 'GET', '/api/kds')).some((o) => o.id === a.id), false, 'الملغى كاملاً يختفي من الشاشة');
+  assert.equal((await ok('owner', 'GET', `/api/receipts/${a.id}`)).prep.status, 'cancelled');
+
+  // طلب بدأ تحضيره: المكونات صُرفت فلا تعود حتى لو طُلب ذلك؛ إلغاء جزئي يبقيه على الشاشة
+  const b = await sell();
+  await ok('owner', 'POST', `/api/kds/${b.id}/advance`, { from: 'new' });
+  await ok('owner', 'POST', `/api/receipts/${b.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'طلب خاطئ', source: 'kds', restockIngredients: true });
+  assert.equal(await stock('بن إسبريسو'), coffee0 - 36, 'لا إرجاع لمكونات مشروب قيد التحضير');
+  const still = (await ok('owner', 'GET', '/api/kds')).find((o) => o.id === b.id);
+  assert.equal(still.lines[0].refundedQty, 1, 'يبقى على الشاشة والسطر الملغى مشطوب');
+
+  // سجل العمليات يذكر أن الإلغاء من شاشة التحضير؛ والكاشير لا يلغي
+  const log = await ok('owner', 'GET', '/api/admin/audit', null, { from: '2026-10-14', to: '2026-10-14', group: 'receipt' });
+  assert.ok(log.some((x) => x.data?.source === 'kds'));
+  await ok('owner', 'POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: '2468' });
+  await ok('sara', 'POST', '/api/auth/pin', { pin: '2468' });
+  assert.equal((await call('sara', 'POST', `/api/receipts/${b.id}/refund`, { clientId: randomUUID(), lines: [{ index: 1, qty: 1 }], reason: 'خطأ' })).status, 403);
+});

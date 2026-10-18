@@ -348,6 +348,7 @@ function auditDetails(x) {
   if (Number.isSafeInteger(d.total)) parts.push(money(d.total));
   if (d.discount) parts.push(esc(d.discount));
   if (d.reason) parts.push(`السبب: ${esc(d.reason)}`);
+  if (d.source === 'kds') parts.push('من شاشة التحضير');
   if (d.name) parts.push(esc(d.name));
   for (const c of d.priceChanges ?? []) parts.push(`${esc(c.variant || 'السعر')}: ${money(c.from)} ← ${money(c.to)}`);
   if (d.removedSizes) parts.push(`حُذف ${d.removedSizes} حجم`);
