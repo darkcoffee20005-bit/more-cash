@@ -1,6 +1,6 @@
 // لوحة الإدارة (Back Office): المتابعة، التقارير، الأصناف، التصنيفات، الإضافات، الخصومات، المخزون، الموظفون، الورديات، الإعدادات.
 import { formatMilli } from '../../../shared/calc.js';
-import { dateTime, esc, localDate, money, parseAmount, pct } from '../../../shared/format.js';
+import { dateTime, esc, localDate, money, parseAmount, pct, time } from '../../../shared/format.js';
 import { ROLES } from '../../../shared/perms.js';
 import { del, get, post, put, uid } from '../api.js';
 import { icon } from '../icons.js';
@@ -107,7 +107,7 @@ const PAGES = {
   },
 
   audit(s, a) {
-    const groups = [['', 'الكل'], ['receipt', 'الاسترجاع'], ['discount', 'الخصومات'], ['inventory', 'المخزون'], ['item', 'الأصناف والأسعار'], ['shift', 'الورديات والنقد'], ['ticket', 'التذاكر'], ['employee', 'الموظفون'], ['settings', 'الإعدادات']];
+    const groups = [['', 'الكل'], ['receipt', 'الاسترجاع والإلغاء'], ['discount', 'الخصومات'], ['inventory', 'المخزون'], ['item', 'الأصناف والأسعار'], ['shift', 'الورديات والنقد'], ['ticket', 'التذاكر'], ['employee', 'الموظفون'], ['settings', 'الإعدادات']];
     const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر']];
     const rows = a.audit;
     return `<div class="page-head"><h1>سجل العمليات</h1><span class="muted small">كل عملية حساسة مع الموظف ووقتها. لا يمكن تعديل السجل أو حذفه.</span></div>
@@ -145,6 +145,11 @@ const PAGES = {
           ${d.byItem.length ? `<div class="table-wrap"><table><thead><tr><th>الصنف</th><th class="num">الكمية</th><th class="num">الصافي</th></tr></thead><tbody>
             ${d.byItem.map((i) => `<tr><td>${esc(i.label)}</td><td class="num">${i.qty - i.refundedQty}</td><td class="num">${money(i.net)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا مبيعات</p>'}</section>
       </div>
+      ${(d.cancelled ?? []).length ? `<section class="card pad stack"><h2>${icon('alert', 'sm')} الإيصالات الملغاة (${d.cancelled.length})${sm.wasteCost ? ` <span class="pill warn">هدر ${money(sm.wasteCost)}</span>` : ''}</h2>
+        <div class="table-wrap"><table><thead><tr><th>الإيصال</th><th>الأصناف</th><th>السبب</th><th>بواسطة</th><th class="num">المُرجع</th><th class="num">الهدر</th></tr></thead><tbody>
+          ${d.cancelled.map((c) => `<tr><td><b class="num">#${c.saleNumber}</b><div class="muted small">${time(c.at, tz())}</div></td><td class="small">${esc(c.items)}</td><td class="small">${esc(c.reason)}</td><td class="small">${esc(c.by)}</td>
+            <td class="num">${money(c.total)}</td><td class="num">${c.wasteCost ? money(c.wasteCost) : '—'}</td></tr>`).join('')}</tbody></table></div>
+        <p class="muted small">الهدر = تكلفة مشروبات حُضّرت ثم أُلغيت؛ تبقى ضمن تكلفة البضاعة وتُخصم من الربح.</p></section>` : ''}
       <section class="card pad stack"><h2>الموارد المصروفة اليوم</h2>
         <p class="muted small">محسوبة من الكميات التقريبية في وصفة كل صنف، ومطروحة من المخزون تلقائياً مع كل بيع.</p>
         ${d.consumption.length ? `<div class="table-wrap"><table><thead><tr><th>المادة</th><th class="num">المصروف</th><th class="num">الهدر</th><th class="num">المتبقي</th><th class="num">التكلفة</th></tr></thead><tbody>
@@ -331,14 +336,14 @@ const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: '�
 
 // ---------------------------------------------------------------- سجل العمليات
 const AUDIT_LABELS = {
-  'receipt.refund': 'استرجاع', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
+  'receipt.refund': 'استرجاع', 'receipt.cancel': 'إلغاء طلب', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
   'inventory.receive': 'استلام مخزون', 'inventory.loss': 'هدر/تالف', 'inventory.count': 'جرد', 'inventory.adjust': 'تعديل مخزون', 'inventory.reconcile': 'مطابقة المخزون',
   'item.create': 'صنف جديد', 'item.update': 'تعديل صنف/سعر', 'items.archive': 'أرشفة صنف', 'categories.archive': 'أرشفة تصنيف', 'modifiers.archive': 'أرشفة إضافة',
   'shift.open': 'فتح وردية', 'shift.close': 'إغلاق وردية', 'shift.pay_in': 'إدخال نقد للدرج', 'shift.pay_out': 'سحب نقد من الدرج',
   'ticket.delete': 'حذف تذكرة محفوظة', 'employee.create': 'موظف جديد', 'employee.update': 'تعديل موظف', 'settings.update': 'تعديل الإعدادات',
   'expense.create': 'مصروف', 'expense.delete': 'حذف مصروف',
 };
-const AUDIT_WARN = new Set(['receipt.refund', 'discount.restricted', 'inventory.loss', 'inventory.adjust', 'shift.pay_out', 'ticket.delete', 'item.update', 'expense.delete']);
+const AUDIT_WARN = new Set(['receipt.refund', 'receipt.cancel', 'discount.restricted', 'inventory.loss', 'inventory.adjust', 'shift.pay_out', 'ticket.delete', 'item.update', 'expense.delete']);
 
 function auditDetails(x) {
   const d = x.data ?? {};
@@ -349,6 +354,7 @@ function auditDetails(x) {
   if (d.discount) parts.push(esc(d.discount));
   if (d.reason) parts.push(`السبب: ${esc(d.reason)}`);
   if (d.source === 'kds') parts.push('من شاشة التحضير');
+  if (Number.isSafeInteger(d.wasteCost)) parts.push(`هدر ${money(d.wasteCost)}`);
   if (d.name) parts.push(esc(d.name));
   for (const c of d.priceChanges ?? []) parts.push(`${esc(c.variant || 'السعر')}: ${money(c.from)} ← ${money(c.to)}`);
   if (d.removedSizes) parts.push(`حُذف ${d.removedSizes} حجم`);
@@ -376,6 +382,7 @@ function dailyText(d) {
     ...(sm.expenses ? [`المصروفات: ${money(sm.expenses)}`] : []), `💰 صافي الربح: ${money(sm.netProfit)}`,
     ...(sm.refundsCount ? [`المرتجعات: ${money(sm.refunds)} (${sm.refundsCount})`] : []),
     ...(sm.discounts ? [`الخصومات: ${money(sm.discounts)}`] : []),
+    ...((d.cancelled ?? []).length ? ['', `❌ الإيصالات الملغاة (${d.cancelled.length})${sm.wasteCost ? ` — هدر ${money(sm.wasteCost)}` : ''}:`, ...d.cancelled.map((c) => `• #${c.saleNumber} ${c.items}: ${money(c.total)} — ${c.reason} (${c.by})`)] : []),
     '', '💳 طرق الدفع:', ...d.byPayment.map((p) => `• ${p.label}: ${money(p.net)} (${p.count})`),
     '', '☕ الأصناف المباعة:', ...d.byItem.map((i) => `• ${i.label}: ${i.qty - i.refundedQty} — ${money(i.net)}`),
   ];
@@ -396,6 +403,7 @@ function dailyHtml(d) {
     ${row('<b>صافي المبيعات د.ع</b>', `<b>${m(sm.net)}</b>`)}${row('الإيصالات', sm.salesCount)}${row('متوسط الفاتورة', m(sm.avgSale))}${row('الربح الإجمالي', m(sm.profit))}
     ${sm.expenses ? row('المصروفات', `-${m(sm.expenses)}`) : ''}${row('<b>صافي الربح</b>', `<b>${m(sm.netProfit)}</b>`)}
     ${sm.refundsCount ? row(`المرتجعات (${sm.refundsCount})`, `-${m(sm.refunds)}`) : ''}${sm.discounts ? row('الخصومات', `-${m(sm.discounts)}`) : ''}
+    ${(d.cancelled ?? []).length ? `<hr><b>الإيصالات الملغاة</b>${d.cancelled.map((c) => row(`#${c.saleNumber} ${esc(c.reason)}`, `-${m(c.total)}`)).join('')}${sm.wasteCost ? row('الهدر', m(sm.wasteCost)) : ''}` : ''}
     <hr><b>طرق الدفع</b>${d.byPayment.map((p) => row(`${esc(p.label)} (${p.count})`, m(p.net))).join('')}
     <hr><b>الأصناف المباعة</b>${d.byItem.map((i) => row(`${i.qty - i.refundedQty}× ${esc(i.label)}`, m(i.net))).join('')}
     ${d.consumption.length ? `<hr><b>الموارد المصروفة</b>${d.consumption.map((c) => row(esc(c.name), `${Number(c.used + c.loss).toLocaleString('en-US')} ${esc(c.unit)}`)).join('')}${row('التكلفة', m(d.consumptionCost))}` : ''}

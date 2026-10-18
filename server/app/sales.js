@@ -242,7 +242,10 @@ export function createSales(ctx) {
 
   // ---------------------------------------------------------------- الاسترجاع
   async function refund(actor, saleId, input = {}) {
-    requirePerm(actor, 'pos.refund');
+    // الإلغاء (من التحضير أو الإيصالات): متاح للكاشير لطلبات ورديته الحالية فقط؛ الاسترجاع العام للمدير والمالك
+    const cancel = input.cancel === true;
+    if (!cancel) requirePerm(actor, 'pos.refund');
+    else if (!can(actor.role, 'pos.refund')) requirePerm(actor, 'pos.cancel');
     const clientId = checkId(input.clientId, 'clientId');
     const prior = await C('receipts').findOne({ clientId });
     if (prior) {
@@ -252,8 +255,11 @@ export function createSales(ctx) {
     const sale = await C('receipts').findOne({ _id: checkId(saleId), type: 'sale' });
     if (!sale) throw notFound('RECEIPT_NOT_FOUND');
     const shift = await ctx.shifts.requireOpen();
+    if (cancel && !can(actor.role, 'pos.refund') && sale.shiftId !== shift._id) throw new AppError(403, 'FORBIDDEN', 'cancel.other_shift');
     const settings = await getSettings(db);
     const reason = str(input.reason, { field: 'reason', min: 2, max: 120 });
+    const restockIngredients = input.restockIngredients === true && sale.prep?.status === 'new';
+    const lineVariants = new Map((await C('variants').find({ _id: { $in: [...new Set(sale.lines.map((l) => l.variantId))] } }).toArray()).map((v) => [v._id, v]));
 
     if (!Array.isArray(input.lines) || input.lines.length === 0) throw bad('EMPTY_REFUND');
     const req = new Map();
@@ -285,10 +291,15 @@ export function createSales(ctx) {
         const gross = part('gross');
         const net = part('net');
         const tax = part('tax');
+        // ما لم تعد مكوناته أو الصنف نفسه للمخزون فهو هدر: تكلفته تبقى على الربح ولا تُطرح من تكلفة البضاعة
+        const v = lineVariants.get(s.variantId);
+        const returned = v?.recipe?.length ? restockIngredients : v?.trackStock ? input.restock === true : sale.prep?.status === 'new';
+        const cost = part('cost');
         return {
           index, itemId: s.itemId, itemName: s.itemName, variantId: s.variantId, variantName: s.variantName,
           categoryId: s.categoryId, categoryName: s.categoryName, qty, unitPrice: s.unitPrice, modifiers: s.modifiers,
-          gross, discount: gross - net, net, tax, total: sale.totals.taxMode === 'added' ? net + tax : net, cost: part('cost'),
+          gross, discount: gross - net, net, tax, total: sale.totals.taxMode === 'added' ? net + tax : net,
+          cost: returned ? cost : 0, wasteCost: returned ? 0 : cost,
         };
       });
       const total = lines.reduce((a, l) => a + l.total, 0);
@@ -306,11 +317,12 @@ export function createSales(ctx) {
         diningOption: sale.diningOption, customerId: sale.customerId, customerName: sale.customerName, reason,
         restock: input.restock === true,
         // إلغاء قبل بدء التحضير: مكونات الوصفة لم تُستعمل فتعود للمخزون
-        restockIngredients: input.restockIngredients === true && sale.prep?.status === 'new', lines,
+        restockIngredients, cancel, source: input.source === 'kds' ? 'kds' : null, lines,
         totals: {
           gross: lines.reduce((a, l) => a + l.gross, 0), discountTotal: lines.reduce((a, l) => a + l.discount, 0), net: netRefunded,
           tax: lines.reduce((a, l) => a + l.tax, 0), taxMode: sale.totals.taxMode, total, cost: lines.reduce((a, l) => a + l.cost, 0),
         },
+        wasteCost: lines.reduce((a, l) => a + l.wasteCost, 0),
         payments: [{ typeId: type.id, typeName: type.name, kind: type.kind, amount: total, tendered: total, change: 0 }],
         pointsReversed, effectsPending: true, prep: { status: 'served' },
       };
@@ -318,9 +330,10 @@ export function createSales(ctx) {
       const updated = await C('receipts').findOne({ _id: sale._id });
       const fully = updated.lines.every((l) => l.refundedQty >= l.qty);
       const cancelPrep = fully && ['new', 'preparing', 'ready'].includes(updated.prep?.status) ? { 'prep.status': 'cancelled', 'prep.updatedAt': now(), 'prep.cancelledAt': now() } : {};
-      await C('receipts').updateOne({ _id: sale._id }, { $set: { status: fully ? 'refunded' : 'partially_refunded', ...cancelPrep }, $inc: { refundTotal: total } });
+      const cancelled = cancel ? { cancelled: { at: now(), byName: actor.name, reason, number: doc.number, full: fully } } : {};
+      await C('receipts').updateOne({ _id: sale._id }, { $set: { status: fully ? 'refunded' : 'partially_refunded', ...cancelPrep, ...cancelled }, $inc: { refundTotal: total } });
       await applyRefundEffects(doc);
-      await audit({ ...ctx, actor }, 'receipt.refund', { sale: sale.number, refund: doc.number, total, reason, ...(input.source === 'kds' ? { source: 'kds' } : {}) });
+      await audit({ ...ctx, actor }, cancel ? 'receipt.cancel' : 'receipt.refund', { sale: sale.number, refund: doc.number, total, reason, ...(doc.wasteCost ? { wasteCost: doc.wasteCost } : {}), ...(doc.source ? { source: doc.source } : {}) });
       return { receipt: out(await C('receipts').findOne({ _id: doc._id })), duplicate: false };
     } catch (e) {
       // فك الحجز إن لم يُنشأ إيصال الاسترجاع
@@ -392,6 +405,7 @@ export function createSales(ctx) {
       id: r._id, number: r.number, type: r.type, status: r.status, createdAt: r.createdAt, total: r.totals.total,
       employeeName: r.employeeName, customerName: r.customerName, diningOption: r.diningOption,
       payments: r.payments.map((p) => p.typeName), refundOfNumber: r.refundOfNumber ?? null,
+      cancel: r.type === 'refund' ? !!r.cancel : !!r.cancelled, reason: r.type === 'refund' ? r.reason ?? null : r.cancelled?.reason ?? null,
       itemsCount: r.lines.reduce((a, l) => a + l.qty, 0),
     }));
   }
@@ -401,7 +415,10 @@ export function createSales(ctx) {
     requirePerm(actor, 'kds.use');
     const since = new Date(now().getTime() - 12 * 3600_000);
     const rows = await C('receipts').find({ type: 'sale', 'prep.status': { $in: ['new', 'preparing', 'ready'] }, createdAt: { $gte: since } }).sort({ createdAt: 1 }).limit(80).toArray();
-    return rows.map((r) => ({
+    // آخر الطلبات المسلّمة في الوردية الحالية: لإلغاء طلب لم يستلمه الزبون
+    const shift = await C('shifts').findOne({ status: 'open' });
+    const served = shift ? await C('receipts').find({ type: 'sale', shiftId: shift._id, 'prep.status': 'served', status: { $ne: 'refunded' } }).sort({ createdAt: -1 }).limit(8).toArray() : [];
+    return [...rows, ...served].map((r) => ({
       id: r._id, number: r.number, createdAt: r.createdAt, prep: r.prep, diningOption: r.diningOption, customerName: r.customerName,
       ticketName: r.ticketName, employeeName: r.employeeName, status: r.status, paymentTypeId: r.payments[0]?.typeId ?? null,
       lines: r.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: l.refundedQty, total: l.total, modifiers: l.modifiers.map((m) => m.name), note: l.note })),

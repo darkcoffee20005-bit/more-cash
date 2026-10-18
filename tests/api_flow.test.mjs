@@ -531,3 +531,52 @@ test('إلغاء من شاشة التحضير: قبل التحضير تعود ا
   await ok('sara', 'POST', '/api/auth/pin', { pin: '2468' });
   assert.equal((await call('sara', 'POST', `/api/receipts/${b.id}/refund`, { clientId: randomUUID(), lines: [{ index: 1, qty: 1 }], reason: 'خطأ' })).status, 403);
 });
+
+test('إلغاء طلب مسلَّم لم يستلمه الزبون: الكاشير يلغي من ورديته فقط، المشروب هدر، ويظهر الإلغاء وسببه في التقرير', async () => {
+  const { ok, call } = await boot();
+  const { catalog, settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  await ok('owner', 'POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: '2468' });
+  await ok('sara', 'POST', '/api/auth/pin', { pin: '2468' });
+  await ok('sara', 'POST', '/api/shifts/open', { startingCash: 0 });
+  const big = findItem(catalog, 'لاتيه').variants.find((v) => v.name === 'كبير');
+  const milkOpt = catalog.modifiers.find((m) => m.name === 'نوع الحليب').options[0].id;
+  const lines = [{ variantId: big.id, qty: 1, modifierOptionIds: [milkOpt] }];
+  const total = clientTotal(catalog, settings, lines);
+  const sale = (await ok('sara', 'POST', '/api/sales', { clientId: randomUUID(), lines, discountIds: [], clientTotal: total, payments: [{ typeId: 'cash', amount: total }] })).receipt;
+  for (const from of ['new', 'preparing', 'ready']) await ok('sara', 'POST', `/api/kds/${sale.id}/advance`, { from });
+  const kds = await ok('sara', 'GET', '/api/kds');
+  assert.equal(kds.find((o) => o.id === sale.id).prep.status, 'served', 'المسلَّم يظهر في «سُلّم مؤخراً»');
+  const coffee = (await ok('owner', 'GET', '/api/admin/inventory')).rows.find((r) => r.name === 'بن إسبريسو').stock;
+
+  assert.equal((await call('sara', 'POST', `/api/receipts/${sale.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'خطأ' })).status, 403, 'الاسترجاع العام للمدير');
+  const res = await ok('sara', 'POST', `/api/receipts/${sale.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'لم يستلمه الزبون — تركه وخرج', cancel: true, restockIngredients: true });
+  assert.equal(res.receipt.cancel, true);
+  assert.equal(res.receipt.totals.total, total, 'يُرجع المبلغ');
+  assert.ok(res.receipt.wasteCost > 0, 'تكلفة المشروب هدر');
+  assert.equal(res.receipt.totals.cost, 0, 'لا تُطرح من تكلفة البضاعة');
+  assert.equal((await ok('owner', 'GET', '/api/admin/inventory')).rows.find((r) => r.name === 'بن إسبريسو').stock, coffee, 'المكونات لا تعود بعد التحضير');
+  const after = await ok('sara', 'GET', `/api/receipts/${sale.id}`);
+  assert.equal(after.cancelled.reason, 'لم يستلمه الزبون — تركه وخرج');
+  assert.equal(after.cancelled.full, true);
+  assert.equal((await ok('sara', 'GET', '/api/kds')).some((o) => o.id === sale.id), false);
+  const list = await ok('sara', 'GET', '/api/receipts');
+  assert.equal(list.find((r) => r.id === sale.id).cancel, true);
+
+  const d = await ok('owner', 'GET', '/api/admin/reports/daily', null, { date: '2026-10-14' });
+  assert.equal(d.cancelled.length, 1);
+  assert.equal(d.cancelled[0].saleNumber, sale.number);
+  assert.equal(d.cancelled[0].reason, 'لم يستلمه الزبون — تركه وخرج');
+  assert.equal(d.summary.wasteCost, res.receipt.wasteCost);
+  assert.equal(d.summary.net, 0);
+  assert.equal(d.summary.profit, -res.receipt.wasteCost, 'الهدر خسارة على الربح');
+  const log = await ok('owner', 'GET', '/api/admin/audit', null, { from: '2026-10-14', to: '2026-10-14', group: 'receipt' });
+  assert.ok(log.some((x) => x.action === 'receipt.cancel' && x.data.wasteCost === res.receipt.wasteCost));
+
+  // طلب من وردية سابقة: الكاشير لا يلغيه، والمدير يستطيع
+  const old = (await ok('sara', 'POST', '/api/sales', { clientId: randomUUID(), lines, discountIds: [], clientTotal: total, payments: [{ typeId: 'cash', amount: total }] })).receipt;
+  const x = await ok('sara', 'GET', '/api/shifts/current');
+  await ok('sara', 'POST', '/api/shifts/close', { actualCash: x.live.expectedCash });
+  await ok('sara', 'POST', '/api/shifts/open', { startingCash: 0 });
+  assert.equal((await call('sara', 'POST', `/api/receipts/${old.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'لم يستلمه', cancel: true })).status, 403);
+  assert.equal((await call('owner', 'POST', `/api/receipts/${old.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'لم يستلمه', cancel: true })).status, 200);
+});

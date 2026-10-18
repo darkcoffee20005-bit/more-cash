@@ -41,6 +41,8 @@ export function buildReport(receipts, { tzOffsetMin = 180 } = {}) {
   const byDay = new Map();
   const byHour = Array.from({ length: 24 }, (_, h) => ({ hour: h, net: 0, salesCount: 0 }));
   let cashIn = 0;
+  let wasteCost = 0;
+  let cancelledCount = 0;
 
   for (const r of receipts) {
     const sign = r.type === 'refund' ? -1 : 1;
@@ -56,6 +58,9 @@ export function buildReport(receipts, { tzOffsetMin = 180 } = {}) {
       byHour[local.getUTCHours()].salesCount += 1;
     } else {
       summary.refundsCount += 1; emp.refundsCount += 1; dayB.refundsCount += 1;
+      // هدر: مشروب حُضّر ثم أُلغي أو أُرجع؛ تكلفته باقية في تكلفة البضاعة وتُعرض منفصلة
+      wasteCost += r.wasteCost ?? 0;
+      if (r.cancel) cancelledCount += 1;
     }
     byHour[local.getUTCHours()].net += sign * r.totals.net;
 
@@ -89,6 +94,8 @@ export function buildReport(receipts, { tzOffsetMin = 180 } = {}) {
   for (const p of byPayment.values()) p.net = p.paid - p.refunded;
   summary.avgSale = summary.salesCount ? Math.round(summary.net / summary.salesCount) : 0;
   summary.cashNet = cashIn;
+  summary.wasteCost = wasteCost;
+  summary.cancelledCount = cancelledCount;
   for (const e of byEmployee.values()) e.avgSale = e.salesCount ? Math.round(e.net / e.salesCount) : 0;
 
   return {

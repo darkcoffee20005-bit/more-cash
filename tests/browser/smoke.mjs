@@ -119,8 +119,9 @@ try {
   await shot('08-kds');
   await page.goto(`http://127.0.0.1:${PORT}/#/receipts`);
   await page.waitForSelector('tr.click');
-  await page.click('tr.click >> nth=0');
-  await page.waitForSelector('.receipt-paper');
+  await page.waitForSelector('tr.click .pill.bad:has-text("ملغى")').catch(() => errors.push('cancelled sale not marked in receipts list'));
+  await page.click('tr.click:has(.pill:has-text("ملغى"))');
+  await page.waitForSelector('.receipt-paper:has-text("أُلغي")').catch(() => errors.push('cancel note missing on receipt'));
   await shot('09-receipts');
   await page.goto(`http://127.0.0.1:${PORT}/#/shift`);
   await page.waitForSelector('#shift-counted');

@@ -64,7 +64,11 @@ export function createReports(ctx) {
     const exp = await ctx.expenses.totalBetween(date, date);
     rep.summary.expenses = exp.total;
     rep.summary.netProfit = rep.summary.profit - exp.total;
+    const cancelled = (await db.collection('receipts').find({ type: 'refund', cancel: true, createdAt: { $gte: r.from, $lt: r.to } }).sort({ createdAt: 1 }).toArray())
+      .map((x) => ({ number: x.number, saleNumber: x.refundOfNumber, at: x.createdAt, total: x.totals.total, wasteCost: x.wasteCost ?? 0, reason: x.reason, by: x.employeeName,
+        items: x.lines.map((l) => `${l.qty}× ${l.itemName}${l.variantName ? ` ${l.variantName}` : ''}`).join('، ') }));
     return {
+      cancelled,
       date, shopName: r.settings.name, summary: rep.summary, byPayment: rep.byPayment, byItem: rep.byItem,
       expenses: exp.rows.map((x) => ({ amount: x.amount, category: x.category, note: x.note ?? null })),
       consumption, consumptionCost: consumption.reduce((a, x) => a + x.cost, 0),

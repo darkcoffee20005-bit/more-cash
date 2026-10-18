@@ -3,6 +3,7 @@ import { dateTime, esc, localDate, money, time } from '../../../shared/format.js
 import { get, post, uid } from '../api.js';
 import { icon } from '../icons.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
+import { openCancel } from './ops.js';
 
 const STATUS = { paid: ['مدفوع', 'ok'], partially_refunded: ['مسترجع جزئياً', 'warn'], refunded: ['مسترجع', 'bad'] };
 
@@ -18,8 +19,9 @@ export const routes = {
       const head = day !== lastDay ? `<tr><th colspan="4">${day === localDate(Date.now(), tz) ? 'اليوم' : day}</th></tr>` : '';
       lastDay = day;
       return `${head}<tr class="click ${selected?.id === r.id ? 'sel' : ''}" data-action="receipt-open" data-id="${r.id}">
-        <td><b class="num">#${r.number}</b> ${r.type === 'refund' ? '<span class="pill bad">استرجاع</span>' : r.status !== 'paid' ? `<span class="pill ${STATUS[r.status][1]}">${STATUS[r.status][0]}</span>` : ''}
-          <div class="muted small">${esc(r.payments.join(' + '))}${r.customerName ? ` · ${esc(r.customerName)}` : ''}</div></td>
+        <td><b class="num">#${r.number}</b> ${r.type === 'refund' ? `<span class="pill bad">${r.cancel ? 'إلغاء' : 'استرجاع'}</span>` : r.cancel && r.status === 'refunded' ? '<span class="pill bad">ملغى</span>' : r.status !== 'paid' ? `<span class="pill ${STATUS[r.status][1]}">${STATUS[r.status][0]}</span>` : ''}
+          <div class="muted small">${esc(r.payments.join(' + '))}${r.customerName ? ` · ${esc(r.customerName)}` : ''}</div>
+          ${r.cancel && r.reason ? `<div class="small" style="color:var(--bad)">✎ ${esc(r.reason)}</div>` : ''}</td>
         <td class="muted small">${time(r.createdAt, tz)}</td><td class="muted small">${esc(r.employeeName)}</td>
         <td class="num">${r.type === 'refund' ? '−' : ''}${money(r.total)}</td></tr>`;
     }).join('');
@@ -44,9 +46,10 @@ function receiptCard(r, s) {
   const refundable = r.type === 'sale' && r.lines.some((l) => l.refundedQty < l.qty);
   return `<article class="receipt-paper">
     <div class="row"><div><h2 class="num">#${r.number}</h2><div class="muted small">${dateTime(r.createdAt, tz)} · ${esc(r.employeeName)} · ${esc(r.diningOption ?? '')}</div></div>
-      <span class="spacer"></span>${r.type === 'refund' ? `<span class="pill bad">استرجاع للإيصال #${r.refundOfNumber}</span>` : `<span class="pill ${STATUS[r.status][1]}">${STATUS[r.status][0]}</span>`}</div>
+      <span class="spacer"></span>${r.type === 'refund' ? `<span class="pill bad">${r.cancel ? 'إلغاء' : 'استرجاع'} للإيصال #${r.refundOfNumber}</span>${r.wasteCost ? ' <span class="pill warn">هدر</span>' : ''}` : r.cancelled?.full ? '<span class="pill bad">ملغى</span>' : `<span class="pill ${STATUS[r.status][1]}">${STATUS[r.status][0]}</span>`}</div>
     ${r.customerName ? `<div class="row small">${icon('user', 'sm')} ${esc(r.customerName)}${r.pointsEarned ? ` · <span class="pill olive">+${r.pointsEarned} نقطة</span>` : ''}${r.pointsRedeemed ? ` · <span class="pill">استبدل ${r.pointsRedeemed}</span>` : ''}</div>` : ''}
     ${r.reason ? `<div class="small muted">السبب: ${esc(r.reason)}</div>` : ''}
+    ${r.cancelled ? `<div class="small" style="color:var(--bad)">${icon('alert', 'sm')} أُلغي${r.cancelled.full ? '' : ' جزئياً'} بواسطة ${esc(r.cancelled.byName)} · ${dateTime(r.cancelled.at, tz)} — ${esc(r.cancelled.reason)}</div>` : ''}
     <div class="dash"></div>
     ${r.lines.map((l) => `<div class="r-line"><div><b>${l.qty}× ${esc(l.itemName)}</b> ${l.variantName ? `<span class="muted">${esc(l.variantName)}</span>` : ''}
         ${l.modifiers.length ? `<div class="muted small">${l.modifiers.map((m) => esc(m.name)).join('، ')}</div>` : ''}
@@ -62,7 +65,8 @@ function receiptCard(r, s) {
     ${r.refunds?.length ? `<div class="dash"></div><div class="small"><b>الاسترجاعات:</b> ${r.refunds.map((x) => `<a href="#/receipts" data-action="receipt-open" data-id="${x.id}">#${x.number}</a> (${money(x.totals.total)})`).join(' · ')}</div>` : ''}
     <div class="row wrap" style="margin-top:6px">
       <button class="btn" data-action="receipt-print">${icon('print', 'sm')} طباعة</button>
-      ${refundable && can('pos.refund') ? `<button class="btn danger" data-action="refund-start">${icon('refund', 'sm')} استرجاع</button>` : ''}
+      ${refundable && (can('pos.refund') || (can('pos.cancel') && r.shiftId && r.shiftId === s.shift?.id)) ? `<button class="btn danger" data-action="receipt-cancel">${icon('x', 'sm')} إلغاء الطلب</button>` : ''}
+      ${refundable && can('pos.refund') ? `<button class="btn" data-action="refund-start">${icon('refund', 'sm')} استرجاع</button>` : ''}
     </div>
   </article>`;
 }
@@ -127,6 +131,12 @@ on({
   'receipts-date': (el) => { state.view.receipts.date = el.value; loadList().catch(fail); },
   'receipt-open': (el) => openReceipt(el.dataset.id).catch(fail),
   'receipt-print': () => printReceipt(state.view.receipts.detail),
+  'receipt-cancel': () => {
+    const r = state.view.receipts.detail;
+    openCancel({ id: r.id, number: r.number, prep: r.prep, paymentTypeId: r.payments[0]?.typeId ?? null,
+      lines: r.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: l.refundedQty, total: l.total })) },
+    async () => { await openReceipt(r.id); await loadList(); });
+  },
   'refund-start': () => openModal({ type: 'refund', qty: {}, clientId: uid() }),
   'refund-qty': (el) => {
     const m = state.modal;

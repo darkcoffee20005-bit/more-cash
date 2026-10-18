@@ -13,6 +13,7 @@ export const PERMISSIONS = Object.freeze({
   'pos.discount': 'تطبيق الخصومات',
   'pos.discount_restricted': 'الخصومات المقيدة',
   'pos.refund': 'الاسترجاع',
+  'pos.cancel': 'إلغاء طلب من الوردية الحالية (هدر أو لم يُستلم)',
   'pos.void_saved': 'حذف تذكرة محفوظة',
   'shift.manage': 'فتح وإغلاق الوردية',
   'shift.cash': 'إدخال وسحب نقد',
@@ -31,7 +32,7 @@ const ALL = Object.keys(PERMISSIONS);
 export const ROLE_PERMISSIONS = Object.freeze({
   owner: ALL,
   manager: ALL.filter((p) => p !== 'admin.employees' && p !== 'admin.settings'),
-  cashier: ['pos.sell', 'pos.tickets', 'pos.discount', 'shift.manage', 'receipts.view', 'kds.use', 'customers.manage'],
+  cashier: ['pos.sell', 'pos.tickets', 'pos.discount', 'pos.cancel', 'shift.manage', 'receipts.view', 'kds.use', 'customers.manage'],
   barista: ['kds.use', 'receipts.view'],
 });
 
