@@ -60,10 +60,21 @@ export function createExpenses(ctx) {
     requirePerm(actor, 'admin.reports');
     const doc = await C().findOne({ _id: checkId(expenseId) });
     if (!doc) throw notFound();
+    // مصروف دُفع من درج وردية ما زالت مفتوحة: يُعاد مبلغه للدرج المتوقع بحركة إدخال عكسية (يبقى الأثر ظاهراً في الوردية).
+    // إن أُغلقت تلك الوردية فقد عُدّ النقد فعلاً، ولا يُغيَّر ما أُغلق.
+    let drawerReversed = false;
+    if (doc.fromDrawer) {
+      const outId = `exp-${doc.clientId}`.slice(0, 64);
+      const open = await db.collection('shifts').findOne({ status: 'open', 'movements.id': outId });
+      if (open) {
+        const back = { id: `exp-del-${doc.clientId}`.slice(0, 64), type: 'pay_in', amount: doc.amount, note: `إلغاء مصروف: ${EXPENSE_CATEGORIES[doc.category]}`.slice(0, 120), at: now(), by: actor.id, byName: actor.name };
+        await db.collection('shifts').updateOne({ _id: open._id, status: 'open', 'movements.id': { $ne: back.id } }, { $push: { movements: back } });
+        drawerReversed = true;
+      }
+    }
     await C().deleteOne({ _id: doc._id });
-    // السحب من الدرج (إن وُجد) يبقى في الوردية: النقد خرج فعلاً
-    await audit({ ...ctx, actor }, 'expense.delete', { amount: doc.amount, category: EXPENSE_CATEGORIES[doc.category], note: doc.note, day: doc.day });
-    return { ok: true };
+    await audit({ ...ctx, actor }, 'expense.delete', { amount: doc.amount, category: EXPENSE_CATEGORIES[doc.category], note: doc.note, day: doc.day, drawerReversed });
+    return { ok: true, drawerReversed };
   }
 
   return { create, list, remove, totalBetween };

@@ -167,10 +167,13 @@ test('دورة بيع كاملة: وردية ← بيع بإضافات وخصم 
   await ok('owner', 'POST', '/api/shifts/move', { clientId: 'out-1', type: 'pay_out', amount: 3000, note: 'ثلج' });
   const cur = await ok('sara', 'GET', '/api/shifts/current');
   assert.equal(cur.movements.length, 1, 'حركة السحب المكررة سُجّلت مرة واحدة');
-  // 50,000 + 10,000 (نقد البيع 1) + 200 (البيع 2) − 2,250 (استرجاع نقدي) − 3,000 (سحب)
-  // استرجاعا اللاتيه ذهبا لطريقة الدفع الأولى في الإيصال (بطاقة) فلا يمسّان الدرج
-  assert.equal(r1.payments[0].typeId, 'qi');
-  const expected = 50000 + 10000 + 200 - 2250 - 3000;
+  // استرجاعا اللاتيه بلا طريقة محددة يعودان بطرق الدفع الأصلية: النقد أولاً حتى ما دُفع نقداً (10,000 − 2,250 المسترجعة نقداً)، ثم كي
+  const cashOf = (r) => r.payments.filter((p) => p.typeId === 'cash').reduce((a, p) => a + p.amount, 0);
+  assert.deepEqual(r1.payments.map((p) => p.typeId), ['cash']);
+  assert.deepEqual(r2.payments.map((p) => [p.typeId, p.amount]), [['cash', 7750 - r1.totals.total], ['qi', r2.totals.total - (7750 - r1.totals.total)]]);
+  assert.equal(cashOf(r1) + cashOf(r2), 7750, 'لا يُرجع نقداً أكثر مما دُفع نقداً');
+  // 50,000 + 10,000 (نقد البيع 1) + 200 (البيع 2) − 2,250 (استرجاع نقدي) − 7,750 (باقي نقد البيع 1) − 3,000 (سحب)
+  const expected = 50000 + 10000 + 200 - 2250 - 7750 - 3000;
   assert.equal(cur.live.expectedCash, expected);
   assert.equal((await call('sara', 'POST', '/api/shifts/close', { actualCash: expected - 5000 })).body.error, 'VARIANCE_NOTE_REQUIRED');
   const closed = await ok('sara', 'POST', '/api/shifts/close', { actualCash: expected - 5000, note: 'خطأ في الباقي' });
@@ -185,8 +188,8 @@ test('دورة بيع كاملة: وردية ← بيع بإضافات وخصم 
   assert.equal(rep.summary.net, 16200 + 200 - 2250 - r1.totals.net - r2.totals.net);
   assert.equal(rep.summary.gross - rep.summary.refunds - rep.summary.discounts, rep.summary.net);
   const cashRow = rep.byPayment.find((p) => p.key === 'cash');
-  assert.equal(cashRow.net, 10200 - 2250);
-  assert.equal(rep.byPayment.find((p) => p.key === 'qi').net, 6200 - r1.totals.total - r2.totals.total);
+  assert.equal(cashRow.net, 10200 - 2250 - 7750, 'النقد: ما دُفع نقداً ناقص ما أُرجع نقداً');
+  assert.equal(rep.byPayment.find((p) => p.key === 'qi').net, 6200 - (r1.totals.total + r2.totals.total - 7750));
 });
 
 test('التذاكر المفتوحة: حفظ، تعارض تعديل متزامن، وتحويلها لبيع يحذفها', async () => {
@@ -577,6 +580,11 @@ test('إلغاء طلب مسلَّم لم يستلمه الزبون: الكاش�
   const x = await ok('sara', 'GET', '/api/shifts/current');
   await ok('sara', 'POST', '/api/shifts/close', { actualCash: x.live.expectedCash });
   await ok('sara', 'POST', '/api/shifts/open', { startingCash: 0 });
+  // درج فارغ: لا يُرجع نقداً ولا يُسحب منه (لا يصبح النقد المتوقع سالباً)
+  assert.equal((await call('owner', 'POST', `/api/receipts/${old.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'لم يستلمه', cancel: true })).body.error, 'DRAWER_INSUFFICIENT');
+  assert.equal((await call('owner', 'POST', '/api/shifts/move', { clientId: randomUUID(), type: 'pay_out', amount: 1000, note: 'ثلج' })).body.error, 'DRAWER_INSUFFICIENT');
+  assert.equal((await call('owner', 'POST', '/api/admin/expenses', { clientId: randomUUID(), amount: 1000, category: 'other', fromDrawer: true })).body.error, 'DRAWER_INSUFFICIENT');
+  await ok('owner', 'POST', '/api/shifts/move', { clientId: randomUUID(), type: 'pay_in', amount: 20000, note: 'فكة' });
   assert.equal((await call('sara', 'POST', `/api/receipts/${old.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'لم يستلمه', cancel: true })).status, 403);
   assert.equal((await call('owner', 'POST', `/api/receipts/${old.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'لم يستلمه', cancel: true })).status, 200);
 });
@@ -613,4 +621,32 @@ test('حد التنبيه من شاشة المخزون، وصورة لكل صن�
   await ok('owner', 'DELETE', `/api/admin/items/${latte.id}/image`);
   assert.equal(findItem((await ok('owner', 'GET', '/api/pos/bootstrap')).catalog, 'لاتيه').imageV, undefined);
   assert.deepEqual(await ok('owner', 'GET', '/api/pos/images'), {});
+});
+
+test('بيع بلا إنترنت يصل بعد إغلاق ورديته: يُنسب لها ويُحدَّث نقدها المتوقع وفرقها، حتى بلا وردية مفتوحة', async () => {
+  const { ok, call, tick } = await boot();
+  const { catalog, settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  const water = findItem(catalog, 'ماء').variants[0];
+  const lines = [{ variantId: water.id, qty: 2 }];
+  const total = clientTotal(catalog, settings, lines);
+  const opened = await ok('owner', 'POST', '/api/shifts/open', { startingCash: 10000 });
+  tick(30 * 60000);
+  const soldAt = new Date(Date.parse('2026-10-14T07:30:00Z')).toISOString(); // أثناء الوردية
+  tick(30 * 60000);
+  // الدرج فيه 10,000 + نقد البيع الذي لم يصل بعد؛ الكاشير يعدّ 11,000 فعلاً
+  const closed = await ok('owner', 'POST', '/api/shifts/close', { actualCash: 10000 + total, note: 'زيادة' });
+  assert.equal(closed.difference, total, 'قبل وصول البيع: زيادة بقيمة البيع');
+  tick(60 * 60000);
+  // لا وردية مفتوحة الآن، ومع ذلك يُقبل البيع المحفوظ لأن ورديته معروفة
+  const sale = (await ok('owner', 'POST', '/api/sales', { clientId: randomUUID(), lines, clientTotal: total, payments: [{ typeId: 'cash', amount: total }], offlineAt: soldAt })).receipt;
+  assert.equal(sale.shiftId, opened.id);
+  assert.equal(sale.offline, true);
+  assert.equal(new Date(sale.createdAt).toISOString(), soldAt);
+  const shifts = await ok('owner', 'GET', '/api/shifts');
+  const s = shifts.find((x) => x.id === opened.id);
+  assert.equal(s.summary.expectedCash, 10000 + total, 'المتوقع يشمل البيع المتأخر');
+  assert.equal(s.difference, 0, 'والفرق صار صفراً لأن النقد كان في الدرج فعلاً');
+  assert.ok(s.revisedAt);
+  // بيع عادي بلا وردية مفتوحة يبقى مرفوضاً
+  assert.equal((await call('owner', 'POST', '/api/sales', { clientId: randomUUID(), lines, clientTotal: total, payments: [{ typeId: 'cash', amount: total }] })).body.error, 'NO_OPEN_SHIFT');
 });

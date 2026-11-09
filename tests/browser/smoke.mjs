@@ -125,6 +125,23 @@ try {
   await shot('09-receipts');
   await page.goto(`http://127.0.0.1:${PORT}/#/shift`);
   await page.waitForSelector('#shift-counted');
+  // سحب من الدرج كمصروف: يظهر في المصروفات ويقل النقد المتوقع بنفس المبلغ
+  {
+    const before = await page.evaluate(async () => (await (await fetch('/api/shifts/current')).json()).live.expectedCash);
+    await page.click('[data-action="cash-move"][data-type="pay_out"]');
+    await page.fill('#move-amount', '1500');
+    await page.fill('#move-note', 'ثلج');
+    await page.selectOption('#move-kind', 'supplies');
+    await page.click('form[data-form="cash-move-submit"] button[type=submit]');
+    await page.waitForSelector('.toast.ok:has-text("سُجّلت")');
+    const after = await page.evaluate(async () => {
+      const cur = await (await fetch('/api/shifts/current')).json();
+      const d = new Date(Date.now() + 180 * 60000).toISOString().slice(0, 10);
+      const exp = await (await fetch(`/api/admin/expenses?from=${d}&to=${d}`)).json();
+      return { cash: cur.live.expectedCash, exp: exp.rows.filter((x) => x.fromDrawer && x.amount === 1500).length };
+    });
+    if (after.cash !== before - 1500 || after.exp !== 1) errors.push(`drawer expense: ${JSON.stringify({ before, after })}`);
+  }
   await shot('10-shift');
   await page.goto(`http://127.0.0.1:${PORT}/#/admin/dashboard`);
   await page.waitForSelector('.kpis');

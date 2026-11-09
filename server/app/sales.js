@@ -112,7 +112,13 @@ export function createSales(ctx) {
       return { receipt: out(prior), duplicate: true };
     }
     const settings = await getSettings(db);
-    const shift = await ctx.shifts.requireOpen();
+    // بيع سُجّل بلا إنترنت يُنسب لوردية لحظة البيع الفعلية (حتى لو أُغلقت بعدها)، فيبقى نقد كل درج صحيحاً
+    let offlineAt = null;
+    if (input.offlineAt) {
+      const at = new Date(input.offlineAt);
+      if (!Number.isNaN(at.getTime()) && at <= now() && now() - at <= 72 * 3600_000) offlineAt = at;
+    }
+    const shift = (offlineAt && await ctx.shifts.shiftAt(offlineAt)) || await ctx.shifts.requireOpen();
     const t = await buildTicket(actor, input, settings);
 
     if (!Number.isSafeInteger(input.clientTotal) || input.clientTotal !== t.totals.total) {
@@ -152,10 +158,7 @@ export function createSales(ctx) {
     // بيع سُجّل على الجهاز بلا إنترنت: يُحفظ بوقته الفعلي (ضمن الوردية وآخر 72 ساعة) لا بوقت وصوله
     let createdAt = now();
     let offline = false;
-    if (input.offlineAt) {
-      const at = new Date(input.offlineAt);
-      if (!Number.isNaN(at.getTime()) && at <= createdAt && at >= new Date(shift.openedAt) && createdAt - at <= 72 * 3600_000) { createdAt = at; offline = true; }
-    }
+    if (offlineAt && offlineAt >= new Date(shift.openedAt)) { createdAt = offlineAt; offline = true; }
     const receipt = {
       _id: newId(),
       number: RECEIPT_BASE + (await nextSeq(db, 'receipt')),
@@ -183,6 +186,8 @@ export function createSales(ctx) {
       throw e;
     }
     await applySaleEffects(receipt, input.ticketId);
+    // الوردية أُغلقت قبل وصول هذا البيع (بلا إنترنت، أو في نفس لحظة الإغلاق): يُحدَّث ملخصها وفرقها
+    await ctx.shifts.refreshClosed(shift._id);
     for (const d of t.usedDiscounts.filter((x) => x.restricted)) await audit({ ...ctx, actor }, 'discount.restricted', { receipt: receipt.number, discount: d.name });
     return { receipt: out(await C('receipts').findOne({ _id: receipt._id })), duplicate: false };
   }
@@ -241,6 +246,53 @@ export function createSales(ctx) {
   }
 
   // ---------------------------------------------------------------- الاسترجاع
+  /**
+   * طرق إرجاع المبلغ. بلا اختيار صريح: يُرجع المبلغ بنفس طرق الدفع الأصلية، النقد أولاً حتى ما دُفع نقداً
+   * (ناقص ما أُرجع نقداً سابقاً) ثم البقية، فلا يُرجَع بطريقة أكثر مما دُفع بها ويبقى النقد المتوقع في الدرج صحيحاً.
+   * باختيار صريح (مثلاً إرجاع بيع بالبطاقة نقداً): يُرجع كله بالطريقة المختارة.
+   */
+  function splitRefund({ sale, previous, total, explicit, settings, drawer }) {
+    const active = new Map(settings.paymentTypes.filter((p) => p.active).map((p) => [p.id, p]));
+    const line = (type, amount) => ({ typeId: type.id, typeName: type.name, kind: type.kind, amount, tendered: amount, change: 0 });
+    if (total === 0) return [];
+    if (explicit) {
+      const type = active.get(explicit);
+      if (!type) throw bad('UNKNOWN_PAYMENT_TYPE');
+      if (type.kind === 'cash' && total > drawer) throw bad('DRAWER_INSUFFICIENT', String(drawer));
+      return [line(type, total)];
+    }
+    const paid = new Map();
+    for (const p of sale.payments) paid.set(p.typeId, (paid.get(p.typeId) ?? 0) + p.amount);
+    for (const r of previous) for (const p of r.payments) if (paid.has(p.typeId)) paid.set(p.typeId, paid.get(p.typeId) - p.amount);
+    const order = [...paid.keys()].sort((a, b) => Number((sale.payments.find((p) => p.typeId === b)?.kind) === 'cash') - Number((sale.payments.find((p) => p.typeId === a)?.kind) === 'cash'));
+    const out = [];
+    let left = total;
+    let cashLeft = Math.max(0, drawer);
+    for (const id of order) {
+      const orig0 = sale.payments.find((p) => p.typeId === id);
+      // النقد محدود بما في الدرج الآن؛ ما لا يتوفر نقداً يُرجع بالطريقة الأخرى التي دُفع بها
+      const cap = orig0.kind === 'cash' ? cashLeft : Infinity;
+      const take = Math.min(left, Math.max(0, paid.get(id)), cap);
+      if (orig0.kind === 'cash') cashLeft -= Math.max(0, take);
+      if (take <= 0) continue;
+      const orig = sale.payments.find((p) => p.typeId === id);
+      out.push(line(active.get(id) ?? { id, name: orig.typeName, kind: orig.kind }, take));
+      left -= take;
+    }
+    if (left > 0) {
+      // نقص النقد في الدرج عن حصة النقد الأصلية: لا يُحوَّل للبطاقة بأكثر مما دُفع بها، بل يُرفض بوضوح
+      const uncovered = total - [...paid.values()].reduce((a, v) => a + Math.max(0, v), 0);
+      if (left > Math.max(0, uncovered)) throw bad('DRAWER_INSUFFICIENT', String(drawer));
+      // ما تبقى لأن جزءاً سبق إرجاعه بطريقة أخرى صراحةً: بأول طريقة غير نقدية دُفع بها، أو نقداً إن كفى الدرج
+      const first = sale.payments.find((p) => p.kind !== 'cash') ?? (cashLeft >= left ? sale.payments[0] : null);
+      if (!first) throw bad('DRAWER_INSUFFICIENT', String(drawer));
+      const type = active.get(first.typeId) ?? { id: first.typeId, name: first.typeName, kind: first.kind };
+      const same = out.find((p) => p.typeId === type.id);
+      if (same) { same.amount += left; same.tendered += left; } else out.push(line(type, left));
+    }
+    return out;
+  }
+
   async function refund(actor, saleId, input = {}) {
     // الإلغاء (من التحضير أو الإيصالات): متاح للكاشير لطلبات ورديته الحالية فقط؛ الاسترجاع العام للمدير والمالك
     const cancel = input.cancel === true;
@@ -282,7 +334,7 @@ export function createSales(ctx) {
 
     try {
       const previous = await C('receipts').find({ refundOf: sale._id, type: 'refund' }).toArray();
-      const already = (index, field) => previous.flatMap((r) => r.lines).filter((x) => x.index === index).reduce((a, x) => a + x[field], 0);
+      const already = (index, field) => previous.flatMap((r) => r.lines).filter((x) => x.index === index).reduce((a, x) => a + (x[field] ?? 0), 0);
       const alreadyQty = (index) => previous.flatMap((r) => r.lines).filter((x) => x.index === index).reduce((a, x) => a + x.qty, 0);
 
       const lines = [...req].map(([index, qty]) => {
@@ -294,7 +346,8 @@ export function createSales(ctx) {
         // ما لم تعد مكوناته أو الصنف نفسه للمخزون فهو هدر: تكلفته تبقى على الربح ولا تُطرح من تكلفة البضاعة
         const v = lineVariants.get(s.variantId);
         const returned = v?.recipe?.length ? restockIngredients : v?.trackStock ? input.restock === true : sale.prep?.status === 'new';
-        const cost = part('cost');
+        // التكلفة المسترجعة سابقاً = ما عاد للمخزون + ما سُجّل هدراً؛ وإلا تجاوز آخر جزء تكلفة السطر
+        const cost = refundPortion({ amount: s.cost, qty: s.qty, refundQty: qty, alreadyQty: alreadyQty(index), alreadyAmount: already(index, 'cost') + already(index, 'wasteCost') });
         return {
           index, itemId: s.itemId, itemName: s.itemName, variantId: s.variantId, variantName: s.variantName,
           categoryId: s.categoryId, categoryName: s.categoryName, qty, unitPrice: s.unitPrice, modifiers: s.modifiers,
@@ -303,13 +356,16 @@ export function createSales(ctx) {
         };
       });
       const total = lines.reduce((a, l) => a + l.total, 0);
-      const typeId = input.paymentTypeId ?? sale.payments[0]?.typeId ?? 'cash';
-      const type = settings.paymentTypes.find((p) => p.id === typeId && p.active);
-      if (!type) throw bad('UNKNOWN_PAYMENT_TYPE');
+      const refundPayments = splitRefund({ sale, previous, total, explicit: input.paymentTypeId, settings, drawer: await ctx.shifts.cashInDrawer(shift) });
 
       const netRefunded = lines.reduce((a, l) => a + l.net, 0);
-      const pointsReversed = sale.pointsEarned && sale.totals.net
-        ? Number((BigInt(sale.pointsEarned) * BigInt(netRefunded) * 2n + BigInt(sale.totals.net)) / (2n * BigInt(sale.totals.net))) : 0;
+      // النقاط المعكوسة تراكمياً: (المكتسب × صافي كل ما استُرجع حتى الآن ÷ صافي البيع) − ما عُكس سابقاً.
+      // فلا يتراكم التقريب، والاسترجاع الكامل يعكس المكتسب بالضبط لا أكثر.
+      const netBefore = previous.reduce((a, r) => a + r.totals.net, 0);
+      const reversedBefore = previous.reduce((a, r) => a + (r.pointsReversed ?? 0), 0);
+      const pointsTarget = sale.pointsEarned && sale.totals.net
+        ? Number((BigInt(sale.pointsEarned) * BigInt(netBefore + netRefunded) * 2n + BigInt(sale.totals.net)) / (2n * BigInt(sale.totals.net))) : 0;
+      const pointsReversed = Math.max(0, Math.min(sale.pointsEarned ?? 0, pointsTarget) - reversedBefore);
 
       const doc = {
         _id: newId(), number: RECEIPT_BASE + (await nextSeq(db, 'receipt')), clientId, type: 'refund', refundOf: sale._id,
@@ -323,10 +379,11 @@ export function createSales(ctx) {
           tax: lines.reduce((a, l) => a + l.tax, 0), taxMode: sale.totals.taxMode, total, cost: lines.reduce((a, l) => a + l.cost, 0),
         },
         wasteCost: lines.reduce((a, l) => a + l.wasteCost, 0),
-        payments: [{ typeId: type.id, typeName: type.name, kind: type.kind, amount: total, tendered: total, change: 0 }],
-        pointsReversed, effectsPending: true, prep: { status: 'served' },
+        payments: refundPayments,
+        pointsReversed, explicitPayment: !!input.paymentTypeId, effectsPending: true, prep: { status: 'served' },
       };
       await C('receipts').insertOne(doc);
+      await ctx.shifts.refreshClosed(shift._id);
       const updated = await C('receipts').findOne({ _id: sale._id });
       const fully = updated.lines.every((l) => l.refundedQty >= l.qty);
       const cancelPrep = fully && ['new', 'preparing', 'ready'].includes(updated.prep?.status) ? { 'prep.status': 'cancelled', 'prep.updatedAt': now(), 'prep.cancelledAt': now() } : {};
@@ -366,17 +423,17 @@ export function createSales(ctx) {
       }
     }
     if (doc.customerId) {
+      const c = await C('customers').findOne({ _id: doc.customerId });
+      // إن صرف العميل نقاطه قبل الاسترجاع: يُعكس المتاح فقط، ويُسجَّل في الدفتر ما عُكس فعلاً ليبقى الرصيد = مجموع الدفتر
+      const taken = c ? Math.min(doc.pointsReversed, Math.max(0, c.points)) : 0;
       let fresh = true;
       try {
-        await C('point_moves').insertOne({ _id: newId(), key: `refund:${doc._id}`, customerId: doc.customerId, delta: -doc.pointsReversed, at: now() });
+        await C('point_moves').insertOne({ _id: newId(), key: `refund:${doc._id}`, customerId: doc.customerId, delta: -taken, at: now() });
       } catch (e) {
         if (!isDup(e)) throw e;
         fresh = false;
       }
-      if (fresh) {
-        const c = await C('customers').findOne({ _id: doc.customerId });
-        if (c) await C('customers').updateOne({ _id: c._id }, { $inc: { points: -Math.min(doc.pointsReversed, c.points), totalSpent: -doc.totals.total } });
-      }
+      if (fresh && c) await C('customers').updateOne({ _id: c._id }, { $inc: { points: -taken, totalSpent: -doc.totals.total } });
     }
     await C('receipts').updateOne({ _id: doc._id }, { $set: { effectsPending: false } });
   }

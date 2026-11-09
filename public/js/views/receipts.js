@@ -89,7 +89,7 @@ export const modals = {
       ${lines}
       <form class="stack" data-form="refund-submit" id="refund-form">
         <div class="grid-2">
-          ${field('طريقة إرجاع المبلغ', `<select name="paymentTypeId" id="refund-type">${types.map((p) => `<option value="${p.id}" ${p.id === r.payments[0]?.typeId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`)}
+          ${field('طريقة إرجاع المبلغ', `<select name="paymentTypeId" id="refund-type"><option value="">كما دفع الزبون (${esc(r.payments.map((p) => p.typeName).join(' + '))})</option>${types.map((p) => `<option value="${p.id}">${esc(p.name)} فقط</option>`).join('')}</select>`)}
           ${field('السبب', '<input name="reason" id="refund-reason" required minlength="2" maxlength="120" placeholder="طلب خاطئ، جودة…">')}
         </div>
         <label class="check"><input type="checkbox" name="restock" id="refund-restock"> إعادة الأصناف الجاهزة إلى المخزون (المشروبات المحضّرة لا تعود)</label>
@@ -154,7 +154,7 @@ on({
     const m = state.modal;
     const r = state.view.receipts.detail;
     const lines = Object.entries(m.qty).filter(([, q]) => q > 0).map(([i, q]) => ({ index: Number(i), qty: q }));
-    const res = await post(`/api/receipts/${r.id}/refund`, { clientId: m.clientId, lines, reason: data.reason, paymentTypeId: data.paymentTypeId, restock: data.restock });
+    const res = await post(`/api/receipts/${r.id}/refund`, { clientId: m.clientId, lines, reason: data.reason, paymentTypeId: data.paymentTypeId || undefined, restock: data.restock });
     state.modal = null;
     toast(`تم الاسترجاع: ${money(res.receipt.totals.total)} · إيصال #${res.receipt.number}`, 'ok');
     await openReceipt(r.id);

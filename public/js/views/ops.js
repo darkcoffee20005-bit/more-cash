@@ -126,6 +126,9 @@ function shiftReportHtml(x) {
   return `<div class="paper80"><div class="c big">${esc(state.settings?.name ?? '')}</div>${shiftReportText(x).split('\n').map((l) => (l ? `<div>${esc(l)}</div>` : '<hr>')).join('')}</div>`;
 }
 
+// السحب من الدرج: إما مصروف (يُخصم من الربح) أو نقل نقد لا يمس الربح
+const OUT_KINDS = { supplies: 'مصروف: مشتريات (ثلج، حليب…)', maintenance: 'مصروف: صيانة', salaries: 'مصروف: رواتب وأجور', utilities: 'مصروف: كهرباء وماء', other: 'مصروف: أخرى', transfer: 'ليس مصروفاً: إيداع بالبنك أو تسليم للمالك' };
+
 const CANCEL_REASONS = ['لم يستلمه الزبون', 'ألغى الزبون الطلب', 'طلب خاطئ', 'تأخر الطلب', 'مشكلة بالجودة'];
 const PREP_LABEL = { new: 'لم يبدأ تحضيره بعد', preparing: 'قيد التحضير', ready: 'جاهز ولم يُسلَّم', served: 'سُلّم' };
 
@@ -156,7 +159,7 @@ export const modals = {
       <form class="stack" data-form="kds-cancel-submit" id="kds-cancel-form">
         <div class="stack" style="gap:6px"><span class="label">السبب</span><div class="row wrap" style="gap:6px">${CANCEL_REASONS.map((r) => `<button type="button" class="chip ${m.reason === r ? 'on' : ''}" data-action="kds-cancel-reason" data-r="${r}">${r}</button>`).join('')}</div></div>
         <div class="grid-2">${field('ملاحظة (اختياري)', '<input name="note" id="kds-cancel-note" maxlength="80" autocomplete="off">')}
-        ${types.length > 1 ? field('إرجاع المبلغ', `<select name="paymentTypeId" id="kds-cancel-type">${types.map((p) => `<option value="${p.id}" ${p.id === o.paymentTypeId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`) : ''}</div>
+        ${types.length > 1 ? field('إرجاع المبلغ', `<select name="paymentTypeId" id="kds-cancel-type"><option value="">كما دفع الزبون</option>${types.map((p) => `<option value="${p.id}">${esc(p.name)} فقط</option>`).join('')}</select>`) : ''}</div>
         ${notStarted ? '<label class="check"><input type="checkbox" name="restockIngredients" id="kds-cancel-ing" checked> إرجاع مكونات المشروبات للمخزون (لم تُحضَّر بعد)</label>' : ''}
         <label class="check"><input type="checkbox" name="restock" id="kds-cancel-restock" ${notStarted ? 'checked' : ''}> إرجاع الأصناف الجاهزة للمخزون (مخبوزات، ماء)</label>
         ${waste ? `<p class="small" style="color:var(--warn);margin:0">${icon('alert', 'sm')} المشروب المحضّر يُسجَّل هدراً: تبقى تكلفته على الربح ويظهر الإلغاء وسببه في التقرير اليومي.</p>` : ''}
@@ -184,6 +187,8 @@ export const modals = {
     return modalFrame({ title: t === 'pay_in' ? 'إدخال نقد للدرج' : 'سحب نقد من الدرج', body: `<form class="stack" data-form="cash-move-submit">
       ${field('المبلغ (د.ع)', '<input class="amount-input" name="amount" id="move-amount" inputmode="numeric" required autofocus autocomplete="off">')}
       ${field('السبب', `<input name="note" id="move-note" required maxlength="120" placeholder="${t === 'pay_in' ? 'فكة من المالك' : 'شراء ثلج، أجرة توصيل'}">`)}
+      ${t === 'pay_out' ? field('نوع السحب', `<select name="kind" id="move-kind">${Object.entries(OUT_KINDS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>`,
+        'المصروف يُخصم من صافي الربح ويظهر في المصروفات. الإيداع بالبنك أو التسليم للمالك لا يُعد مصروفاً.') : ''}
       <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
   },
   'customer-form'(s) {
@@ -238,7 +243,7 @@ on({
     if (!lines.length || !m.reason) return;
     const reason = d.note ? `${m.reason} — ${d.note}` : m.reason;
     const res = await post(`/api/receipts/${o.id}/refund`, {
-      clientId: m.clientId, lines, reason, cancel: true, source: m.after === 'kds' ? 'kds' : undefined, paymentTypeId: d.paymentTypeId || o.paymentTypeId || undefined,
+      clientId: m.clientId, lines, reason, cancel: true, source: m.after === 'kds' ? 'kds' : undefined, paymentTypeId: d.paymentTypeId || undefined,
       restock: !!d.restock, restockIngredients: !!d.restockIngredients,
     });
     state.modal = null;
@@ -255,7 +260,14 @@ on({
   'cash-move-submit': (_el, _e, data) => busy(async () => {
     const amount = parseAmount(data.amount);
     if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('أدخل مبلغاً صحيحاً');
-    state.view.shift = await post('/api/shifts/move', { clientId: state.modal.clientId, type: state.modal.moveType, amount, note: data.note });
+    const m = state.modal;
+    if (m.moveType === 'pay_out' && data.kind && data.kind !== 'transfer') {
+      // مصروف من الدرج: يُسجَّل في المصروفات ويُسحب من الوردية بنفس العملية (لا يتكرر عند إعادة المحاولة)
+      await post('/api/admin/expenses', { clientId: m.clientId, amount, category: data.kind, note: data.note, fromDrawer: true });
+      state.view.shift = await get('/api/shifts/current');
+    } else {
+      state.view.shift = await post('/api/shifts/move', { clientId: m.clientId, type: m.moveType, amount, note: data.note });
+    }
     state.modal = null;
     toast('سُجّلت الحركة', 'ok');
   }),

@@ -70,6 +70,12 @@ export function createShifts(ctx) {
     const amount = int(input.amount, { field: 'amount', min: 1, max: 1_000_000_000 });
     const note = str(input.note, { field: 'note', min: 1, max: 120 });
     const shift = await requireOpen();
+    if (shift.movements.some((m) => m.id === clientId)) return view(shift); // إعادة إرسال: لا شيء جديد
+    // لا يُسحب من الدرج أكثر مما فيه: النقد المتوقع لا يصبح سالباً أبداً
+    if (type === 'pay_out') {
+      const { expectedCash } = await summarize(shift);
+      if (amount > expectedCash) throw bad('DRAWER_INSUFFICIENT', String(expectedCash));
+    }
     const movement = { id: clientId, type, amount, note, at: now(), by: actor.id, byName: actor.name };
     // شرط "لا توجد حركة بنفس المعرف" يجعل إعادة الإرسال آمنة
     const r = await shifts().updateOne({ _id: shift._id, status: 'open', 'movements.id': { $ne: clientId } }, { $push: { movements: movement } });
@@ -101,5 +107,33 @@ export function createShifts(ctx) {
     return (await shifts().find(q).sort({ openedAt: -1 }).limit(200).toArray()).map((s) => out(s));
   }
 
-  return { current, open, move, close, list, requireOpen };
+  /**
+   * إعادة حساب ملخص وردية أُغلقت ثم وصلها إيصال يخصها (بيع بلا إنترنت أُرسل بعد الإغلاق، أو بيع تزامن مع لحظة الإغلاق).
+   * النقد الفعلي المعدود لا يتغير؛ يتغير المتوقع والفرق ليعكسا الحقيقة، ويُسجَّل ذلك في سجل العمليات.
+   */
+  async function refreshClosed(shiftId) {
+    const s = await shifts().findOne({ _id: shiftId });
+    if (!s || s.status !== 'closed') return null;
+    const summary = await summarize(s);
+    if (summary.expectedCash === s.summary?.expectedCash && summary.net === s.summary?.net && summary.salesCount === s.summary?.salesCount) return s;
+    const difference = s.actualCash - summary.expectedCash;
+    await shifts().updateOne({ _id: s._id }, { $set: { summary, difference, revisedAt: now() } });
+    await audit({ ...ctx, actor: null }, 'shift.revised', { shiftId: s._id, number: s.number, expected: summary.expectedCash, before: s.summary?.expectedCash, difference });
+    return shifts().findOne({ _id: s._id });
+  }
+
+  /** الوردية التي كانت مفتوحة في لحظة معينة (لبيع سُجّل بلا إنترنت) */
+  async function shiftAt(at) {
+    const list = await shifts().find({ openedAt: { $lte: at } }).sort({ openedAt: -1 }).limit(1).toArray();
+    const s = list[0];
+    if (!s) return null;
+    return s.status === 'open' || (s.closedAt && s.closedAt >= at) ? s : null;
+  }
+
+  /** النقد المتوقع في درج الوردية المفتوحة الآن */
+  async function cashInDrawer(shift) {
+    return (await summarize(shift ?? await requireOpen())).expectedCash;
+  }
+
+  return { current, open, move, close, list, requireOpen, cashInDrawer, refreshClosed, shiftAt };
 }
