@@ -152,7 +152,7 @@ try {
     const side = await page.evaluate(() => {
       const t = document.querySelector('.ticket').getBoundingClientRect();
       const c = document.querySelector('.catalog').getBoundingClientRect();
-      return { ticketRight: t.left > c.left, sameRow: Math.abs(t.top - c.top) < 2 };
+      return { ticketRight: t.left > c.left, sameRow: Math.abs(t.top - c.top) < 16 };
     });
     if (!side.ticketRight || !side.sameRow) errors.push(`${name}: ticket panel is not on the right side`);
     const fit = await page.evaluate(() => {

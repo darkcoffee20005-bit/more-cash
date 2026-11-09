@@ -179,12 +179,8 @@ function catalogPane(s) {
   });
   const cats = [`<button class="chip cat-chip c-slate ${!categoryId && !q ? 'on' : ''}" data-action="pos-cat" data-id="">الكل</button>`,
     ...s.catalog.categories.map((c) => `<button class="chip cat-chip c-${c.color} ${categoryId === c.id && !q ? 'on' : ''}" data-action="pos-cat" data-id="${c.id}">${esc(c.name)}</button>`)];
-  const tz = s.settings?.tzOffsetMin ?? 180;
   return `<section class="catalog" aria-label="الأصناف">
     <div class="catalog-head">
-      <div class="pos-top"><h1>${esc(s.settings?.name ?? '')}</h1>
-        ${s.shift ? `<span class="pill ok">${icon('clock', 'sm')} وردية #${s.shift.number}</span>` : ''}
-        <span class="clock">${time(Date.now(), tz)}</span></div>
       ${offlineBanner(s)}
       ${lowBanner(s)}
       <div class="search-box">${icon('search', 'sm')}<input type="search" id="pos-search" placeholder="ابحث باسم الصنف أو SKU" value="${esc(search)}" data-input="pos-search" autocomplete="off"></div>
@@ -238,9 +234,11 @@ function tile(item) {
   const meta = [item.variants.length === 2 ? 'حجمان' : item.variants.length > 2 ? `${item.variants.length} أحجام` : item.variants[0].name, item.modifierIds.length ? 'إضافات' : ''].filter(Boolean).join(' · ');
   return `<button class="tile c-${item.color} ${out ? 'out' : ''}" data-action="pos-item" data-id="${item.id}">
     ${out ? '<span class="t-flag pill bad">نفد</span>' : low ? '<span class="t-flag pill warn">قليل</span>' : ''}
+    <span class="t-ic" aria-hidden="true">${esc([...item.name.trim()][0] ?? '')}</span>
     <span class="t-name">${esc(item.name)}</span>
     ${meta ? `<span class="t-meta">${esc(meta)}</span>` : ''}
     <span class="t-price num">${prices.length > 1 && Math.max(...prices) !== min ? 'من ' : ''}${money(min)}</span>
+    <span class="t-add" aria-hidden="true">${icon('plus', 'sm')}</span>
   </button>`;
 }
 
@@ -253,11 +251,15 @@ function ticketPane(s) {
     const sub = [l.variantName, ...l.modifiers.map((m) => m.name)].filter(Boolean).join(' · ');
     const discounted = calc && calc.discount > 0 && l.discountIds.length;
     return `<li class="line ${s.pos.flashKey === l.key ? 'flash' : ''}" data-action="pos-line" data-key="${l.key}" role="button" tabindex="0">
-      <span class="qty-badge">${l.qty}</span>
-      <div><div class="l-name">${esc(l.itemName)}</div>${sub ? `<div class="l-sub">${esc(sub)}</div>` : ''}
+      <div class="l-body"><div class="l-name">${esc(l.itemName)}</div>${sub ? `<div class="l-sub">${esc(sub)}</div>` : ''}
         ${l.note ? `<div class="l-sub">✎ ${esc(l.note)}</div>` : ''}
-        ${l.discountIds.length ? `<div class="l-disc">${l.discountIds.map((d) => esc(discountById(d)?.name ?? '')).join('، ')}</div>` : ''}</div>
-      <div class="l-total num">${discounted ? `<s>${money(calc.gross, { symbol: false })}</s>` : ''}${money(discounted ? calc.gross - calc.discount + 0 : lineUnit(l) * l.qty, { symbol: false })}</div>
+        ${l.discountIds.length ? `<div class="l-disc">${l.discountIds.map((d) => esc(discountById(d)?.name ?? '')).join('، ')}</div>` : ''}
+        <div class="l-total num">${discounted ? `<s>${money(calc.gross, { symbol: false })}</s> ` : ''}${money(discounted ? calc.gross - calc.discount : lineUnit(l) * l.qty)}</div></div>
+      <div class="l-step" role="group" aria-label="الكمية">
+        <button data-action="line-dec" data-key="${l.key}" aria-label="${l.qty > 1 ? 'إنقاص' : 'حذف'}">${icon(l.qty > 1 ? 'minus' : 'trash', 'sm')}</button>
+        <span class="qty-badge num">${l.qty}</span>
+        <button data-action="line-inc" data-key="${l.key}" aria-label="زيادة">${icon('plus', 'sm')}</button>
+      </div>
     </li>`;
   }).join('');
   const ticketDiscNames = cart.discountIds.map((d) => discountById(d)?.name).filter(Boolean);
@@ -279,6 +281,7 @@ function ticketPane(s) {
     </div>
     <ul class="lines">${lines ? `<li class="more-lines" data-action="pos-all-lines" hidden></li>${lines}` : `<li class="empty">${icon('cup')}<p>اختر مشروباً لبدء الطلب</p></li>`}</ul>
     <div class="totals">
+      <div class="t-row muted"><span>عدد الأصناف</span><span class="num">${cart.lines.reduce((a, l) => a + l.qty, 0)}</span></div>
       <div class="t-row"><span>المجموع</span><span class="num">${money(t.gross)}</span></div>
       ${t.lineDiscount || t.ticketDiscount ? `<div class="t-row disc"><span>الخصم${ticketDiscNames.length ? ` (${esc(ticketDiscNames.join('، '))})` : ''}</span><span class="num">−${money(t.lineDiscount + t.ticketDiscount)}</span></div>` : ''}
       ${t.pointsDiscount ? `<div class="t-row disc"><span>استبدال نقاط</span><span class="num">−${money(t.pointsDiscount)}</span></div>` : ''}
@@ -522,6 +525,21 @@ on({
     closeModal();
   },
   'item-remove': () => { state.pos.cart.lines = state.pos.cart.lines.filter((l) => l.key !== state.modal.lineKey); closeModal(); },
+  'line-inc': (el) => {
+    const line = state.pos.cart.lines.find((l) => l.key === el.dataset.key);
+    if (!line || line.qty >= 99) return;
+    line.qty += 1;
+    state.pos.flashKey = line.key;
+    render();
+  },
+  'line-dec': (el) => {
+    const cart = state.pos.cart;
+    const line = cart.lines.find((l) => l.key === el.dataset.key);
+    if (!line) return;
+    if (line.qty > 1) line.qty -= 1;
+    else cart.lines = cart.lines.filter((l) => l.key !== line.key);
+    render();
+  },
   'pos-line': (el) => {
     const line = state.pos.cart.lines.find((l) => l.key === el.dataset.key);
     if (!line) return undefined;

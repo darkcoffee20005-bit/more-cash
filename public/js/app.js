@@ -1,5 +1,5 @@
 // التشغيل، التوجيه، شاشتا الإعداد والدخول، والهيكل العام.
-import { esc } from '../../shared/format.js';
+import { esc, time } from '../../shared/format.js';
 import { get, post } from './api.js';
 import { icon } from './icons.js';
 import { bindEvents, busy, can, errorText, fail, field, initials, on, render, set, setViews, state, toast } from './ui.js';
@@ -62,13 +62,38 @@ export const views = {
     if (s.shop?.disabled) return account.disabledView(s);
     if (!s.employee) return account.gateView(s);
     const body = (routes[s.route] ?? routes.pos)(s);
-    return `<div class="shell">${railView(s)}<main class="main" id="main">${body}</main></div>`;
+    return `<div class="shell">${topbarView(s)}${railView(s)}<main class="main" id="main">${body}</main></div>`;
   },
   modal(s) {
     const fn = modals[s.modal?.type];
     return fn ? fn(s) : '';
   },
 };
+
+const ROLE_NAMES = { owner: 'المالك', manager: 'مدير', cashier: 'كاشير', barista: 'باريستا' };
+const DATE_FMT = typeof Intl !== 'undefined' ? new Intl.DateTimeFormat('ar-IQ-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : null;
+const todayLabel = (tz) => DATE_FMT?.format(new Date(Date.now() + tz * 60000)) ?? '';
+
+/** الشريط العلوي: المقهى والوردية والتاريخ والوقت يميناً، والاتصال والموظف يساراً */
+function topbarView(s) {
+  const tz = s.settings?.tzOffsetMin ?? 180;
+  const online = s.online !== false;
+  return `<header class="topbar">
+    <div class="tb-start">
+      <b class="tb-shop">${esc(s.settings?.name ?? s.shop?.name ?? '')}</b>
+      ${s.shift ? `<span class="tb-pill">${icon('clock', 'sm')} وردية #${s.shift.number}</span>` : ''}
+      <span class="tb-date">${esc(todayLabel(tz))}</span>
+      <span class="tb-clock num" data-clock>${time(Date.now(), tz)}</span>
+    </div>
+    <div class="tb-end">
+      ${globalThis.MORECASH_BACKEND ? '<span class="demo-tag" title="البيانات في هذا المتصفح فقط">تجريبي</span>' : ''}
+      <span class="tb-net ${online ? '' : 'off'}" role="status"><i></i>${online ? 'متصل' : 'غير متصل'}</span>
+      ${canFullscreen() ? `<button class="tb-btn" data-action="fullscreen" title="${isFullscreen() ? 'تصغير' : 'ملء الشاشة'}" aria-label="${isFullscreen() ? 'تصغير' : 'ملء الشاشة'}">${icon(isFullscreen() ? 'shrink' : 'expand', 'sm')}</button>` : ''}
+      <span class="tb-me"><span class="avatar">${esc(initials(s.employee.name))}</span><span class="tb-name"><b>${esc(s.employee.name)}</b><small>${ROLE_NAMES[s.employee.role] ?? ''}</small></span></span>
+      <button class="tb-btn" data-action="lock" title="قفل الشاشة" aria-label="قفل الشاشة">${icon('lock', 'sm')}<span>قفل</span></button>
+    </div>
+  </header>`;
+}
 
 function railView(s) {
   const links = NAV.filter(([r, , , p]) => can(p) || (r === 'admin' && can('admin.catalog'))).map(([r, label, ic]) => {
@@ -78,16 +103,17 @@ function railView(s) {
     return `<a href="#/${r}" class="${s.route === r ? 'on' : ''}" ${s.route === r ? 'aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge}</a>`;
   }).join('');
   return `<nav class="rail" aria-label="التنقل الرئيسي">
-    ${mark()}
+    <a class="rail-brand" href="#/${defaultRoute()}" aria-label="مور كاش">${mark()}<span><b>مور كاش</b><small>More Cash</small></span></a>
     ${links}
-    <div class="me">
-      ${globalThis.MORECASH_BACKEND ? '<span class="demo-tag" title="البيانات في هذا المتصفح فقط">تجريبي</span>' : ''}
-      <div class="avatar" title="${esc(s.employee.name)}">${esc(initials(s.employee.name))}</div>
-      <span class="small" style="font-size:.7rem;text-align:center">${esc(s.employee.name)}</span>
-      ${canFullscreen() ? `<button data-action="fullscreen" title="ملء الشاشة">${icon(isFullscreen() ? 'shrink' : 'expand', 'sm')}<span>${isFullscreen() ? 'تصغير' : 'تكبير'}</span></button>` : ''}
-      <button data-action="lock" title="قفل الشاشة">${icon('lock', 'sm')}<span>قفل</span></button>
-    </div>
   </nav>`;
+}
+
+// الساعة في الشريط العلوي تتحدث دون إعادة رسم الشاشة
+if (typeof document !== 'undefined') {
+  setInterval(() => {
+    const el = document.querySelector('[data-clock]');
+    if (el) el.textContent = time(Date.now(), state.settings?.tzOffsetMin ?? 180);
+  }, 20_000);
 }
 
 // ---------------------------------------------------------------- ملء الشاشة (الآيباد والمتصفحات المكتبية؛ الآيفون لا يدعمه فيُخفى الزر)

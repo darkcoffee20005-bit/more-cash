@@ -170,10 +170,10 @@ const PAGES = {
     const topMax = Math.max(1, ...d.topItems.map((i) => i.net));
     return `<div class="page-head"><h1>اليوم في ${esc(s.settings?.name ?? '')}</h1><span class="muted">${d.today}</span></div>
       <div class="kpis">
-        <div class="kpi lead"><span class="label">صافي المبيعات</span><b>${money(t.net)}</b>${delta(t.net, y.net)}</div>
-        <div class="kpi"><span class="label">الإيصالات</span><b class="num">${t.salesCount}</b>${delta(t.salesCount, y.salesCount)}</div>
-        <div class="kpi"><span class="label">متوسط الفاتورة</span><b>${money(t.avgSale)}</b>${delta(t.avgSale, y.avgSale)}</div>
-        <div class="kpi"><span class="label">الربح الإجمالي</span><b>${money(t.profit)}</b><span class="muted small">بعد تكلفة المكونات ${money(t.cogs)}</span></div>
+        <div class="kpi lead"><span class="k-ic">${icon('cash')}</span><span class="label">صافي المبيعات</span><b>${money(t.net)}</b>${delta(t.net, y.net)}</div>
+        <div class="kpi"><span class="k-ic">${icon('receipt')}</span><span class="label">الإيصالات</span><b class="num">${t.salesCount}</b>${delta(t.salesCount, y.salesCount)}</div>
+        <div class="kpi"><span class="k-ic">${icon('tag')}</span><span class="label">متوسط الفاتورة</span><b>${money(t.avgSale)}</b>${delta(t.avgSale, y.avgSale)}</div>
+        <div class="kpi"><span class="k-ic">${icon('chart')}</span><span class="label">الربح الإجمالي</span><b>${money(t.profit)}</b><span class="muted small">بعد تكلفة المكونات ${money(t.cogs)}</span></div>
       </div>
       <div class="row wrap">
         ${d.openShift ? `<span class="pill ok">${icon('clock', 'sm')} وردية #${d.openShift.number} مفتوحة · ${esc(d.openShift.openedByName)}</span>` : '<span class="pill">لا وردية مفتوحة</span>'}
