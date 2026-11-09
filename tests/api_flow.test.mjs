@@ -580,3 +580,37 @@ test('إلغاء طلب مسلَّم لم يستلمه الزبون: الكاش�
   assert.equal((await call('sara', 'POST', `/api/receipts/${old.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'لم يستلمه', cancel: true })).status, 403);
   assert.equal((await call('owner', 'POST', `/api/receipts/${old.id}/refund`, { clientId: randomUUID(), lines: [{ index: 0, qty: 1 }], reason: 'لم يستلمه', cancel: true })).status, 200);
 });
+
+test('حد التنبيه من شاشة المخزون، وصورة لكل صنف تُحفظ منفصلة عن قائمة البيع', async () => {
+  const { ok, call } = await boot();
+  const inv = await ok('owner', 'GET', '/api/admin/inventory');
+  const milk = inv.rows.find((r) => r.name === 'حليب كامل');
+  const r = await ok('owner', 'POST', '/api/admin/inventory/low-stock', { variantId: milk.variantId, lowStock: milk.stock + 1 });
+  assert.equal(r.low, true, 'الحد الجديد فوق الرصيد → تنبيه');
+  assert.ok((await ok('owner', 'GET', '/api/pos/bootstrap')).catalog.lowStock.some((x) => x.variantId === milk.variantId));
+  assert.equal((await call('owner', 'POST', '/api/admin/inventory/low-stock', { variantId: milk.variantId, lowStock: -1 })).status, 400);
+  const log = await ok('owner', 'GET', '/api/admin/audit', null, { from: '2026-10-14', to: '2026-10-14', group: 'inventory' });
+  assert.ok(log.some((x) => x.action === 'inventory.threshold' && x.data.to === milk.stock + 1));
+
+  const { catalog } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  const latte = findItem(catalog, 'لاتيه');
+  const image = Buffer.alloc(3000, 7).toString('base64');
+  const set = await ok('owner', 'POST', `/api/admin/items/${latte.id}/image`, { image, mediaType: 'image/jpeg' });
+  assert.ok(set.imageV);
+  const b = await ok('owner', 'GET', '/api/pos/bootstrap');
+  const item = findItem(b.catalog, 'لاتيه');
+  assert.equal(item.imageV, set.imageV, 'القائمة تحمل الإصدار فقط');
+  assert.equal(JSON.stringify(b).includes(image), false, 'الصورة ليست داخل قائمة البيع');
+  const imgs = await ok('owner', 'GET', '/api/pos/images');
+  assert.equal(imgs[latte.id].v, set.imageV);
+  assert.equal(imgs[latte.id].src, `data:image/jpeg;base64,${image}`);
+  assert.equal((await call('owner', 'POST', `/api/admin/items/${latte.id}/image`, { image: 'not base64!' })).status, 400);
+  assert.equal((await call('owner', 'POST', `/api/admin/items/${latte.id}/image`, { image: 'A'.repeat(200_000) })).status, 400, 'حجم محدود');
+  await ok('owner', 'POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: '2468' });
+  await ok('sara', 'POST', '/api/auth/pin', { pin: '2468' });
+  assert.ok((await ok('sara', 'GET', '/api/pos/images'))[latte.id], 'الكاشير يرى الصور');
+  assert.equal((await call('sara', 'POST', `/api/admin/items/${latte.id}/image`, { image })).status, 403, 'ولا يغيّرها');
+  await ok('owner', 'DELETE', `/api/admin/items/${latte.id}/image`);
+  assert.equal(findItem((await ok('owner', 'GET', '/api/pos/bootstrap')).catalog, 'لاتيه').imageV, undefined);
+  assert.deepEqual(await ok('owner', 'GET', '/api/pos/images'), {});
+});

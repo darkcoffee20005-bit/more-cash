@@ -2,6 +2,7 @@
 // خادم Node (server/http.js) والنسخة التجريبية في المتصفح يستخدمان نفس الدالة.
 import { dayRange } from '../../shared/format.js';
 import { AppError, getSettings, requirePerm } from './core.js';
+import { can } from '../../shared/perms.js';
 import { createAuth, createSettings, publicEmployee } from './auth.js';
 import { createCatalog } from './catalog.js';
 import { createInventory } from './inventory.js';
@@ -81,6 +82,12 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['GET', '/api/admin/items', async (actor) => { requireCatalog(actor); return catalog.listItems({ includeInactive: false }); }],
     ['POST', '/api/admin/items', (actor, req) => catalog.saveItem(actor, req.body)],
     ['DELETE', '/api/admin/items/:id', (actor, req, p) => catalog.archive(actor, 'items', p.id)],
+    ['POST', '/api/admin/items/:id/image', (actor, req, p) => catalog.setImage(actor, p.id, req.body)],
+    ['DELETE', '/api/admin/items/:id/image', (actor, req, p) => catalog.removeImage(actor, p.id)],
+    ['GET', '/api/pos/images', async (actor) => {
+      if (!['pos.sell', 'kds.use', 'admin.catalog'].some((x) => can(actor.role, x))) throw new AppError(403, 'FORBIDDEN', 'images');
+      return catalog.images();
+    }],
     ['GET', '/api/admin/categories', async (actor) => { requireCatalog(actor); return catalog.listCategories(); }],
     ['POST', '/api/admin/categories', (actor, req) => catalog.saveCategory(actor, req.body)],
     ['DELETE', '/api/admin/categories/:id', (actor, req, p) => catalog.archive(actor, 'categories', p.id)],
@@ -92,6 +99,7 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['DELETE', '/api/admin/discounts/:id', (actor, req, p) => catalog.archive(actor, 'discounts', p.id)],
     ['GET', '/api/admin/inventory', (actor) => ctx.inventory.list(actor)],
     ['POST', '/api/admin/inventory/adjust', (actor, req) => ctx.inventory.adjust(actor, req.body)],
+    ['POST', '/api/admin/inventory/low-stock', (actor, req) => ctx.inventory.setLowStock(actor, req.body)],
     ['GET', '/api/admin/inventory/:id/history', (actor, req, p) => ctx.inventory.history(actor, p.id)],
     ['POST', '/api/admin/inventory/reconcile', (actor) => ctx.inventory.reconcile(actor)],
     ['GET', '/api/admin/inventory/stock-items', async (actor) => { requirePerm(actor, 'admin.inventory'); return ctx.inventory.stockItems(); }],

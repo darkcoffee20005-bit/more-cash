@@ -5,6 +5,7 @@ import { del, get, post, uid } from '../api.js';
 import { icon } from '../icons.js';
 import { busy, can, closeModal, fail, field, modalFrame, on, onRendered, openModal, render, set, state, toast } from '../ui.js';
 import { printReceipt } from './receipts.js';
+import { imageSrc, syncImages } from '../images.js';
 import { discardFailed, failedSales, pendingSales, queueSale, rememberBootstrap, retryFailed, savedBootstrap } from '../offline.js';
 
 // ---------------------------------------------------------------- البيانات
@@ -25,6 +26,7 @@ export async function loadBootstrap() {
   state.catalog = b.catalog;
   state.shift = b.shift;
   state.ticketsCount = b.ticketsCount;
+  syncImages(b.catalog.items);
   if (!state.pos) state.pos = { categoryId: null, search: '', cart: emptyCart(), ticketW: loadTicketW(), ticketHidden: loadTicketHidden() };
 }
 
@@ -234,7 +236,7 @@ function tile(item) {
   const meta = [item.variants.length === 2 ? 'حجمان' : item.variants.length > 2 ? `${item.variants.length} أحجام` : item.variants[0].name, item.modifierIds.length ? 'إضافات' : ''].filter(Boolean).join(' · ');
   return `<button class="tile c-${item.color} ${out ? 'out' : ''}" data-action="pos-item" data-id="${item.id}">
     ${out ? '<span class="t-flag pill bad">نفد</span>' : low ? '<span class="t-flag pill warn">قليل</span>' : ''}
-    <span class="t-ic" aria-hidden="true">${esc([...item.name.trim()][0] ?? '')}</span>
+    ${imageSrc(item) ? `<img class="t-img" src="${imageSrc(item)}" alt="" loading="lazy">` : `<span class="t-ic" aria-hidden="true">${esc([...item.name.trim()][0] ?? '')}</span>`}
     <span class="t-name">${esc(item.name)}</span>
     ${meta ? `<span class="t-meta">${esc(meta)}</span>` : ''}
     <span class="t-price num">${prices.length > 1 && Math.max(...prices) !== min ? 'من ' : ''}${money(min)}</span>
@@ -742,6 +744,7 @@ async function refreshAvailability() {
   try {
     const before = new Set((state.catalog?.lowStock ?? []).map((x) => `${x.variantId}:${x.out}`));
     state.catalog = (await get('/api/pos/bootstrap')).catalog;
+    syncImages(state.catalog.items);
     // مادة نزلت تحت الحد (أو نفدت) بسبب هذا البيع: تنبيه فوري
     const fresh = state.catalog.lowStock.filter((x) => !before.has(`${x.variantId}:${x.out}`));
     if (fresh.length) toast(`${fresh[0].out ? 'نفد' : 'انخفض مخزون'}: ${fresh.map((x) => x.name).join('، ')}`, 'bad');

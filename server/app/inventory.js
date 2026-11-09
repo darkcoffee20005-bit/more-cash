@@ -163,5 +163,18 @@ export function createInventory(ctx) {
     return { checked: sums.size, fixed };
   }
 
-  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch };
+  /** تعديل حد التنبيه لمادة من شاشة المخزون (قيمة مطلقة، فتكرار الطلب لا يغيّر النتيجة) */
+  async function setLowStock(actor, input = {}) {
+    requirePerm(actor, 'admin.inventory');
+    const v = await variants().findOne({ _id: checkId(input.variantId, 'variantId') });
+    if (!v || !v.trackStock) throw notFound('VARIANT_NOT_TRACKED');
+    const lowStock = int(input.lowStock, { field: 'lowStock', min: 0, max: 10_000_000 });
+    if (lowStock !== v.lowStock) {
+      await variants().updateOne({ _id: v._id }, { $set: { lowStock } });
+      await audit({ ...ctx, actor }, 'inventory.threshold', { variantId: v._id, from: v.lowStock, to: lowStock });
+    }
+    return { variantId: v._id, lowStock, low: v.stock <= lowStock };
+  }
+
+  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch, setLowStock };
 }

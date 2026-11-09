@@ -116,6 +116,10 @@ async function copyCatalog(from, to) {
       modifierIds: (it.modifierIds ?? []).filter((m) => ids.has(m)).map((m) => ids.get(m)),
     });
   }
+  for (const it of items.filter((i) => i.imageV)) {
+    const img = await from.collection('item_images').findOne({ _id: it._id });
+    if (img) await to.collection('item_images').insertOne({ ...strip(img), _id: ids.get(it._id) });
+  }
   const itemIds = new Set(items.map((i) => i._id));
   for (const v of variants.filter((x) => itemIds.has(x.itemId))) map(v._id);
   for (const v of variants.filter((x) => itemIds.has(x.itemId))) {

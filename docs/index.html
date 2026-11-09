@@ -268,6 +268,7 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .tile:active { transform: scale(.97); }
 .tile .t-ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 6px;
   background: color-mix(in srgb, var(--c) 13%, #fff); color: var(--c); font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
+.tile .t-img { width: 40px; height: 40px; border-radius: 11px; object-fit: cover; margin-bottom: 6px; background: var(--surface-3); box-shadow: 0 2px 6px rgb(18 58 58 / 12%); }
 .tile .t-name { font-family: var(--font-display); font-weight: 700; font-size: .92rem; line-height: 1.3; }
 .tile .t-meta { font-size: .72rem; color: var(--muted); }
 .tile .t-price { margin-top: auto; padding-top: 6px; font-weight: 700; font-size: .95rem; color: var(--price); font-variant-numeric: tabular-nums; }
@@ -478,7 +479,7 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
   .ticket { margin: 10px; margin-inline-end: 0; }
   .ticket-head { padding: 10px 12px 8px; gap: 8px; }
   .tile { min-height: 122px; padding-top: 10px; }
-  .tile .t-ic { width: 36px; height: 36px; margin-bottom: 4px; }
+  .tile .t-ic, .tile .t-img { width: 36px; height: 36px; margin-bottom: 4px; }
   .ticket-actions { padding-top: 8px; gap: 6px; }
   .ticket-actions .btn.lg { min-height: 54px; }
 }
@@ -674,6 +675,15 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
   .lp-cta > div { padding: 32px 20px; border-radius: 22px; }
   .lp-cta { margin-top: 72px; }
 }
+
+/* صورة الصنف في المحرر والقائمة، وحد التنبيه القابل للتعديل */
+.item-photo { display: flex; gap: 14px; align-items: center; padding: 10px; border: 1px dashed var(--line-strong); border-radius: var(--r-md); background: var(--surface-2); }
+.item-photo .ph { width: 84px; height: 84px; flex: none; border-radius: 16px; overflow: hidden; display: grid; place-items: center; background: var(--surface-3); color: var(--muted); }
+.item-photo .ph img { width: 100%; height: 100%; object-fit: cover; }
+img.thumb { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; flex: none; }
+.link-num { border: none; background: none; padding: 4px 6px; border-radius: 8px; font: inherit; font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
+.link-num svg.i { width: 14px; height: 14px; color: var(--muted); }
+.link-num:hover { background: var(--surface-3); }
 
 </style></head><body><div id="app"></div><div id="print-area" aria-hidden="true"></div><script type="module">
 // ---- server/db/memory.js
@@ -2294,7 +2304,38 @@ function createCatalog(ctx) {
     };
   }
 
-  return { saveCategory, listCategories, saveModifier, listModifiers, saveDiscount, listDiscounts, saveItem, getItem, listItems, archive, posCatalog };
+  // ---------------------------------------------------------------- صور الأصناف
+  // صورة مصغّرة واحدة لكل صنف (يصغّرها المتصفح قبل الرفع) في مجموعة منفصلة، كي لا تثقل قائمة البيع
+  // التي تُجلب بعد كل بيع. الصنف يحمل imageV فقط، والصور تُجلب مرة وتُحفظ على الجهاز حتى يتغير الإصدار.
+  const MAX_IMAGE = 120_000; // base64 ≈ 90 كيلوبايت
+  async function setImage(actor, itemId, input = {}) {
+    requirePerm(actor, 'admin.catalog');
+    const id = checkId(itemId);
+    const item = await C('items').findOne({ _id: id });
+    if (!item) throw notFound();
+    const mediaType = oneOf(input.mediaType ?? 'image/jpeg', ['image/jpeg', 'image/png', 'image/webp'], 'mediaType');
+    if (typeof input.image !== 'string' || input.image.length < 100 || input.image.length > MAX_IMAGE || !/^[A-Za-z0-9+/=]+$/.test(input.image)) throw bad('INVALID_IMAGE');
+    const v = newId().slice(0, 8);
+    await C('item_images').updateOne({ _id: id }, { $set: { data: input.image, mediaType, v, updatedAt: now() } }, { upsert: true });
+    await C('items').updateOne({ _id: id }, { $set: { imageV: v } });
+    return { id, imageV: v };
+  }
+
+  async function removeImage(actor, itemId) {
+    requirePerm(actor, 'admin.catalog');
+    const id = checkId(itemId);
+    await C('item_images').deleteOne({ _id: id });
+    await C('items').updateOne({ _id: id }, { $unset: { imageV: '' } });
+    return { id, imageV: null };
+  }
+
+  /** كل صور الأصناف الفعالة: { itemId: { v, src } } */
+  async function images() {
+    const rows = await C('item_images').find({}).toArray();
+    return Object.fromEntries(rows.map((r) => [r._id, { v: r.v, src: `data:${r.mediaType};base64,${r.data}` }]));
+  }
+
+  return { saveCategory, listCategories, saveModifier, listModifiers, saveDiscount, listDiscounts, saveItem, getItem, listItems, archive, posCatalog, setImage, removeImage, images };
 }
 
 return { createCatalog };
@@ -2469,7 +2510,20 @@ function createInventory(ctx) {
     return { checked: sums.size, fixed };
   }
 
-  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch };
+  /** تعديل حد التنبيه لمادة من شاشة المخزون (قيمة مطلقة، فتكرار الطلب لا يغيّر النتيجة) */
+  async function setLowStock(actor, input = {}) {
+    requirePerm(actor, 'admin.inventory');
+    const v = await variants().findOne({ _id: checkId(input.variantId, 'variantId') });
+    if (!v || !v.trackStock) throw notFound('VARIANT_NOT_TRACKED');
+    const lowStock = int(input.lowStock, { field: 'lowStock', min: 0, max: 10_000_000 });
+    if (lowStock !== v.lowStock) {
+      await variants().updateOne({ _id: v._id }, { $set: { lowStock } });
+      await audit({ ...ctx, actor }, 'inventory.threshold', { variantId: v._id, from: v.lowStock, to: lowStock });
+    }
+    return { variantId: v._id, lowStock, low: v.stock <= lowStock };
+  }
+
+  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch, setLowStock };
 }
 
 return { MOVE_REASON, createInventory };
@@ -3459,6 +3513,7 @@ return { createShifts };
 const __m_server_app_index_js = await (async () => {
 const { dayRange } = __m_shared_format_js;
 const { AppError, getSettings, requirePerm } = __m_server_app_core_js;
+const { can } = __m_shared_perms_js;
 const { createAuth, createSettings, publicEmployee } = __m_server_app_auth_js;
 const { createCatalog } = __m_server_app_catalog_js;
 const { createInventory } = __m_server_app_inventory_js;
@@ -3468,6 +3523,7 @@ const { createSales } = __m_server_app_sales_js;
 const { createShifts } = __m_server_app_shifts_js;
 // تجميع الخدمات وواجهة API كدالة نقية: handle(request) → response.
 // خادم Node (server/http.js) والنسخة التجريبية في المتصفح يستخدمان نفس الدالة.
+
 
 
 
@@ -3549,6 +3605,12 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['GET', '/api/admin/items', async (actor) => { requireCatalog(actor); return catalog.listItems({ includeInactive: false }); }],
     ['POST', '/api/admin/items', (actor, req) => catalog.saveItem(actor, req.body)],
     ['DELETE', '/api/admin/items/:id', (actor, req, p) => catalog.archive(actor, 'items', p.id)],
+    ['POST', '/api/admin/items/:id/image', (actor, req, p) => catalog.setImage(actor, p.id, req.body)],
+    ['DELETE', '/api/admin/items/:id/image', (actor, req, p) => catalog.removeImage(actor, p.id)],
+    ['GET', '/api/pos/images', async (actor) => {
+      if (!['pos.sell', 'kds.use', 'admin.catalog'].some((x) => can(actor.role, x))) throw new AppError(403, 'FORBIDDEN', 'images');
+      return catalog.images();
+    }],
     ['GET', '/api/admin/categories', async (actor) => { requireCatalog(actor); return catalog.listCategories(); }],
     ['POST', '/api/admin/categories', (actor, req) => catalog.saveCategory(actor, req.body)],
     ['DELETE', '/api/admin/categories/:id', (actor, req, p) => catalog.archive(actor, 'categories', p.id)],
@@ -3560,6 +3622,7 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['DELETE', '/api/admin/discounts/:id', (actor, req, p) => catalog.archive(actor, 'discounts', p.id)],
     ['GET', '/api/admin/inventory', (actor) => ctx.inventory.list(actor)],
     ['POST', '/api/admin/inventory/adjust', (actor, req) => ctx.inventory.adjust(actor, req.body)],
+    ['POST', '/api/admin/inventory/low-stock', (actor, req) => ctx.inventory.setLowStock(actor, req.body)],
     ['GET', '/api/admin/inventory/:id/history', (actor, req, p) => ctx.inventory.history(actor, p.id)],
     ['POST', '/api/admin/inventory/reconcile', (actor) => ctx.inventory.reconcile(actor)],
     ['GET', '/api/admin/inventory/stock-items', async (actor) => { requirePerm(actor, 'admin.inventory'); return ctx.inventory.stockItems(); }],
@@ -3964,6 +4027,10 @@ async function copyCatalog(from, to) {
       ...strip(it), _id: map(it._id), categoryId: it.categoryId ? (ids.get(it.categoryId) ?? null) : null,
       modifierIds: (it.modifierIds ?? []).filter((m) => ids.has(m)).map((m) => ids.get(m)),
     });
+  }
+  for (const it of items.filter((i) => i.imageV)) {
+    const img = await from.collection('item_images').findOne({ _id: it._id });
+    if (img) await to.collection('item_images').insertOne({ ...strip(img), _id: ids.get(it._id) });
   }
   const itemIds = new Set(items.map((i) => i._id));
   for (const v of variants.filter((x) => itemIds.has(x.itemId))) map(v._id);
@@ -5351,6 +5418,65 @@ function printHtml(html, title = 'معاينة الإيصال') {
 return { routes, modals, enter, receiptHtml, printReceipt, printHtml };
 })();
 
+// ---- public/js/images.js
+const __m_public_js_images_js = await (async () => {
+const { get } = __m_public_js_api_js;
+const { render, state } = __m_public_js_ui_js;
+// صور الأصناف: تُجلب مرة وتُحفظ على الجهاز، ولا يُعاد جلبها إلا إن تغيّر إصدار صورة (imageV) في القائمة.
+
+
+
+const key = () => `morecash.img.${state.shop?.id ?? 'demo'}`;
+
+function load() {
+  if (state.images) return;
+  try { state.images = JSON.parse(localStorage.getItem(key()) ?? '{}') ?? {}; } catch { state.images = {}; }
+}
+function save() {
+  try { localStorage.setItem(key(), JSON.stringify(state.images)); } catch { /* المساحة ممتلئة: تبقى في الذاكرة */ }
+}
+
+/** مصدر صورة الصنف إن كانت محمّلة بالإصدار الحالي */
+function imageSrc(item) {
+  load();
+  const img = item?.imageV ? state.images[item.id] : null;
+  return img && img.v === item.imageV ? img.src : null;
+}
+
+async function syncImages(items = []) {
+  load();
+  const need = items.some((i) => i.imageV && state.images[i.id]?.v !== i.imageV);
+  if (!need || state.online === false) return;
+  try {
+    state.images = await get('/api/pos/images');
+    save();
+    render();
+  } catch { /* الصور ليست حرجة */ }
+}
+
+function putImage(id, v, src) { load(); if (v) state.images[id] = { v, src }; else delete state.images[id]; save(); }
+
+/** تصغير صورة الكاميرا/المعرض إلى مربع 240 بكسل JPEG قبل الرفع (≈ 15–30 كيلوبايت) */
+async function resizeImage(file, size = 240) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = url; });
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const s = Math.min(img.naturalWidth, img.naturalHeight);
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, size, size);
+    g.drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, size, size);
+    let src = canvas.toDataURL('image/jpeg', 0.8);
+    if (src.length > 110_000) src = canvas.toDataURL('image/jpeg', 0.6);
+    return { src, data: src.split(',')[1], mediaType: 'image/jpeg' };
+  } finally { URL.revokeObjectURL(url); }
+}
+
+return { imageSrc, syncImages, putImage, resizeImage };
+})();
+
 // ---- public/js/views/pos.js
 const __m_public_js_views_pos_js = await (async () => {
 const { calculateTicket, unitPrice } = __m_shared_calc_js;
@@ -5359,8 +5485,10 @@ const { del, get, post, uid } = __m_public_js_api_js;
 const { icon } = __m_public_js_icons_js;
 const { busy, can, closeModal, fail, field, modalFrame, on, onRendered, openModal, render, set, state, toast } = __m_public_js_ui_js;
 const { printReceipt } = __m_public_js_views_receipts_js;
+const { imageSrc, syncImages } = __m_public_js_images_js;
 const { discardFailed, failedSales, pendingSales, queueSale, rememberBootstrap, retryFailed, savedBootstrap } = __m_public_js_offline_js;
 // شاشة البيع: الأصناف ← التذكرة ← الدفع. الحساب للعرض بنفس كود الخادم (shared/calc.js).
+
 
 
 
@@ -5387,6 +5515,7 @@ async function loadBootstrap() {
   state.catalog = b.catalog;
   state.shift = b.shift;
   state.ticketsCount = b.ticketsCount;
+  syncImages(b.catalog.items);
   if (!state.pos) state.pos = { categoryId: null, search: '', cart: emptyCart(), ticketW: loadTicketW(), ticketHidden: loadTicketHidden() };
 }
 
@@ -5596,7 +5725,7 @@ function tile(item) {
   const meta = [item.variants.length === 2 ? 'حجمان' : item.variants.length > 2 ? `${item.variants.length} أحجام` : item.variants[0].name, item.modifierIds.length ? 'إضافات' : ''].filter(Boolean).join(' · ');
   return `<button class="tile c-${item.color} ${out ? 'out' : ''}" data-action="pos-item" data-id="${item.id}">
     ${out ? '<span class="t-flag pill bad">نفد</span>' : low ? '<span class="t-flag pill warn">قليل</span>' : ''}
-    <span class="t-ic" aria-hidden="true">${esc([...item.name.trim()][0] ?? '')}</span>
+    ${imageSrc(item) ? `<img class="t-img" src="${imageSrc(item)}" alt="" loading="lazy">` : `<span class="t-ic" aria-hidden="true">${esc([...item.name.trim()][0] ?? '')}</span>`}
     <span class="t-name">${esc(item.name)}</span>
     ${meta ? `<span class="t-meta">${esc(meta)}</span>` : ''}
     <span class="t-price num">${prices.length > 1 && Math.max(...prices) !== min ? 'من ' : ''}${money(min)}</span>
@@ -6104,6 +6233,7 @@ async function refreshAvailability() {
   try {
     const before = new Set((state.catalog?.lowStock ?? []).map((x) => `${x.variantId}:${x.out}`));
     state.catalog = (await get('/api/pos/bootstrap')).catalog;
+    syncImages(state.catalog.items);
     // مادة نزلت تحت الحد (أو نفدت) بسبب هذا البيع: تنبيه فوري
     const fresh = state.catalog.lowStock.filter((x) => !before.has(`${x.variantId}:${x.out}`));
     if (fresh.length) toast(`${fresh[0].out ? 'نفد' : 'انخفض مخزون'}: ${fresh.map((x) => x.name).join('، ')}`, 'bad');
@@ -6423,8 +6553,10 @@ const { icon } = __m_public_js_icons_js;
 const { accountCard, loadAccount } = __m_public_js_views_account_js;
 const { printHtml } = __m_public_js_views_receipts_js;
 const { rememberSession } = __m_public_js_offline_js;
+const { imageSrc, putImage, resizeImage, syncImages } = __m_public_js_images_js;
 const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
 // لوحة الإدارة (Back Office): المتابعة، التقارير، الأصناف، التصنيفات، الإضافات، الخصومات، المخزون، الموظفون، الورديات، الإعدادات.
+
 
 
 
@@ -6668,7 +6800,7 @@ const PAGES = {
         <input type="search" id="it-search" placeholder="بحث" value="${esc(q)}" data-input="items-search"></div>
       <div class="table-wrap"><table><thead><tr><th>الصنف</th><th>${f === 'sale' ? 'التصنيف' : 'الوحدة'}</th><th>الأحجام</th><th class="num">${f === 'sale' ? 'السعر' : 'التكلفة/وحدة'}</th><th class="num">المخزون</th></tr></thead>
       <tbody>${list.map((i) => `<tr class="click" data-action="item-edit" data-id="${i.id}">
-        <td><span class="row"><span class="swatch-dot c-${i.color}" style="width:14px;height:14px;border-radius:4px;background:var(--c);display:inline-block"></span><b>${esc(i.name)}</b></span></td>
+        <td><span class="row">${imageSrc(i) ? `<img class="thumb" src="${imageSrc(i)}" alt="">` : `<span class="swatch-dot c-${i.color}" style="width:14px;height:14px;border-radius:4px;background:var(--c);display:inline-block"></span>`}<b>${esc(i.name)}</b></span></td>
         <td>${f === 'sale' ? esc(cats.get(i.categoryId)?.name ?? '—') : esc(i.unit ?? '')}</td>
         <td class="small">${i.variants.map((v) => esc(v.name || '—')).join('، ')}</td>
         <td class="num">${f === 'sale' ? i.variants.map((v) => money(v.price, { symbol: false })).join(' / ') : `${formatMilli(i.variants[0]?.costMilli ?? 0)} د.ع`}</td>
@@ -6707,7 +6839,7 @@ const PAGES = {
       <div class="table-wrap"><table><thead><tr><th>المادة</th><th class="num">الرصيد</th><th class="num">حد التنبيه</th><th class="num">التكلفة/وحدة</th><th class="num">القيمة</th><th></th></tr></thead>
       <tbody>${rows.map((r) => `<tr><td><b>${esc(r.name)}</b> ${r.ingredient ? '<span class="pill olive">مكون</span>' : ''}</td>
         <td class="num"><span class="pill ${r.stock <= 0 ? 'bad' : r.low ? 'warn' : 'ok'}">${r.stock.toLocaleString('en-US')} ${esc(r.unit)}</span></td>
-        <td class="num">${r.lowStock.toLocaleString('en-US')}</td><td class="num">${formatMilli(r.costMilli)}</td><td class="num">${money(r.value)}</td>
+        <td class="num"><button class="link-num" data-action="inv-low" data-id="${r.variantId}" title="تعديل حد التنبيه">${r.lowStock.toLocaleString('en-US')} ${icon('edit', 'sm')}</button></td><td class="num">${formatMilli(r.costMilli)}</td><td class="num">${money(r.value)}</td>
         <td><div class="row" style="justify-content:flex-end"><button class="btn sm" data-action="inv-adjust" data-id="${r.variantId}">تعديل</button>
           <button class="icon-btn" data-action="inv-history" data-id="${r.variantId}" aria-label="السجل">${icon('list', 'sm')}</button></div></td></tr>`).join('')
         || '<tr><td colspan="6" class="muted">لا مواد</td></tr>'}</tbody></table></div>
@@ -6901,6 +7033,11 @@ const modals = {
         ${it.forSale ? field('التصنيف', `<select id="it-cat" data-change="it-field" data-k="categoryId"><option value="">بلا تصنيف</option>${cats.filter((c) => c.active !== false).map((c) => `<option value="${c.id}" ${c.id === it.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`)
           : field('وحدة القياس', `<input id="it-unit" data-input="it-field" data-k="unit" value="${esc(it.unit ?? '')}" placeholder="غ، مل، قطعة" maxlength="10">`)}</div>
       ${it.forSale ? `<div class="stack" style="gap:8px"><span class="label">اللون على شاشة البيع</span><div class="row wrap">${Object.entries(COLORS).map(([k, l]) => `<button type="button" class="chip c-${k} ${it.color === k ? 'on' : ''}" style="${it.color === k ? 'background:var(--c);border-color:var(--c);color:#fff' : ''}" data-action="it-color" data-v="${k}"><span style="width:12px;height:12px;border-radius:3px;background:var(--c)"></span>${l}</button>`).join('')}</div></div>
+        <div class="item-photo"><div class="ph">${it.removeImage ? '' : it.newImage ? `<img src="${it.newImage.src}" alt="">` : imageSrc(it) ? `<img src="${imageSrc(it)}" alt="">` : icon('camera')}</div>
+          <div class="stack" style="gap:6px"><span class="label">صورة الصنف على شاشة البيع</span><div class="row wrap">
+            <label class="btn sm"><input type="file" accept="image/*" hidden data-change="it-image" id="it-image">${icon('camera', 'sm')} ${it.newImage || (imageSrc(it) && !it.removeImage) ? 'تغيير الصورة' : 'رفع صورة'}</label>
+            ${it.newImage || (it.imageV && !it.removeImage) ? `<button type="button" class="btn sm ghost danger" data-action="it-image-remove">${icon('trash', 'sm')} حذف</button>` : ''}</div>
+            <span class="muted small">تُقصّ مربعاً وتُصغّر تلقائياً</span></div></div>
         <div class="stack" style="gap:8px"><span class="label">مجموعات الإضافات</span><div class="row wrap">${mods.map((g) => `<button type="button" class="chip ${it.modifierIds.includes(g.id) ? 'on' : ''}" data-action="it-mod" data-v="${g.id}">${esc(g.name)}</button>`).join('') || '<span class="muted small">لا إضافات بعد</span>'}</div></div>` : ''}
       <div class="row"><h3 style="margin-inline-end:auto">${it.forSale ? 'الأحجام والأسعار' : 'التكلفة والمخزون'}</h3>${it.forSale && it.variants.length < 8 ? `<button type="button" class="btn sm" data-action="v-add">${icon('plus', 'sm')} حجم</button>` : ''}</div>
       ${variantRows}`;
@@ -6958,12 +7095,15 @@ const modals = {
     const r = A().inventory.rows.find((x) => x.variantId === m.variantId);
     const type = m.adjType ?? 'receive';
     return modalFrame({ title: r.name, sub: `الرصيد الحالي ${r.stock.toLocaleString('en-US')} ${esc(r.unit)} · التكلفة ${formatMilli(r.costMilli)} د.ع/${esc(r.unit)}`, body: `
-      <div class="seg">${[['receive', 'استلام'], ['loss', 'هدر/تالف'], ['count', 'جرد']].map(([k, l]) => `<button class="${type === k ? 'on' : ''}" data-action="adj-type" data-k="${k}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['receive', 'استلام'], ['loss', 'هدر/تالف'], ['count', 'جرد'], ['low', 'حد التنبيه']].map(([k, l]) => `<button class="${type === k ? 'on' : ''}" data-action="adj-type" data-k="${k}">${l}</button>`).join('')}</div>
+      ${type === 'low' ? `<form class="stack" data-form="inv-low-submit">
+        ${field(`حد التنبيه (${esc(r.unit)})`, `<input class="amount-input" name="lowStock" id="adj-low" inputmode="numeric" required autofocus autocomplete="off" value="${r.lowStock}">`, 'عند وصول الرصيد لهذا الحد أو أقل يظهر تنبيه على شاشة البيع والمخزون. 0 = بلا تنبيه')}
+        <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>حفظ الحد</button></form>` : `
       <form class="stack" data-form="inv-adjust-submit">
         ${field(type === 'count' ? `الكمية المعدودة فعلياً (${esc(r.unit)})` : `الكمية (${esc(r.unit)})`, '<input class="amount-input" name="qty" id="adj-qty" inputmode="numeric" required autofocus autocomplete="off">')}
         ${type === 'receive' ? field(`تكلفة الوحدة (د.ع لكل ${esc(r.unit)})`, '<input name="cost" id="adj-cost" inputmode="decimal" placeholder="اتركه فارغاً للإبقاء على التكلفة">', 'تُحدَّث التكلفة بالمتوسط المرجح') : ''}
         ${field('ملاحظة', `<input name="note" id="adj-note" maxlength="120" ${type === 'loss' ? 'required' : ''} placeholder="${type === 'loss' ? 'منتهي الصلاحية، انسكب…' : 'المورد، رقم الفاتورة…'}">`)}
-        <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
+        <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>`}` });
   },
 
   'mat-new'(s) {
@@ -7111,7 +7251,7 @@ async function loadSection(sub) {
       a.report = await get('/api/admin/reports', { from: a.from, to: a.to });
     },
     shifts: async () => { a.shifts = await get('/api/shifts'); },
-    items: async () => { [a.items, a.categories, a.modifiers] = await Promise.all([get('/api/admin/items'), get('/api/admin/categories'), get('/api/admin/modifiers')]); },
+    items: async () => { [a.items, a.categories, a.modifiers] = await Promise.all([get('/api/admin/items'), get('/api/admin/categories'), get('/api/admin/modifiers')]); syncImages(a.items); },
     categories: async () => { a.categories = await get('/api/admin/categories'); },
     modifiers: async () => { a.modifiers = await get('/api/admin/modifiers'); },
     discounts: async () => { a.discounts = await get('/api/admin/discounts'); },
@@ -7215,6 +7355,17 @@ on({
   'item-kind': (el) => { const it = state.modal.item; it.forSale = el.dataset.v === 'sale'; it.unit = it.forSale ? null : it.unit || 'غ'; it.variants = it.variants.slice(0, it.forSale ? 8 : 1); render(); },
   'it-field': (el) => { state.modal.item[el.dataset.k] = el.value; if (el.tagName === 'SELECT') render(); },
   'it-color': (el) => { state.modal.item.color = el.dataset.v; render(); },
+  'it-image': async (el) => {
+    const file = el.files?.[0];
+    if (!file) return;
+    try {
+      const img = await resizeImage(file);
+      if (state.modal?.type !== 'item-form') return;
+      Object.assign(state.modal.item, { newImage: img, removeImage: false });
+      render();
+    } catch { toast('تعذّرت قراءة الصورة', 'bad'); }
+  },
+  'it-image-remove': () => { Object.assign(state.modal.item, { newImage: null, removeImage: true }); render(); },
   'it-mod': (el) => { const it = state.modal.item; it.modifierIds = it.modifierIds.includes(el.dataset.v) ? it.modifierIds.filter((x) => x !== el.dataset.v) : [...it.modifierIds, el.dataset.v]; render(); },
   'v-field': (el) => { state.modal.item.variants[Number(el.dataset.i)][el.dataset.k] = el.value; },
   'v-track': (el) => { state.modal.item.variants[Number(el.dataset.i)].trackStock = el.checked; render(); },
@@ -7239,7 +7390,14 @@ on({
         recipe: it.forSale && !v.trackStock ? (v.recipe ?? []).map((r) => ({ variantId: r.variantId, qty: num(r.qty, 'كمية المكون') })) : [],
       })),
     };
-    await post('/api/admin/items', body);
+    const saved = await post('/api/admin/items', body);
+    if (it.newImage) {
+      const r = await post(`/api/admin/items/${saved.id}/image`, { image: it.newImage.data, mediaType: it.newImage.mediaType });
+      putImage(saved.id, r.imageV, it.newImage.src);
+    } else if (it.removeImage && it.imageV) {
+      await del(`/api/admin/items/${saved.id}/image`);
+      putImage(saved.id, null);
+    }
     state.modal = null;
     toast('حُفظ الصنف', 'ok');
     await loadSection('items');
@@ -7341,6 +7499,15 @@ on({
     await loadSection('inventory');
   }),
   'inv-adjust': (el) => openModal({ type: 'inv-adjust', variantId: el.dataset.id, adjType: 'receive', clientId: uid() }),
+  'inv-low': (el) => openModal({ type: 'inv-adjust', variantId: el.dataset.id, adjType: 'low', clientId: uid() }),
+  'inv-low-submit': (_el, _e, d) => busy(async () => {
+    const r = await post('/api/admin/inventory/low-stock', { variantId: state.modal.variantId, lowStock: num(d.lowStock, 'حد التنبيه') });
+    state.modal = null;
+    toast(`حُفظ حد التنبيه: ${r.lowStock.toLocaleString('en-US')}`, 'ok');
+    await loadSection('inventory');
+    // تنبيه شاشة البيع وشارة الإدارة يتبعان الحد الجديد فوراً
+    if (state.catalog) get('/api/pos/bootstrap').then((b) => { state.catalog = b.catalog; render(); }).catch(() => {});
+  }),
   'adj-type': (el) => { state.modal.adjType = el.dataset.k; state.modal.clientId = uid(); render(); },
   'inv-adjust-submit': (_el, _e, d) => busy(async () => {
     const m = state.modal;

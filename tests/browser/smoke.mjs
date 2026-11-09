@@ -303,6 +303,25 @@ try {
   await page.click('[data-action="rcv-open"]');
   await page.waitForSelector('#rcv-v-0 option:has-text("هيل مطحون")', { state: 'attached' }).catch(() => errors.push('new material missing from receive list'));
   await page.click('[data-action="close-modal"]');
+  // تعديل حد التنبيه من جدول المخزون
+  await page.click('tr:has-text("هيل مطحون") [data-action="inv-low"]');
+  await page.fill('#adj-low', '600');
+  await page.click('form[data-form="inv-low-submit"] button[type=submit]');
+  await page.waitForSelector('.toast.ok:has-text("حد التنبيه")');
+  await page.waitForSelector('tr:has-text("هيل مطحون") .pill.warn').catch(() => errors.push('threshold edit did not mark material low'));
+  // صورة لصنف: ترفع من محرر الصنف وتظهر على بطاقة البيع
+  await page.goto(`http://127.0.0.1:${PORT}/#/admin/items`);
+  await page.click('tr.click:has-text("موكا")');
+  await page.waitForSelector('.item-photo');
+  const png = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 400; c.height = 300; const g = c.getContext('2d'); g.fillStyle = '#6b4a3a'; g.fillRect(0, 0, 400, 300); g.fillStyle = '#f2e9d3'; g.beginPath(); g.arc(200, 150, 90, 0, 7); g.fill(); return c.toDataURL('image/png').split(',')[1]; });
+  await page.setInputFiles('#it-image', { name: 'mocha.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await page.waitForSelector('.item-photo img');
+  await shot('23c-item-photo');
+  await page.click('[data-action="item-submit"]');
+  await page.waitForSelector('.toast.ok:has-text("حُفظ الصنف")');
+  await page.waitForSelector('tr.click:has-text("موكا") img.thumb').catch(() => errors.push('item thumbnail missing in list'));
+  await page.goto(`http://127.0.0.1:${PORT}/#/admin/inventory`);
+  await page.waitForSelector('[data-action="rcv-open"]');
   // جرد يُنزل مادة تحت الحد → تنبيه على شاشة البيع وشارة على الإدارة
   await page.evaluate(async () => {
     const inv = await (await fetch('/api/admin/inventory')).json();
@@ -315,6 +334,7 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
   await page.waitForSelector('.low-banner');
   if (!(await page.isVisible('.rail .badge.bad'))) errors.push('low-stock badge missing on admin');
+  await page.waitForSelector('.tile:has-text("موكا") img.t-img').catch(() => errors.push('item photo not shown on POS tile'));
   await shot('24-low-banner');
 
   // الألوان فاتحة حتى لو كان الجهاز في الوضع الداكن، وعرض الهاتف

@@ -7,6 +7,7 @@ import { icon } from '../icons.js';
 import { accountCard, loadAccount } from './account.js';
 import { printHtml } from './receipts.js';
 import { rememberSession } from '../offline.js';
+import { imageSrc, putImage, resizeImage, syncImages } from '../images.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 
 const COLORS = { olive: 'أخضر', petrol: 'أخضر داكن', sage: 'مريمية', teal: 'نعناعي', sand: 'ذهبي', clay: 'طيني', mocha: 'موكا', slate: 'رمادي' };
@@ -242,7 +243,7 @@ const PAGES = {
         <input type="search" id="it-search" placeholder="بحث" value="${esc(q)}" data-input="items-search"></div>
       <div class="table-wrap"><table><thead><tr><th>الصنف</th><th>${f === 'sale' ? 'التصنيف' : 'الوحدة'}</th><th>الأحجام</th><th class="num">${f === 'sale' ? 'السعر' : 'التكلفة/وحدة'}</th><th class="num">المخزون</th></tr></thead>
       <tbody>${list.map((i) => `<tr class="click" data-action="item-edit" data-id="${i.id}">
-        <td><span class="row"><span class="swatch-dot c-${i.color}" style="width:14px;height:14px;border-radius:4px;background:var(--c);display:inline-block"></span><b>${esc(i.name)}</b></span></td>
+        <td><span class="row">${imageSrc(i) ? `<img class="thumb" src="${imageSrc(i)}" alt="">` : `<span class="swatch-dot c-${i.color}" style="width:14px;height:14px;border-radius:4px;background:var(--c);display:inline-block"></span>`}<b>${esc(i.name)}</b></span></td>
         <td>${f === 'sale' ? esc(cats.get(i.categoryId)?.name ?? '—') : esc(i.unit ?? '')}</td>
         <td class="small">${i.variants.map((v) => esc(v.name || '—')).join('، ')}</td>
         <td class="num">${f === 'sale' ? i.variants.map((v) => money(v.price, { symbol: false })).join(' / ') : `${formatMilli(i.variants[0]?.costMilli ?? 0)} د.ع`}</td>
@@ -281,7 +282,7 @@ const PAGES = {
       <div class="table-wrap"><table><thead><tr><th>المادة</th><th class="num">الرصيد</th><th class="num">حد التنبيه</th><th class="num">التكلفة/وحدة</th><th class="num">القيمة</th><th></th></tr></thead>
       <tbody>${rows.map((r) => `<tr><td><b>${esc(r.name)}</b> ${r.ingredient ? '<span class="pill olive">مكون</span>' : ''}</td>
         <td class="num"><span class="pill ${r.stock <= 0 ? 'bad' : r.low ? 'warn' : 'ok'}">${r.stock.toLocaleString('en-US')} ${esc(r.unit)}</span></td>
-        <td class="num">${r.lowStock.toLocaleString('en-US')}</td><td class="num">${formatMilli(r.costMilli)}</td><td class="num">${money(r.value)}</td>
+        <td class="num"><button class="link-num" data-action="inv-low" data-id="${r.variantId}" title="تعديل حد التنبيه">${r.lowStock.toLocaleString('en-US')} ${icon('edit', 'sm')}</button></td><td class="num">${formatMilli(r.costMilli)}</td><td class="num">${money(r.value)}</td>
         <td><div class="row" style="justify-content:flex-end"><button class="btn sm" data-action="inv-adjust" data-id="${r.variantId}">تعديل</button>
           <button class="icon-btn" data-action="inv-history" data-id="${r.variantId}" aria-label="السجل">${icon('list', 'sm')}</button></div></td></tr>`).join('')
         || '<tr><td colspan="6" class="muted">لا مواد</td></tr>'}</tbody></table></div>
@@ -475,6 +476,11 @@ export const modals = {
         ${it.forSale ? field('التصنيف', `<select id="it-cat" data-change="it-field" data-k="categoryId"><option value="">بلا تصنيف</option>${cats.filter((c) => c.active !== false).map((c) => `<option value="${c.id}" ${c.id === it.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`)
           : field('وحدة القياس', `<input id="it-unit" data-input="it-field" data-k="unit" value="${esc(it.unit ?? '')}" placeholder="غ، مل، قطعة" maxlength="10">`)}</div>
       ${it.forSale ? `<div class="stack" style="gap:8px"><span class="label">اللون على شاشة البيع</span><div class="row wrap">${Object.entries(COLORS).map(([k, l]) => `<button type="button" class="chip c-${k} ${it.color === k ? 'on' : ''}" style="${it.color === k ? 'background:var(--c);border-color:var(--c);color:#fff' : ''}" data-action="it-color" data-v="${k}"><span style="width:12px;height:12px;border-radius:3px;background:var(--c)"></span>${l}</button>`).join('')}</div></div>
+        <div class="item-photo"><div class="ph">${it.removeImage ? '' : it.newImage ? `<img src="${it.newImage.src}" alt="">` : imageSrc(it) ? `<img src="${imageSrc(it)}" alt="">` : icon('camera')}</div>
+          <div class="stack" style="gap:6px"><span class="label">صورة الصنف على شاشة البيع</span><div class="row wrap">
+            <label class="btn sm"><input type="file" accept="image/*" hidden data-change="it-image" id="it-image">${icon('camera', 'sm')} ${it.newImage || (imageSrc(it) && !it.removeImage) ? 'تغيير الصورة' : 'رفع صورة'}</label>
+            ${it.newImage || (it.imageV && !it.removeImage) ? `<button type="button" class="btn sm ghost danger" data-action="it-image-remove">${icon('trash', 'sm')} حذف</button>` : ''}</div>
+            <span class="muted small">تُقصّ مربعاً وتُصغّر تلقائياً</span></div></div>
         <div class="stack" style="gap:8px"><span class="label">مجموعات الإضافات</span><div class="row wrap">${mods.map((g) => `<button type="button" class="chip ${it.modifierIds.includes(g.id) ? 'on' : ''}" data-action="it-mod" data-v="${g.id}">${esc(g.name)}</button>`).join('') || '<span class="muted small">لا إضافات بعد</span>'}</div></div>` : ''}
       <div class="row"><h3 style="margin-inline-end:auto">${it.forSale ? 'الأحجام والأسعار' : 'التكلفة والمخزون'}</h3>${it.forSale && it.variants.length < 8 ? `<button type="button" class="btn sm" data-action="v-add">${icon('plus', 'sm')} حجم</button>` : ''}</div>
       ${variantRows}`;
@@ -532,12 +538,15 @@ export const modals = {
     const r = A().inventory.rows.find((x) => x.variantId === m.variantId);
     const type = m.adjType ?? 'receive';
     return modalFrame({ title: r.name, sub: `الرصيد الحالي ${r.stock.toLocaleString('en-US')} ${esc(r.unit)} · التكلفة ${formatMilli(r.costMilli)} د.ع/${esc(r.unit)}`, body: `
-      <div class="seg">${[['receive', 'استلام'], ['loss', 'هدر/تالف'], ['count', 'جرد']].map(([k, l]) => `<button class="${type === k ? 'on' : ''}" data-action="adj-type" data-k="${k}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['receive', 'استلام'], ['loss', 'هدر/تالف'], ['count', 'جرد'], ['low', 'حد التنبيه']].map(([k, l]) => `<button class="${type === k ? 'on' : ''}" data-action="adj-type" data-k="${k}">${l}</button>`).join('')}</div>
+      ${type === 'low' ? `<form class="stack" data-form="inv-low-submit">
+        ${field(`حد التنبيه (${esc(r.unit)})`, `<input class="amount-input" name="lowStock" id="adj-low" inputmode="numeric" required autofocus autocomplete="off" value="${r.lowStock}">`, 'عند وصول الرصيد لهذا الحد أو أقل يظهر تنبيه على شاشة البيع والمخزون. 0 = بلا تنبيه')}
+        <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>حفظ الحد</button></form>` : `
       <form class="stack" data-form="inv-adjust-submit">
         ${field(type === 'count' ? `الكمية المعدودة فعلياً (${esc(r.unit)})` : `الكمية (${esc(r.unit)})`, '<input class="amount-input" name="qty" id="adj-qty" inputmode="numeric" required autofocus autocomplete="off">')}
         ${type === 'receive' ? field(`تكلفة الوحدة (د.ع لكل ${esc(r.unit)})`, '<input name="cost" id="adj-cost" inputmode="decimal" placeholder="اتركه فارغاً للإبقاء على التكلفة">', 'تُحدَّث التكلفة بالمتوسط المرجح') : ''}
         ${field('ملاحظة', `<input name="note" id="adj-note" maxlength="120" ${type === 'loss' ? 'required' : ''} placeholder="${type === 'loss' ? 'منتهي الصلاحية، انسكب…' : 'المورد، رقم الفاتورة…'}">`)}
-        <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
+        <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>`}` });
   },
 
   'mat-new'(s) {
@@ -685,7 +694,7 @@ async function loadSection(sub) {
       a.report = await get('/api/admin/reports', { from: a.from, to: a.to });
     },
     shifts: async () => { a.shifts = await get('/api/shifts'); },
-    items: async () => { [a.items, a.categories, a.modifiers] = await Promise.all([get('/api/admin/items'), get('/api/admin/categories'), get('/api/admin/modifiers')]); },
+    items: async () => { [a.items, a.categories, a.modifiers] = await Promise.all([get('/api/admin/items'), get('/api/admin/categories'), get('/api/admin/modifiers')]); syncImages(a.items); },
     categories: async () => { a.categories = await get('/api/admin/categories'); },
     modifiers: async () => { a.modifiers = await get('/api/admin/modifiers'); },
     discounts: async () => { a.discounts = await get('/api/admin/discounts'); },
@@ -789,6 +798,17 @@ on({
   'item-kind': (el) => { const it = state.modal.item; it.forSale = el.dataset.v === 'sale'; it.unit = it.forSale ? null : it.unit || 'غ'; it.variants = it.variants.slice(0, it.forSale ? 8 : 1); render(); },
   'it-field': (el) => { state.modal.item[el.dataset.k] = el.value; if (el.tagName === 'SELECT') render(); },
   'it-color': (el) => { state.modal.item.color = el.dataset.v; render(); },
+  'it-image': async (el) => {
+    const file = el.files?.[0];
+    if (!file) return;
+    try {
+      const img = await resizeImage(file);
+      if (state.modal?.type !== 'item-form') return;
+      Object.assign(state.modal.item, { newImage: img, removeImage: false });
+      render();
+    } catch { toast('تعذّرت قراءة الصورة', 'bad'); }
+  },
+  'it-image-remove': () => { Object.assign(state.modal.item, { newImage: null, removeImage: true }); render(); },
   'it-mod': (el) => { const it = state.modal.item; it.modifierIds = it.modifierIds.includes(el.dataset.v) ? it.modifierIds.filter((x) => x !== el.dataset.v) : [...it.modifierIds, el.dataset.v]; render(); },
   'v-field': (el) => { state.modal.item.variants[Number(el.dataset.i)][el.dataset.k] = el.value; },
   'v-track': (el) => { state.modal.item.variants[Number(el.dataset.i)].trackStock = el.checked; render(); },
@@ -813,7 +833,14 @@ on({
         recipe: it.forSale && !v.trackStock ? (v.recipe ?? []).map((r) => ({ variantId: r.variantId, qty: num(r.qty, 'كمية المكون') })) : [],
       })),
     };
-    await post('/api/admin/items', body);
+    const saved = await post('/api/admin/items', body);
+    if (it.newImage) {
+      const r = await post(`/api/admin/items/${saved.id}/image`, { image: it.newImage.data, mediaType: it.newImage.mediaType });
+      putImage(saved.id, r.imageV, it.newImage.src);
+    } else if (it.removeImage && it.imageV) {
+      await del(`/api/admin/items/${saved.id}/image`);
+      putImage(saved.id, null);
+    }
     state.modal = null;
     toast('حُفظ الصنف', 'ok');
     await loadSection('items');
@@ -915,6 +942,15 @@ on({
     await loadSection('inventory');
   }),
   'inv-adjust': (el) => openModal({ type: 'inv-adjust', variantId: el.dataset.id, adjType: 'receive', clientId: uid() }),
+  'inv-low': (el) => openModal({ type: 'inv-adjust', variantId: el.dataset.id, adjType: 'low', clientId: uid() }),
+  'inv-low-submit': (_el, _e, d) => busy(async () => {
+    const r = await post('/api/admin/inventory/low-stock', { variantId: state.modal.variantId, lowStock: num(d.lowStock, 'حد التنبيه') });
+    state.modal = null;
+    toast(`حُفظ حد التنبيه: ${r.lowStock.toLocaleString('en-US')}`, 'ok');
+    await loadSection('inventory');
+    // تنبيه شاشة البيع وشارة الإدارة يتبعان الحد الجديد فوراً
+    if (state.catalog) get('/api/pos/bootstrap').then((b) => { state.catalog = b.catalog; render(); }).catch(() => {});
+  }),
   'adj-type': (el) => { state.modal.adjType = el.dataset.k; state.modal.clientId = uid(); render(); },
   'inv-adjust-submit': (_el, _e, d) => busy(async () => {
     const m = state.modal;

@@ -249,5 +249,36 @@ export function createCatalog(ctx) {
     };
   }
 
-  return { saveCategory, listCategories, saveModifier, listModifiers, saveDiscount, listDiscounts, saveItem, getItem, listItems, archive, posCatalog };
+  // ---------------------------------------------------------------- صور الأصناف
+  // صورة مصغّرة واحدة لكل صنف (يصغّرها المتصفح قبل الرفع) في مجموعة منفصلة، كي لا تثقل قائمة البيع
+  // التي تُجلب بعد كل بيع. الصنف يحمل imageV فقط، والصور تُجلب مرة وتُحفظ على الجهاز حتى يتغير الإصدار.
+  const MAX_IMAGE = 120_000; // base64 ≈ 90 كيلوبايت
+  async function setImage(actor, itemId, input = {}) {
+    requirePerm(actor, 'admin.catalog');
+    const id = checkId(itemId);
+    const item = await C('items').findOne({ _id: id });
+    if (!item) throw notFound();
+    const mediaType = oneOf(input.mediaType ?? 'image/jpeg', ['image/jpeg', 'image/png', 'image/webp'], 'mediaType');
+    if (typeof input.image !== 'string' || input.image.length < 100 || input.image.length > MAX_IMAGE || !/^[A-Za-z0-9+/=]+$/.test(input.image)) throw bad('INVALID_IMAGE');
+    const v = newId().slice(0, 8);
+    await C('item_images').updateOne({ _id: id }, { $set: { data: input.image, mediaType, v, updatedAt: now() } }, { upsert: true });
+    await C('items').updateOne({ _id: id }, { $set: { imageV: v } });
+    return { id, imageV: v };
+  }
+
+  async function removeImage(actor, itemId) {
+    requirePerm(actor, 'admin.catalog');
+    const id = checkId(itemId);
+    await C('item_images').deleteOne({ _id: id });
+    await C('items').updateOne({ _id: id }, { $unset: { imageV: '' } });
+    return { id, imageV: null };
+  }
+
+  /** كل صور الأصناف الفعالة: { itemId: { v, src } } */
+  async function images() {
+    const rows = await C('item_images').find({}).toArray();
+    return Object.fromEntries(rows.map((r) => [r._id, { v: r.v, src: `data:${r.mediaType};base64,${r.data}` }]));
+  }
+
+  return { saveCategory, listCategories, saveModifier, listModifiers, saveDiscount, listDiscounts, saveItem, getItem, listItems, archive, posCatalog, setImage, removeImage, images };
 }
