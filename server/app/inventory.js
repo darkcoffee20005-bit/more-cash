@@ -13,10 +13,13 @@ export function createInventory(ctx) {
   const variants = () => db.collection('variants');
 
   /** يطبّق حركة مرة واحدة فقط. يعيد true إن طُبّقت الآن، false إن كانت مطبّقة سابقاً. */
-  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null }) {
+  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null }) {
     if (!Number.isSafeInteger(delta) || delta === 0) return false;
+    // تكلفة الوحدة لحظة الحركة (للدفتر المحاسبي): سعر الشراء عند الاستلام، وإلا التكلفة الحالية للمادة
+    let unit = unitCostMilli;
+    if (unit === null && reason !== 'sale' && reason !== 'refund') unit = (await variants().findOne({ _id: variantId }))?.costMilli ?? 0;
     try {
-      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli });
+      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unit !== null ? { unitCostMilli: unit } : {}) });
     } catch (e) {
       if (isDup(e)) return false;
       throw e;
@@ -51,10 +54,11 @@ export function createInventory(ctx) {
     const note = str(input.note, { field: 'note', max: 120, optional: true });
     let delta;
     let costMilli = null;
+    let unitCostMilli = null;
     if (type === 'receive') {
       const qty = int(input.qty, { field: 'qty', min: 1, max: 10_000_000 });
       delta = qty;
-      if (input.cost !== undefined && input.cost !== '') costMilli = weightedCost(v.stock, v.costMilli, qty, parseMilli(input.cost));
+      if (input.cost !== undefined && input.cost !== '') { unitCostMilli = parseMilli(input.cost); costMilli = weightedCost(v.stock, v.costMilli, qty, unitCostMilli); }
     } else if (type === 'loss') {
       delta = -int(input.qty, { field: 'qty', min: 1, max: 10_000_000 });
       if (!note) throw bad('REQUIRED', 'note');
@@ -65,7 +69,7 @@ export function createInventory(ctx) {
       delta = input.qty;
       if (!note) throw bad('REQUIRED', 'note');
     }
-    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note });
+    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli });
     if (applied) await audit({ ...ctx, actor }, `inventory.${type}`, { variantId: v._id, delta, note });
     const after = await variants().findOne({ _id: v._id });
     return { applied, delta, stock: after.stock, costMilli: after.costMilli };

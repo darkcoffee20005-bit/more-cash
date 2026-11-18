@@ -8,6 +8,7 @@ import { createCatalog } from './catalog.js';
 import { createInventory } from './inventory.js';
 import { createReports } from './reports.js';
 import { createExpenses } from './expenses.js';
+import { createLedger } from './ledger.js';
 import { createSales } from './sales.js';
 import { createShifts } from './shifts.js';
 
@@ -16,6 +17,7 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
   ctx.inventory = createInventory(ctx);
   ctx.shifts = createShifts(ctx);
   ctx.expenses = createExpenses(ctx);
+  ctx.ledger = createLedger(ctx);
   const auth = createAuth(ctx);
   const settings = createSettings(ctx);
   const catalog = createCatalog(ctx);
@@ -66,6 +68,16 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['GET', '/api/admin/reports', (actor, req) => reports.report(actor, req.query)],
     ['GET', '/api/admin/reports/daily', (actor, req) => reports.daily(actor, req.query)],
     ['GET', '/api/admin/expenses', (actor, req) => ctx.expenses.list(actor, req.query)],
+    // المحاسبة (تجريبي)
+    ['GET', '/api/admin/accounting/income', (actor, req) => ctx.ledger.incomeStatement(actor, req.query)],
+    ['GET', '/api/admin/accounting/balance-sheet', (actor, req) => ctx.ledger.balanceSheet(actor, req.query)],
+    ['GET', '/api/admin/accounting/trial-balance', (actor, req) => ctx.ledger.trialBalance(actor, req.query)],
+    ['GET', '/api/admin/accounting/journal', (actor, req) => ctx.ledger.journal(actor, req.query)],
+    ['POST', '/api/admin/accounting/journal', (actor, req) => ctx.ledger.manualEntry(actor, req.body)],
+    ['POST', '/api/admin/accounting/journal/:id/reverse', (actor, req, p) => ctx.ledger.reverseManual(actor, p.id)],
+    ['GET', '/api/admin/accounting/accounts', (actor) => ctx.ledger.listAccounts(actor)],
+    ['POST', '/api/admin/accounting/accounts', (actor, req) => ctx.ledger.saveAccount(actor, req.body)],
+    ['GET', '/api/admin/accounting/ledger/:code', (actor, req, p) => ctx.ledger.ledger(actor, p.code, req.query)],
     ['POST', '/api/admin/expenses', (actor, req) => ctx.expenses.create(actor, req.body)],
     ['DELETE', '/api/admin/expenses/:id', (actor, req, p) => ctx.expenses.remove(actor, p.id)],
     // سجل العمليات الحساسة: للمالك فقط

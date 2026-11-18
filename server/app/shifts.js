@@ -76,7 +76,9 @@ export function createShifts(ctx) {
       const { expectedCash } = await summarize(shift);
       if (amount > expectedCash) throw bad('DRAWER_INSUFFICIENT', String(expectedCash));
     }
-    const movement = { id: clientId, type, amount, note, at: now(), by: actor.id, byName: actor.name };
+    // الغرض (للدفتر المحاسبي): supplier = تسديد مورد، owner = من/إلى المالك أو البنك؛ بلا غرض = قيد التصنيف
+    const purpose = ['supplier', 'owner'].includes(input.purpose) ? input.purpose : null;
+    const movement = { id: clientId, type, amount, note, at: now(), by: actor.id, byName: actor.name, ...(purpose ? { purpose } : {}) };
     // شرط "لا توجد حركة بنفس المعرف" يجعل إعادة الإرسال آمنة
     const r = await shifts().updateOne({ _id: shift._id, status: 'open', 'movements.id': { $ne: clientId } }, { $push: { movements: movement } });
     if (r.matchedCount) await audit({ ...ctx, actor }, `shift.${type}`, { shiftId: shift._id, amount, note });
