@@ -3,7 +3,7 @@ import { dateTime, esc, localDate, money, time } from '../../../shared/format.js
 import { get, post, uid } from '../api.js';
 import { icon } from '../icons.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
-import { openCancel } from './ops.js';
+import { openCancel } from './cancel.js';
 
 const STATUS = { paid: ['مدفوع', 'ok'], partially_refunded: ['مسترجع جزئياً', 'warn'], refunded: ['مسترجع', 'bad'] };
 
@@ -135,7 +135,7 @@ on({
     const r = state.view.receipts.detail;
     openCancel({ id: r.id, number: r.number, prep: r.prep, paymentTypeId: r.payments[0]?.typeId ?? null,
       lines: r.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: l.refundedQty, total: l.total })) },
-    async () => { await openReceipt(r.id); await loadList(); });
+    { after: async () => { await openReceipt(r.id); await loadList(); } });
   },
   'refund-start': () => openModal({ type: 'refund', qty: {}, clientId: uid() }),
   'refund-qty': (el) => {

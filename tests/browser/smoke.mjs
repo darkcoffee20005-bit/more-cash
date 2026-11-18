@@ -409,6 +409,21 @@ try {
   await p2.click('[data-action="pin-submit"]');
   await p2.waitForSelector('form[data-form="open-shift"]');
   if (!(await p2.textContent('body')).includes('المنصور')) errors.push('branch switch: new branch name not shown');
+
+  // النسخة التجريبية (ملف واحد يُحزم من نفس الوحدات): تبدأ بلا أخطاء وتفتح المقهى النموذجي
+  {
+    const { execFileSync } = await import('node:child_process');
+    const demoFile = join(dir, 'demo.html');
+    execFileSync(process.execPath, ['scripts/build_demo.mjs', demoFile], { stdio: 'ignore' });
+    const pd = await browser.newPage({ viewport: { width: 1180, height: 820 } });
+    const demoErrors = [];
+    pd.on('pageerror', (e) => demoErrors.push(e.message));
+    await pd.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+    await pd.goto(`file://${demoFile}`);
+    await pd.waitForFunction(() => document.querySelector('#app')?.children.length > 0, null, { timeout: 15000 }).catch(() => {});
+    if (demoErrors.length || /تعذر التشغيل/.test(await pd.innerText('body'))) errors.push(`demo bundle failed: ${demoErrors.join(' | ')}`);
+    await pd.screenshot({ path: join(shots, '28-demo.png') });
+  }
   console.log(`charged ${due}; screenshots in ${shots}`);
 } finally {
   await browser.close();

@@ -9,10 +9,11 @@ import * as ops from './views/ops.js';
 import * as admin from './views/admin.js';
 import * as account from './views/account.js';
 import * as platform from './views/platform.js';
+import * as cancel from './views/cancel.js';
 import { mark } from './brand.js';
 import { flushSales, initOffline, rememberSession, savedSession } from './offline.js';
 
-const modules = [pos, receipts, ops, admin, account, platform];
+const modules = [pos, receipts, ops, admin, account, platform, cancel];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
