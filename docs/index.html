@@ -50,8 +50,8 @@
   --shadow-2: 0 18px 48px rgb(18 58 58 / 22%);
   --scrim: rgb(6 30 32 / 55%);
   /* ألوان الأصناف */
-  --tile-olive: #71851e;
-  --tile-petrol: #0b5960;
+  --tile-olive: #0a7c55;
+  --tile-petrol: #0f3d31;
   --tile-sage: #6f8f80;
   --tile-teal: #2b8a75;
   --tile-sand: #b8893c;
@@ -257,24 +257,25 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .cat-chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
 .cat-chip.on { background: var(--olive-grad); border-color: transparent; color: #fff; box-shadow: 0 4px 12px rgb(104 123 27 / 22%); }
 .cat-chip.on::before { background: rgb(255 255 255 / 75%); }
-.tiles { flex: 1; overflow-y: auto; padding: 6px 16px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 11px; align-content: start; }
+.tiles { flex: 1; overflow-y: auto; padding: 12px 14px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; align-content: start; }
+/* بطاقة الصنف بألوان التصميم السابق: شريط علوي بلون الصنف وتدرّج خفيف منه */
 .tile {
   --c: var(--tile-olive);
-  position: relative; min-height: 132px; border-radius: 14px; border: 1px solid #dce7e4; background: var(--surface);
-  padding: 12px 10px 12px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 1px; box-shadow: var(--shadow-1);
+  position: relative; min-height: 94px; border-radius: var(--r-md); border: 1px solid var(--line); border-top: 4px solid var(--c);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 7%, var(--surface)) 0%, var(--surface) 55%);
+  padding: 9px 11px; text-align: start; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow-1);
   transition: transform .08s ease, box-shadow .15s, border-color .15s;
 }
-.tile:hover { box-shadow: 0 8px 22px rgb(18 58 58 / 14%); border-color: color-mix(in srgb, var(--c) 45%, #dce7e4); }
+.tile:hover { box-shadow: 0 6px 18px rgb(30 57 50 / 12%); }
 .tile:active { transform: scale(.97); }
-.tile .t-ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 6px;
-  background: color-mix(in srgb, var(--c) 13%, #fff); color: var(--c); font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
-.tile .t-img { width: 40px; height: 40px; border-radius: 11px; object-fit: cover; margin-bottom: 6px; background: var(--surface-3); box-shadow: 0 2px 6px rgb(18 58 58 / 12%); }
-.tile .t-name { font-family: var(--font-display); font-weight: 700; font-size: .92rem; line-height: 1.3; }
+/* صورة الصنف في الزاوية، فلا تزيد ارتفاع البطاقة ولا تدفع السعر */
+.tile .t-img { position: absolute; top: 8px; inset-inline-end: 8px; width: 38px; height: 38px; border-radius: 10px; object-fit: cover; background: var(--surface-3); }
+.tile.has-img .t-name, .tile.has-img .t-meta { padding-inline-end: 42px; }
+.tile.has-img .t-flag { top: auto; bottom: 8px; }
+.tile .t-name { font-family: var(--font-display); font-weight: 600; font-size: .95rem; line-height: 1.3; }
 .tile .t-meta { font-size: .72rem; color: var(--muted); }
-.tile .t-price { margin-top: auto; padding-top: 6px; font-weight: 700; font-size: .95rem; color: var(--price); font-variant-numeric: tabular-nums; }
-.tile .t-add { position: absolute; top: 7px; inset-inline-end: 7px; width: 24px; height: 24px; border-radius: 50%; background: var(--brand-600); color: #fff; display: grid; place-items: center; }
-.tile .t-add svg.i { width: 15px; height: 15px; stroke-width: 2.6; }
-.tile .t-flag { position: absolute; top: 8px; inset-inline-start: 8px; }
+.tile .t-price { margin-top: auto; font-weight: 600; font-size: .9rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tile .t-flag { position: absolute; top: 10px; inset-inline-end: 10px; }
 .tile.out { opacity: .55; filter: grayscale(.6); }
 .c-olive { --c: var(--tile-olive); } .c-petrol { --c: var(--tile-petrol); } .c-sage { --c: var(--tile-sage); } .c-teal { --c: var(--tile-teal); }
 .c-sand { --c: var(--tile-sand); } .c-clay { --c: var(--tile-clay); } .c-mocha { --c: var(--tile-mocha); } .c-slate { --c: var(--tile-slate); }
@@ -478,8 +479,6 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
   .catalog-head { padding: 10px 12px 8px; gap: 8px; }
   .ticket { margin: 10px; margin-inline-end: 0; }
   .ticket-head { padding: 10px 12px 8px; gap: 8px; }
-  .tile { min-height: 122px; padding-top: 10px; }
-  .tile .t-ic, .tile .t-img { width: 36px; height: 36px; margin-bottom: 4px; }
   .ticket-actions { padding-top: 8px; gap: 6px; }
   .ticket-actions .btn.lg { min-height: 54px; }
 }
@@ -5596,13 +5595,12 @@ function tile(item) {
   const out = item.variants.every((v) => v.available !== null && v.available <= 0);
   const low = !out && item.variants.some((v) => v.available !== null && v.available > 0 && v.available <= 3);
   const meta = [item.variants.length === 2 ? 'حجمان' : item.variants.length > 2 ? `${item.variants.length} أحجام` : item.variants[0].name, item.modifierIds.length ? 'إضافات' : ''].filter(Boolean).join(' · ');
-  return `<button class="tile c-${item.color} ${out ? 'out' : ''}" data-action="pos-item" data-id="${item.id}">
+  return `<button class="tile c-${item.color} ${out ? 'out' : ''} ${imageSrc(item) ? 'has-img' : ''}" data-action="pos-item" data-id="${item.id}">
     ${out ? '<span class="t-flag pill bad">نفد</span>' : low ? '<span class="t-flag pill warn">قليل</span>' : ''}
-    ${imageSrc(item) ? `<img class="t-img" src="${imageSrc(item)}" alt="" loading="lazy">` : `<span class="t-ic" aria-hidden="true">${esc([...item.name.trim()][0] ?? '')}</span>`}
+    ${imageSrc(item) ? `<img class="t-img" src="${imageSrc(item)}" alt="" loading="lazy">` : ''}
     <span class="t-name">${esc(item.name)}</span>
     ${meta ? `<span class="t-meta">${esc(meta)}</span>` : ''}
     <span class="t-price num">${prices.length > 1 && Math.max(...prices) !== min ? 'من ' : ''}${money(min)}</span>
-    <span class="t-add" aria-hidden="true">${icon('plus', 'sm')}</span>
   </button>`;
 }
 

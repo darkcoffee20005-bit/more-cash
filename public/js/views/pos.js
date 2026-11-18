@@ -234,13 +234,12 @@ function tile(item) {
   const out = item.variants.every((v) => v.available !== null && v.available <= 0);
   const low = !out && item.variants.some((v) => v.available !== null && v.available > 0 && v.available <= 3);
   const meta = [item.variants.length === 2 ? 'حجمان' : item.variants.length > 2 ? `${item.variants.length} أحجام` : item.variants[0].name, item.modifierIds.length ? 'إضافات' : ''].filter(Boolean).join(' · ');
-  return `<button class="tile c-${item.color} ${out ? 'out' : ''}" data-action="pos-item" data-id="${item.id}">
+  return `<button class="tile c-${item.color} ${out ? 'out' : ''} ${imageSrc(item) ? 'has-img' : ''}" data-action="pos-item" data-id="${item.id}">
     ${out ? '<span class="t-flag pill bad">نفد</span>' : low ? '<span class="t-flag pill warn">قليل</span>' : ''}
-    ${imageSrc(item) ? `<img class="t-img" src="${imageSrc(item)}" alt="" loading="lazy">` : `<span class="t-ic" aria-hidden="true">${esc([...item.name.trim()][0] ?? '')}</span>`}
+    ${imageSrc(item) ? `<img class="t-img" src="${imageSrc(item)}" alt="" loading="lazy">` : ''}
     <span class="t-name">${esc(item.name)}</span>
     ${meta ? `<span class="t-meta">${esc(meta)}</span>` : ''}
     <span class="t-price num">${prices.length > 1 && Math.max(...prices) !== min ? 'من ' : ''}${money(min)}</span>
-    <span class="t-add" aria-hidden="true">${icon('plus', 'sm')}</span>
   </button>`;
 }
 
