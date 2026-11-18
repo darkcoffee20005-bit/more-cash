@@ -133,7 +133,12 @@ async function simulate(seed, steps) {
     const body = { clientId: randomUUID(), lines, discountIds, customerId: customer?.id ?? null, pointsRedeemed: points, clientTotal: total, payments, diningOption: 'dine_in' };
     if (R.chance(0.08)) body.offlineAt = new Date(now().getTime() - R.int(1, 20) * 60000).toISOString();
     const r = await call(who, 'POST', '/api/sales', body);
-    if (r.status !== 200) { reject(r.body.error); return; }
+    if (r.status !== 200) {
+      reject(r.body.error);
+      // نفد صنف: المقهى يستلم بضاعة جديدة (كما في الواقع) والبيع يُرفض ولا ينزل المخزون تحت الصفر
+      if (r.body.error === 'OUT_OF_STOCK') await restock();
+      return;
+    }
     const receipt = r.body.receipt;
     assert.equal(receipt.totals.total, total, 'الخادم والجهاز يتفقان على المجموع');
     // إعادة الإرسال بنفس المعرف: نفس الإيصال ولا أثر إضافي
@@ -227,6 +232,14 @@ async function simulate(seed, steps) {
     stats.close += 1;
   }
 
+  async function restock() {
+    const inv = await ok('owner', 'GET', '/api/admin/inventory');
+    for (const row of inv.rows.filter((x) => x.stock < 200)) {
+      await ok('owner', 'POST', '/api/admin/inventory/adjust', { clientId: randomUUID(), variantId: row.variantId, type: 'receive', qty: row.unit === 'قطعة' ? 40 : 3000, cost: `${R.int(1, 30)}.${R.int(0, 999)}` });
+    }
+    stats.receive += 1;
+  }
+
   async function doInventory() {
     const inv = await ok('owner', 'GET', '/api/admin/inventory');
     const row = R.pick(inv.rows);
@@ -304,6 +317,7 @@ async function simulate(seed, steps) {
     for (const v of variants) {
       const sum = moves.filter((m) => m.variantId === v._id).reduce((a, m) => a + m.delta, 0);
       assert.equal(v.stock, sum, `${label}: رصيد ${v.name || v._id} = دفتر الحركات`);
+      assert.ok(v.stock >= 0, `${label}: المخزون لا يصبح سالباً (${v.name || v._id} = ${v.stock})`);
       assert.ok(isMoney(v.costMilli) && v.costMilli >= 0, `${label}: تكلفة الوحدة صحيحة`);
     }
     // النقاط = دفتر النقاط

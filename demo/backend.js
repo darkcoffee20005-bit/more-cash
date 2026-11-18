@@ -97,10 +97,13 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
         const total = calculateTicket(priced, { discounts: discountIds.map((id) => catalog.discounts.find((d) => d.id === id)), tax: settings.tax }).total;
         const type = rand() < 0.62 ? 'cash' : 'qi';
         const tendered = type === 'cash' ? Math.ceil(total / 5000) * 5000 : total;
-        const sale = await call('POST', '/api/sales', {
+        const r = await handle({ method: 'POST', path: '/api/sales', body: {
           clientId: crypto.randomUUID(), lines, discountIds, customerId: customer?.id ?? null, diningOption: pick(['dine_in', 'takeaway', 'takeaway']),
           clientTotal: total, payments: [{ typeId: type, amount: total, tendered }],
-        });
+        } });
+        if (r.body?.error === 'OUT_OF_STOCK') continue; // نفد الصنف: الزبون يختار غيره (المخزون لا ينزل تحت الصفر)
+        if (r.status !== 200) throw new Error(`POST /api/sales: ${JSON.stringify(r.body)}`);
+        const sale = r.body;
         // معظم الطلبات القديمة سُلّمت؛ آخر طلبات اليوم تبقى في شاشة التحضير
         if (!isToday || n < count - 4) {
           for (const from of ['new', 'preparing', 'ready']) await call('POST', `/api/kds/${sale.receipt.id}/advance`, { from });

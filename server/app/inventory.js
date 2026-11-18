@@ -15,6 +15,8 @@ export function createInventory(ctx) {
   /** يطبّق حركة مرة واحدة فقط. يعيد true إن طُبّقت الآن، false إن كانت مطبّقة سابقاً. */
   async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null }) {
     if (!Number.isSafeInteger(delta) || delta === 0) return false;
+    // البيع لا ينزل بالرصيد تحت الصفر (بيع بلا إنترنت أو بيعان متزامنان على آخر قطعة): يُخصم المتوفر فقط
+    if (reason === 'sale' && delta < 0) return applySaleMove({ key, variantId, delta, refId, by });
     try {
       await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli });
     } catch (e) {
@@ -24,6 +26,31 @@ export function createInventory(ctx) {
     const set = costMilli !== null ? { costMilli } : {};
     await variants().updateOne({ _id: variantId }, { $inc: { stock: delta }, ...(Object.keys(set).length ? { $set: set } : {}) });
     return true;
+  }
+
+  async function applySaleMove({ key, variantId, delta, refId, by }) {
+    if (await moves().findOne({ key })) return false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const v = await variants().findOne({ _id: variantId });
+      if (!v) return false;
+      const take = Math.min(-delta, Math.max(0, v.stock));
+      if (take === 0) {
+        await audit({ ...ctx, actor: by ? { id: by.id, name: by.name } : null }, 'inventory.shortfall', { variantId, wanted: -delta, taken: 0, refId });
+        return false;
+      }
+      const r = await variants().updateOne({ _id: variantId, stock: { $gte: take } }, { $inc: { stock: -take } });
+      if (!r.matchedCount) continue; // تغيّر الرصيد بين القراءة والخصم: أعد المحاولة
+      try {
+        await moves().insertOne({ _id: ctx.newId(), key, variantId, delta: -take, reason: 'sale', refId, note: take < -delta ? `نقص ${-delta - take}` : null, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli: null });
+      } catch (e) {
+        await variants().updateOne({ _id: variantId }, { $inc: { stock: take } }); // سبق تطبيقها
+        if (isDup(e)) return false;
+        throw e;
+      }
+      if (take < -delta) await audit({ ...ctx, actor: by ? { id: by.id, name: by.name } : null }, 'inventory.shortfall', { variantId, wanted: -delta, taken: take, refId });
+      return true;
+    }
+    return false;
   }
 
   async function list(actor) {
@@ -48,6 +75,9 @@ export function createInventory(ctx) {
     const type = oneOf(input.type, ['receive', 'loss', 'count', 'adjust'], 'type');
     const v = await variants().findOne({ _id: checkId(input.variantId, 'variantId') });
     if (!v || !v.trackStock) throw notFound('VARIANT_NOT_TRACKED');
+    // إعادة إرسال نفس العملية: تُعاد النتيجة قبل أي تحقق من الرصيد (الذي تغيّر بسببها)
+    const done = await moves().findOne({ key: `adj:${clientId}` });
+    if (done) return { applied: false, delta: done.delta, stock: v.stock, costMilli: v.costMilli };
     const note = str(input.note, { field: 'note', max: 120, optional: true });
     let delta;
     let costMilli = null;
@@ -58,12 +88,14 @@ export function createInventory(ctx) {
     } else if (type === 'loss') {
       delta = -int(input.qty, { field: 'qty', min: 1, max: 10_000_000 });
       if (!note) throw bad('REQUIRED', 'note');
+      if (-delta > v.stock) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     } else if (type === 'count') {
       delta = int(input.qty, { field: 'qty', min: 0, max: 10_000_000 }) - v.stock;
     } else {
       if (!Number.isSafeInteger(input.qty) || input.qty === 0) throw bad('INVALID_NUMBER', 'qty');
       delta = input.qty;
       if (!note) throw bad('REQUIRED', 'note');
+      if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     }
     const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note });
     if (applied) await audit({ ...ctx, actor }, `inventory.${type}`, { variantId: v._id, delta, note });

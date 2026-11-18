@@ -270,6 +270,9 @@ test('الفروع: فرع جديد بنسخة من القائمة، عزل ال
   // بيع في الفرع ثم التقرير المجمّع
   await ok('a', 'POST', '/api/shifts/open', { startingCash: 0 });
   const bWater = b.catalog.items.find((i) => i.name === 'ماء');
+  // الفرع الجديد يبدأ بمخزون صفر: البيع يُرفض حتى يُستلم المخزون (لا مخزون سالب)
+  assert.equal((await call('a', 'POST', '/api/sales', { clientId: crypto.randomUUID(), lines: [{ variantId: bWater.variants[0].id, qty: 3 }], discountIds: [], diningOption: 'takeaway', clientTotal: 3 * bWater.variants[0].price, payments: [{ typeId: 'cash', amount: 3 * bWater.variants[0].price }] })).body.error, 'OUT_OF_STOCK');
+  await ok('a', 'POST', '/api/admin/inventory/adjust', { clientId: crypto.randomUUID(), variantId: bWater.variants[0].id, type: 'receive', qty: 24 });
   await ok('a', 'POST', '/api/sales', { clientId: crypto.randomUUID(), lines: [{ variantId: bWater.variants[0].id, qty: 3 }], discountIds: [], diningOption: 'takeaway', clientTotal: 3 * bWater.variants[0].price, payments: [{ typeId: 'cash', amount: 3 * bWater.variants[0].price, tendered: 3 * bWater.variants[0].price }] });
   const rep = await ok('a', 'GET', '/api/account/branches/report', null, { from: '2026-10-14', to: '2026-10-14' });
   assert.equal(rep.rows.length, 2);

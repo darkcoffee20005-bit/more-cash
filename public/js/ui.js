@@ -105,6 +105,8 @@ const ERRORS = {
   TOTAL_MISMATCH: 'تغيّرت الأسعار على الخادم. حدّث القائمة ثم أعد المحاولة.',
   MODIFIER_REQUIRED: 'اختر الإضافة الإلزامية للصنف.',
   UNKNOWN_ITEM: 'صنف غير متوفر. حدّث القائمة.',
+  OUT_OF_STOCK: 'هذا الصنف غير متوفر حالياً — نفد من المخزون.',
+  INSUFFICIENT_STOCK: 'الكمية أكبر من الرصيد الموجود في المخزون.',
   INSUFFICIENT_POINTS: 'رصيد النقاط غير كافٍ.',
   DRAWER_INSUFFICIENT: 'لا يوجد نقد كافٍ في الدرج لهذه العملية. أدخل نقداً أولاً، أو أرجع المبلغ بطريقة أخرى.',
   POINTS_EXCEED_TOTAL: 'النقاط أكبر من قيمة الفاتورة.',
@@ -142,6 +144,7 @@ const ERRORS = {
 
 export function errorText(e) {
   if (!e) return '';
+  if (e.code === 'OUT_OF_STOCK' && e.detail) return `«${e.detail}» غير متوفر حالياً — نفد من المخزون.`;
   return ERRORS[e.code] ?? e.message ?? 'حدث خطأ';
 }
 

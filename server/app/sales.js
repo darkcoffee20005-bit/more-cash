@@ -120,6 +120,9 @@ export function createSales(ctx) {
     }
     const shift = (offlineAt && await ctx.shifts.shiftAt(offlineAt)) || await ctx.shifts.requireOpen();
     const t = await buildTicket(actor, input, settings);
+    // المخزون لا يصبح سالباً: البيع المباشر يُرفض إن لم يكفِ رصيد الصنف أو مكونات وصفته.
+    // البيع بلا إنترنت قد حدث فعلاً، فيُقبل ويُخصم من المخزون ما هو متوفر فقط (لا ينزل تحت الصفر).
+    if (!offlineAt) await checkStock(t.lines);
 
     if (!Number.isSafeInteger(input.clientTotal) || input.clientTotal !== t.totals.total) {
       throw conflict('TOTAL_MISMATCH', `client=${input.clientTotal} server=${t.totals.total}`);
@@ -203,6 +206,24 @@ export function createSales(ctx) {
     if (!r.matchedCount) {
       await C('point_moves').deleteOne({ key: `redeem:${clientId}` });
       throw conflict('INSUFFICIENT_POINTS');
+    }
+  }
+
+  async function checkStock(lines) {
+    const need = new Map(); // variantId → { qty, item }
+    for (const l of lines) {
+      const v = l.variant;
+      const parts = v.recipe?.length ? v.recipe.map((r) => ({ variantId: r.variantId, qty: r.qty * l.qty })) : v.trackStock ? [{ variantId: v._id, qty: l.qty }] : [];
+      for (const p of parts) {
+        const n = need.get(p.variantId) ?? { qty: 0, item: l.itemName };
+        n.qty += p.qty;
+        need.set(p.variantId, n);
+      }
+    }
+    if (!need.size) return;
+    const stock = new Map((await C('variants').find({ _id: { $in: [...need.keys()] } }).toArray()).map((v) => [v._id, v.stock]));
+    for (const [variantId, n] of need) {
+      if ((stock.get(variantId) ?? 0) < n.qty) throw conflict('OUT_OF_STOCK', n.item);
     }
   }
 

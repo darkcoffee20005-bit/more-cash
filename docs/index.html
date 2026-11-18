@@ -2361,6 +2361,8 @@ function createInventory(ctx) {
   /** يطبّق حركة مرة واحدة فقط. يعيد true إن طُبّقت الآن، false إن كانت مطبّقة سابقاً. */
   async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null }) {
     if (!Number.isSafeInteger(delta) || delta === 0) return false;
+    // البيع لا ينزل بالرصيد تحت الصفر (بيع بلا إنترنت أو بيعان متزامنان على آخر قطعة): يُخصم المتوفر فقط
+    if (reason === 'sale' && delta < 0) return applySaleMove({ key, variantId, delta, refId, by });
     try {
       await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli });
     } catch (e) {
@@ -2370,6 +2372,31 @@ function createInventory(ctx) {
     const set = costMilli !== null ? { costMilli } : {};
     await variants().updateOne({ _id: variantId }, { $inc: { stock: delta }, ...(Object.keys(set).length ? { $set: set } : {}) });
     return true;
+  }
+
+  async function applySaleMove({ key, variantId, delta, refId, by }) {
+    if (await moves().findOne({ key })) return false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const v = await variants().findOne({ _id: variantId });
+      if (!v) return false;
+      const take = Math.min(-delta, Math.max(0, v.stock));
+      if (take === 0) {
+        await audit({ ...ctx, actor: by ? { id: by.id, name: by.name } : null }, 'inventory.shortfall', { variantId, wanted: -delta, taken: 0, refId });
+        return false;
+      }
+      const r = await variants().updateOne({ _id: variantId, stock: { $gte: take } }, { $inc: { stock: -take } });
+      if (!r.matchedCount) continue; // تغيّر الرصيد بين القراءة والخصم: أعد المحاولة
+      try {
+        await moves().insertOne({ _id: ctx.newId(), key, variantId, delta: -take, reason: 'sale', refId, note: take < -delta ? `نقص ${-delta - take}` : null, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli: null });
+      } catch (e) {
+        await variants().updateOne({ _id: variantId }, { $inc: { stock: take } }); // سبق تطبيقها
+        if (isDup(e)) return false;
+        throw e;
+      }
+      if (take < -delta) await audit({ ...ctx, actor: by ? { id: by.id, name: by.name } : null }, 'inventory.shortfall', { variantId, wanted: -delta, taken: take, refId });
+      return true;
+    }
+    return false;
   }
 
   async function list(actor) {
@@ -2394,6 +2421,9 @@ function createInventory(ctx) {
     const type = oneOf(input.type, ['receive', 'loss', 'count', 'adjust'], 'type');
     const v = await variants().findOne({ _id: checkId(input.variantId, 'variantId') });
     if (!v || !v.trackStock) throw notFound('VARIANT_NOT_TRACKED');
+    // إعادة إرسال نفس العملية: تُعاد النتيجة قبل أي تحقق من الرصيد (الذي تغيّر بسببها)
+    const done = await moves().findOne({ key: `adj:${clientId}` });
+    if (done) return { applied: false, delta: done.delta, stock: v.stock, costMilli: v.costMilli };
     const note = str(input.note, { field: 'note', max: 120, optional: true });
     let delta;
     let costMilli = null;
@@ -2404,12 +2434,14 @@ function createInventory(ctx) {
     } else if (type === 'loss') {
       delta = -int(input.qty, { field: 'qty', min: 1, max: 10_000_000 });
       if (!note) throw bad('REQUIRED', 'note');
+      if (-delta > v.stock) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     } else if (type === 'count') {
       delta = int(input.qty, { field: 'qty', min: 0, max: 10_000_000 }) - v.stock;
     } else {
       if (!Number.isSafeInteger(input.qty) || input.qty === 0) throw bad('INVALID_NUMBER', 'qty');
       delta = input.qty;
       if (!note) throw bad('REQUIRED', 'note');
+      if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     }
     const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note });
     if (applied) await audit({ ...ctx, actor }, `inventory.${type}`, { variantId: v._id, delta, note });
@@ -2993,6 +3025,9 @@ function createSales(ctx) {
     }
     const shift = (offlineAt && await ctx.shifts.shiftAt(offlineAt)) || await ctx.shifts.requireOpen();
     const t = await buildTicket(actor, input, settings);
+    // المخزون لا يصبح سالباً: البيع المباشر يُرفض إن لم يكفِ رصيد الصنف أو مكونات وصفته.
+    // البيع بلا إنترنت قد حدث فعلاً، فيُقبل ويُخصم من المخزون ما هو متوفر فقط (لا ينزل تحت الصفر).
+    if (!offlineAt) await checkStock(t.lines);
 
     if (!Number.isSafeInteger(input.clientTotal) || input.clientTotal !== t.totals.total) {
       throw conflict('TOTAL_MISMATCH', `client=${input.clientTotal} server=${t.totals.total}`);
@@ -3076,6 +3111,24 @@ function createSales(ctx) {
     if (!r.matchedCount) {
       await C('point_moves').deleteOne({ key: `redeem:${clientId}` });
       throw conflict('INSUFFICIENT_POINTS');
+    }
+  }
+
+  async function checkStock(lines) {
+    const need = new Map(); // variantId → { qty, item }
+    for (const l of lines) {
+      const v = l.variant;
+      const parts = v.recipe?.length ? v.recipe.map((r) => ({ variantId: r.variantId, qty: r.qty * l.qty })) : v.trackStock ? [{ variantId: v._id, qty: l.qty }] : [];
+      for (const p of parts) {
+        const n = need.get(p.variantId) ?? { qty: 0, item: l.itemName };
+        n.qty += p.qty;
+        need.set(p.variantId, n);
+      }
+    }
+    if (!need.size) return;
+    const stock = new Map((await C('variants').find({ _id: { $in: [...need.keys()] } }).toArray()).map((v) => [v._id, v.stock]));
+    for (const [variantId, n] of need) {
+      if ((stock.get(variantId) ?? 0) < n.qty) throw conflict('OUT_OF_STOCK', n.item);
     }
   }
 
@@ -4524,10 +4577,13 @@ async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
         const total = calculateTicket(priced, { discounts: discountIds.map((id) => catalog.discounts.find((d) => d.id === id)), tax: settings.tax }).total;
         const type = rand() < 0.62 ? 'cash' : 'qi';
         const tendered = type === 'cash' ? Math.ceil(total / 5000) * 5000 : total;
-        const sale = await call('POST', '/api/sales', {
+        const r = await handle({ method: 'POST', path: '/api/sales', body: {
           clientId: crypto.randomUUID(), lines, discountIds, customerId: customer?.id ?? null, diningOption: pick(['dine_in', 'takeaway', 'takeaway']),
           clientTotal: total, payments: [{ typeId: type, amount: total, tendered }],
-        });
+        } });
+        if (r.body?.error === 'OUT_OF_STOCK') continue; // نفد الصنف: الزبون يختار غيره (المخزون لا ينزل تحت الصفر)
+        if (r.status !== 200) throw new Error(`POST /api/sales: ${JSON.stringify(r.body)}`);
+        const sale = r.body;
         // معظم الطلبات القديمة سُلّمت؛ آخر طلبات اليوم تبقى في شاشة التحضير
         if (!isToday || n < count - 4) {
           for (const from of ['new', 'preparing', 'ready']) await call('POST', `/api/kds/${sale.receipt.id}/advance`, { from });
@@ -4776,6 +4832,8 @@ const ERRORS = {
   TOTAL_MISMATCH: 'تغيّرت الأسعار على الخادم. حدّث القائمة ثم أعد المحاولة.',
   MODIFIER_REQUIRED: 'اختر الإضافة الإلزامية للصنف.',
   UNKNOWN_ITEM: 'صنف غير متوفر. حدّث القائمة.',
+  OUT_OF_STOCK: 'هذا الصنف غير متوفر حالياً — نفد من المخزون.',
+  INSUFFICIENT_STOCK: 'الكمية أكبر من الرصيد الموجود في المخزون.',
   INSUFFICIENT_POINTS: 'رصيد النقاط غير كافٍ.',
   DRAWER_INSUFFICIENT: 'لا يوجد نقد كافٍ في الدرج لهذه العملية. أدخل نقداً أولاً، أو أرجع المبلغ بطريقة أخرى.',
   POINTS_EXCEED_TOTAL: 'النقاط أكبر من قيمة الفاتورة.',
@@ -4813,6 +4871,7 @@ const ERRORS = {
 
 function errorText(e) {
   if (!e) return '';
+  if (e.code === 'OUT_OF_STOCK' && e.detail) return `«${e.detail}» غير متوفر حالياً — نفد من المخزون.`;
   return ERRORS[e.code] ?? e.message ?? 'حدث خطأ';
 }
 
@@ -5826,6 +5885,17 @@ function cartLineFrom({ item, variant, optionIds, qty, note, discountIds = [], k
   };
 }
 
+/** هل يكفي المخزون لإضافة كمية من هذا الحجم؟ (الخادم يتحقق نهائياً عند الدفع) */
+function stockAllows(variantId, extra, exceptKey = null) {
+  const v = state.catalog.items.flatMap((i) => i.variants).find((x) => x.id === variantId);
+  if (!v || v.available === null || v.available === undefined) return true;
+  const inCart = state.pos.cart.lines.filter((l) => l.variantId === variantId && l.key !== exceptKey).reduce((a, l) => a + l.qty, 0);
+  return inCart + extra <= v.available;
+}
+function notAvailable(name, left) {
+  toast(left > 0 ? `«${name}»: المتوفر ${left} فقط` : `«${name}» غير متوفر حالياً — نفد من المخزون`, 'bad');
+}
+
 function addToCart(line) {
   const cart = state.pos.cart;
   const same = cart.lines.find((l) => l.variantId === line.variantId && !l.note && !line.note && !l.discountIds.length
@@ -5852,12 +5922,15 @@ on({
   // النقر على الصنف يضيفه بالشكل القياسي (أول حجم + الخيارات الافتراضية) مباشرة؛ التفاصيل والإضافات بالضغط على سطره في الطلب
   'pos-item': (el) => {
     const item = itemById(el.dataset.id);
+    if (item.variants.every((v) => v.available !== null && v.available <= 0)) return notAvailable(item.name, 0);
     const options = defaultOptions(item);
     const groups = item.modifierIds.map(modifierById).filter(Boolean);
     if (groups.some((g) => g.required && !g.options.some((o) => options.includes(o.id)))) {
       return openModal({ type: 'item', itemId: item.id, variantId: item.variants[0].id, options, qty: 1, note: '' });
     }
-    const line = cartLineFrom({ item, variant: item.variants[0], optionIds: options, qty: 1 });
+    const first = item.variants.find((v) => v.available === null || v.available > 0) ?? item.variants[0];
+    if (!stockAllows(first.id, 1)) return notAvailable(item.name, first.available);
+    const line = cartLineFrom({ item, variant: first, optionIds: options, qty: 1 });
     state.pos.flashKey = addToCart(line);
     return render();
   },
@@ -5880,6 +5953,7 @@ on({
     const item = itemById(m.itemId);
     const variant = item.variants.find((v) => v.id === m.variantId);
     const cart = state.pos.cart;
+    if (!stockAllows(variant.id, m.qty, m.lineKey ?? null)) return notAvailable(`${item.name}${variant.name ? ` ${variant.name}` : ''}`, Math.max(0, variant.available));
     if (m.lineKey) {
       const idx = cart.lines.findIndex((l) => l.key === m.lineKey);
       cart.lines[idx] = cartLineFrom({ item, variant, optionIds: m.options, qty: m.qty, note: m.note, discountIds: m.discountIds ?? cart.lines[idx].discountIds, key: m.lineKey });
@@ -5890,6 +5964,7 @@ on({
   'line-inc': (el) => {
     const line = state.pos.cart.lines.find((l) => l.key === el.dataset.key);
     if (!line || line.qty >= 99) return;
+    if (!stockAllows(line.variantId, 1)) return notAvailable(line.itemName, Math.max(0, itemById(line.itemId)?.variants.find((v) => v.id === line.variantId)?.available ?? 0));
     line.qty += 1;
     state.pos.flashKey = line.key;
     render();

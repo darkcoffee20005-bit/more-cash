@@ -352,6 +352,12 @@ try {
   await page.waitForSelector('.low-banner');
   if (!(await page.isVisible('.rail .badge.bad'))) errors.push('low-stock badge missing on admin');
   await page.waitForSelector('.tile:has-text("موكا") img.t-img').catch(() => errors.push('item photo not shown on POS tile'));
+  // المخزون لا يصبح سالباً: تشيز كيك بقي منه 2، والثالثة تُرفض برسالة واضحة
+  for (let i = 0; i < 3; i++) await page.click('.tile:has-text("تشيز كيك")');
+  await page.waitForSelector('.toast.bad:has-text("المتوفر 2")').catch(() => errors.push('no stock limit message on POS'));
+  await shot('24b-out-of-stock');
+  await page.click('[data-action="pos-clear"]');
+  await page.click('[data-action="pos-clear"]');
   await shot('24-low-banner');
 
   // الألوان فاتحة حتى لو كان الجهاز في الوضع الداكن، وعرض الهاتف

@@ -465,6 +465,17 @@ function cartLineFrom({ item, variant, optionIds, qty, note, discountIds = [], k
   };
 }
 
+/** هل يكفي المخزون لإضافة كمية من هذا الحجم؟ (الخادم يتحقق نهائياً عند الدفع) */
+function stockAllows(variantId, extra, exceptKey = null) {
+  const v = state.catalog.items.flatMap((i) => i.variants).find((x) => x.id === variantId);
+  if (!v || v.available === null || v.available === undefined) return true;
+  const inCart = state.pos.cart.lines.filter((l) => l.variantId === variantId && l.key !== exceptKey).reduce((a, l) => a + l.qty, 0);
+  return inCart + extra <= v.available;
+}
+function notAvailable(name, left) {
+  toast(left > 0 ? `«${name}»: المتوفر ${left} فقط` : `«${name}» غير متوفر حالياً — نفد من المخزون`, 'bad');
+}
+
 function addToCart(line) {
   const cart = state.pos.cart;
   const same = cart.lines.find((l) => l.variantId === line.variantId && !l.note && !line.note && !l.discountIds.length
@@ -491,12 +502,15 @@ on({
   // النقر على الصنف يضيفه بالشكل القياسي (أول حجم + الخيارات الافتراضية) مباشرة؛ التفاصيل والإضافات بالضغط على سطره في الطلب
   'pos-item': (el) => {
     const item = itemById(el.dataset.id);
+    if (item.variants.every((v) => v.available !== null && v.available <= 0)) return notAvailable(item.name, 0);
     const options = defaultOptions(item);
     const groups = item.modifierIds.map(modifierById).filter(Boolean);
     if (groups.some((g) => g.required && !g.options.some((o) => options.includes(o.id)))) {
       return openModal({ type: 'item', itemId: item.id, variantId: item.variants[0].id, options, qty: 1, note: '' });
     }
-    const line = cartLineFrom({ item, variant: item.variants[0], optionIds: options, qty: 1 });
+    const first = item.variants.find((v) => v.available === null || v.available > 0) ?? item.variants[0];
+    if (!stockAllows(first.id, 1)) return notAvailable(item.name, first.available);
+    const line = cartLineFrom({ item, variant: first, optionIds: options, qty: 1 });
     state.pos.flashKey = addToCart(line);
     return render();
   },
@@ -519,6 +533,7 @@ on({
     const item = itemById(m.itemId);
     const variant = item.variants.find((v) => v.id === m.variantId);
     const cart = state.pos.cart;
+    if (!stockAllows(variant.id, m.qty, m.lineKey ?? null)) return notAvailable(`${item.name}${variant.name ? ` ${variant.name}` : ''}`, Math.max(0, variant.available));
     if (m.lineKey) {
       const idx = cart.lines.findIndex((l) => l.key === m.lineKey);
       cart.lines[idx] = cartLineFrom({ item, variant, optionIds: m.options, qty: m.qty, note: m.note, discountIds: m.discountIds ?? cart.lines[idx].discountIds, key: m.lineKey });
@@ -529,6 +544,7 @@ on({
   'line-inc': (el) => {
     const line = state.pos.cart.lines.find((l) => l.key === el.dataset.key);
     if (!line || line.qty >= 99) return;
+    if (!stockAllows(line.variantId, 1)) return notAvailable(line.itemName, Math.max(0, itemById(line.itemId)?.variants.find((v) => v.id === line.variantId)?.available ?? 0));
     line.qty += 1;
     state.pos.flashKey = line.key;
     render();
