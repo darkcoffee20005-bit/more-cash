@@ -31,6 +31,8 @@ function loadEnvFile() {
 async function main() {
   loadEnvFile();
   const env = process.env;
+  // على خادم الإنتاج (Render) لا يُسمح بالتشغيل بملف محلي: يتوقف بوضوح بدل أن يبدأ مقهى بقاعدة فارغة
+  if (env.REQUIRE_MONGODB === 'true' && !env.MONGODB_URI) throw new Error('MONGODB_URI غير محدد (REQUIRE_MONGODB=true)');
   const dataFile = env.DATA_FILE ?? join(ROOT, 'data', 'dev-db.json');
   if (!env.MONGODB_URI) mkdirSync(dirname(dataFile), { recursive: true });
   if (env.MONGODB_URI && !env.PIN_PEPPER) console.warn('تنبيه: PIN_PEPPER غير محدد؛ سيُستخدم سر مخزّن في قاعدة البيانات.');
@@ -42,6 +44,10 @@ async function main() {
   const server = createHttpServer(app, {
     publicDir: join(ROOT, 'public'), sharedDir: join(ROOT, 'shared'),
     secureCookie: env.COOKIE_SECURE === 'true', trustProxy: env.TRUST_PROXY === 'true',
+    health: async () => {
+      await db.collection('tenants').findOne({}); // يفشل إن انقطعت قاعدة البيانات
+      return { ok: true, db: kind === 'mongodb' ? 'connected' : 'local-file', invoiceScan: Boolean(readInvoice) };
+    },
   });
   const port = Number(env.PORT ?? 3000);
   server.listen(port, env.HOST ?? '0.0.0.0', () => {

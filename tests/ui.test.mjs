@@ -64,7 +64,7 @@ test('النسخة التجريبية لا تنشئ حسابات تضيع: ال�
   Object.assign(state, { shop: null, authPage: 'signup' });
   const html = screen();
   assert.match(text(html), /نسخة تجريبية/);
-  assert.match(html, /href="https:\/\/more-cash\.vercel\.app\/#\/signup"/);
+  assert.match(html, /href="https:\/\/more-cash\.onrender\.com\/#\/signup"/);
   assert.doesNotMatch(html, /data-form="signup"/, 'لا نموذج تسجيل في التجربة');
   state.authPage = '';
   assert.doesNotMatch(screen(), /href="#\/signup"/, 'روابط الصفحة الرئيسية تذهب للموقع الحقيقي');

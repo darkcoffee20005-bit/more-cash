@@ -9,7 +9,7 @@ const DEMO = () => !!globalThis.MORECASH_BACKEND;
 export const DEMO_ACCOUNT = { email: 'demo@morecash.app', password: 'morecash-demo' };
 // النسخة التجريبية تعمل في ذاكرة المتصفح فقط: أي حساب يُنشأ فيها يضيع عند التحديث،
 // لذا روابط "إنشاء حساب" فيها تذهب للموقع الحقيقي (نفس النطاق على Vercel، أو الرابط الكامل من GitHub Pages)
-const LIVE_URL = 'https://more-cash.vercel.app';
+const LIVE_URL = 'https://more-cash.onrender.com';
 const latinDigits = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const DEMO_PAGE = () => !!globalThis.MORECASH_DEMO_PAGE; // تضبطه صفحة التجربة المنشورة فقط (demo/main.js)
 const signupHref = () => {

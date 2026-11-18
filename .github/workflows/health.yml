@@ -1,10 +1,10 @@
-# مراقبة مور كاش: يفحص الموقع وقاعدة البيانات كل 15 دقيقة.
+# مراقبة مور كاش: يفحص الموقع وقاعدة البيانات كل 10 دقائق (ويبقي خادم Render المجاني مستيقظاً).
 # عند الفشل تفشل هذه المهمة فيرسل GitHub بريد تنبيه لصاحب المستودع تلقائياً.
 name: مراقبة الموقع
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
       - name: فحص /api/health
         run: |
           set -u
-          url="https://more-cash.vercel.app/api/health"
+          url="https://more-cash.onrender.com/api/health"
           for attempt in 1 2 3; do
             body=$(curl -sS --max-time 20 "$url" || true)
             echo "محاولة $attempt: $body"
@@ -26,6 +26,6 @@ jobs:
           exit 1
       - name: فحص الصفحة الرئيسية
         run: |
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://more-cash.vercel.app/)
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://more-cash.onrender.com/)
           echo "HTTP $code"
           test "$code" = "200" || { echo "::error::الصفحة الرئيسية ترد $code"; exit 1; }

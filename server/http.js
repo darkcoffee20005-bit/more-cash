@@ -19,7 +19,7 @@ const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'same-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Permissions-Policy': 'microphone=(), geolocation=()', // الكاميرا مسموحة: تصوير فواتير المشتريات
   'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
 };
 
@@ -93,7 +93,7 @@ export async function handleApiRequest(app, req, res, { secureCookie = false, tr
   }
 }
 
-export function createHttpServer(app, { publicDir, sharedDir, secureCookie = false, trustProxy = false, log = console }) {
+export function createHttpServer(app, { publicDir, sharedDir, secureCookie = false, trustProxy = false, log = console, health = null }) {
   const roots = { '/shared/': resolve(sharedDir), '/': resolve(publicDir) };
 
   async function serveStatic(res, urlPath) {
@@ -107,7 +107,9 @@ export function createHttpServer(app, { publicDir, sharedDir, secureCookie = fal
       const target = s.isDirectory() ? join(file, 'index.html') : file;
       const body = await readFile(target);
       const type = TYPES[extname(target)] ?? 'application/octet-stream';
-      return send(res, 200, type, body, { 'Cache-Control': type.startsWith('text/html') ? 'no-cache' : 'no-cache' });
+      // النسخة التجريبية demo.html ملف واحد بسكربت مضمّن: يُسمح لها وحدها بـ unsafe-inline (كما في vercel.json)
+      const demo = target.endsWith('demo.html') ? { 'Content-Security-Policy': SECURITY_HEADERS['Content-Security-Policy'].replace("script-src 'self'", "script-src 'self' 'unsafe-inline'") } : {};
+      return send(res, 200, type, body, { 'Cache-Control': 'no-cache', ...demo });
     } catch {
       // تطبيق صفحة واحدة: أي مسار غير موجود يعيد index.html
       if (!extname(rel)) return serveStatic(res, '/index.html');
@@ -123,6 +125,12 @@ export function createHttpServer(app, { publicDir, sharedDir, secureCookie = fal
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://local');
     try {
+      // فحص الحالة (للمراقبة ولمنصة الاستضافة): بلا أسرار
+      if (health && req.method === 'GET' && url.pathname === '/api/health') {
+        let body;
+        try { body = await health(); } catch (e) { body = { ok: false, db: 'unavailable' }; log.error?.(e); }
+        return send(res, 200, 'application/json; charset=utf-8', JSON.stringify(body), { 'Cache-Control': 'no-store' });
+      }
       if (!url.pathname.startsWith('/api/')) {
         if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'text/plain; charset=utf-8', '');
         return await serveStatic(res, url.pathname);

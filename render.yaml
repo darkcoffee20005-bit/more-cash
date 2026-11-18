@@ -1,0 +1,27 @@
+# استضافة مور كاش على Render (الخطة المجانية): نفس البرنامج ونفس قاعدة MongoDB Atlas.
+# الاستخدام: render.com ← New ← Blueprint ← اختر هذا المستودع، ثم أدخل MONGODB_URI و PLATFORM_ADMINS عند الطلب.
+services:
+  - type: web
+    name: more-cash
+    runtime: node
+    plan: free
+    region: singapore          # الأقرب لقاعدة البيانات (Atlas هونغ كونغ)
+    branch: main
+    buildCommand: npm install --omit=dev && node scripts/build_demo.mjs public/demo.html
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false            # يُدخَل في لوحة Render، لا يُكتب هنا أبداً
+      - key: MONGODB_DB
+        value: morecash
+      - key: PLATFORM_ADMINS
+        sync: false
+      - key: REQUIRE_MONGODB   # لا يعمل أبداً بملف محلي على الخادم (البيانات تضيع عند إعادة التشغيل)
+        value: "true"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"

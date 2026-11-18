@@ -42,6 +42,9 @@
 - لا تكتب أي سر (MONGODB_URI، كلمات مرور) في الكود أو السجلات أو الرسائل.
 
 ## النشر
+- 2026-11-18: أوقف Vercel الحساب المجاني (402 DEPLOYMENT_DISABLED) فانتقلت الاستضافة إلى Render المجاني عبر `render.yaml` (Blueprint):
+  نفس `npm start` (server/index.js) ونفس قاعدة Atlas. `REQUIRE_MONGODB=true` يمنع التشغيل بملف محلي، و`/api/health` في الخادم نفسه.
+  الرابط المتوقع https://more-cash.onrender.com (المراقبة كل 10 دقائق تبقيه مستيقظاً). ملفات Vercel باقية إن عاد الحساب أو رُقّي.
 - GitHub: darkcoffee20005-bit/more-cash (فرع main). Vercel ينشر تلقائياً مع كل push (مشروع more-cash، منطقة hkg1).
 - متغيرات Vercel: MONGODB_URI (Production)، MONGODB_DB=morecash، و PIN_PEPPER اختياري، و ANTHROPIC_API_KEY لقراءة الفواتير، و PLATFORM_ADMINS (بريد المزوّد)، و SUPPORT_WHATSAPP (رقم الدعم بصيغة 964…).
 - MongoDB Atlas: Cluster0 (AP_EAST_1)، مستخدم التطبيق morecash_app، الوصول 0.0.0.0/0.
