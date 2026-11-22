@@ -8,6 +8,7 @@ import { accountCard, loadAccount } from './account.js';
 import { printHtml } from './receipts.js';
 import { rememberSession } from '../offline.js';
 import { imageSrc, putImage, resizeImage, syncImages } from '../images.js';
+import { EMOJIS, guessEmoji } from '../emoji.js';
 import { hrPage, loadHr } from './hr.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 
@@ -497,11 +498,7 @@ export const modals = {
         ${it.forSale ? field('التصنيف', `<select id="it-cat" data-change="it-field" data-k="categoryId"><option value="">بلا تصنيف</option>${cats.filter((c) => c.active !== false).map((c) => `<option value="${c.id}" ${c.id === it.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`)
           : field('وحدة القياس', `<input id="it-unit" data-input="it-field" data-k="unit" value="${esc(it.unit ?? '')}" placeholder="غ، مل، قطعة" maxlength="10">`)}</div>
       ${it.forSale ? `<div class="stack" style="gap:8px"><span class="label">اللون على شاشة البيع</span><div class="row wrap">${Object.entries(COLORS).map(([k, l]) => `<button type="button" class="chip c-${k} ${it.color === k ? 'on' : ''}" style="${it.color === k ? 'background:var(--c);border-color:var(--c);color:#fff' : ''}" data-action="it-color" data-v="${k}"><span style="width:12px;height:12px;border-radius:3px;background:var(--c)"></span>${l}</button>`).join('')}</div></div>
-        <div class="item-photo"><div class="ph">${it.removeImage ? '' : it.newImage ? `<img src="${it.newImage.src}" alt="">` : imageSrc(it) ? `<img src="${imageSrc(it)}" alt="">` : icon('camera')}</div>
-          <div class="stack" style="gap:6px"><span class="label">صورة الصنف على شاشة البيع</span><div class="row wrap">
-            <label class="btn sm"><input type="file" accept="image/*" hidden data-change="it-image" id="it-image">${icon('camera', 'sm')} ${it.newImage || (imageSrc(it) && !it.removeImage) ? 'تغيير الصورة' : 'رفع صورة'}</label>
-            ${it.newImage || (it.imageV && !it.removeImage) ? `<button type="button" class="btn sm ghost danger" data-action="it-image-remove">${icon('trash', 'sm')} حذف</button>` : ''}</div>
-            <span class="muted small">تُقصّ مربعاً وتُصغّر تلقائياً</span></div></div>
+        ${itemMediaPicker(it, cats)}
         <div class="stack" style="gap:8px"><span class="label">مجموعات الإضافات</span><div class="row wrap">${mods.map((g) => `<button type="button" class="chip ${it.modifierIds.includes(g.id) ? 'on' : ''}" data-action="it-mod" data-v="${g.id}">${esc(g.name)}</button>`).join('') || '<span class="muted small">لا إضافات بعد</span>'}</div></div>` : ''}
       <div class="row"><h3 style="margin-inline-end:auto">${it.forSale ? 'الأحجام والأسعار' : 'التكلفة والمخزون'}</h3>${it.forSale && it.variants.length < 8 ? `<button type="button" class="btn sm" data-action="v-add">${icon('plus', 'sm')} حجم</button>` : ''}</div>
       ${variantRows}`;
@@ -853,6 +850,16 @@ on({
     } catch { toast('تعذّرت قراءة الصورة', 'bad'); }
   },
   'it-image-remove': () => { Object.assign(state.modal.item, { newImage: null, removeImage: true }); render(); },
+  'it-media': (el) => {
+    const it = state.modal.item;
+    const mode = el.dataset.v;
+    const cat = (A().categories ?? []).find((c) => c.id === it.categoryId)?.name ?? '';
+    // الإيموجي والتلقائي يلغيان الصورة عند الحفظ؛ العودة للصورة تُبقي الصورة المحفوظة
+    if (mode === 'image') Object.assign(it, { mediaMode: mode, removeImage: false });
+    else Object.assign(it, { mediaMode: mode, newImage: null, removeImage: Boolean(it.imageV), emoji: mode === 'emoji' ? (it.emoji || guessEmoji(it.name, cat)) : null });
+    render();
+  },
+  'it-emoji': (el) => { Object.assign(state.modal.item, { emoji: el.dataset.v, mediaMode: 'emoji' }); render(); },
   'it-mod': (el) => { const it = state.modal.item; it.modifierIds = it.modifierIds.includes(el.dataset.v) ? it.modifierIds.filter((x) => x !== el.dataset.v) : [...it.modifierIds, el.dataset.v]; render(); },
   'v-field': (el) => { state.modal.item.variants[Number(el.dataset.i)][el.dataset.k] = el.value; },
   'v-track': (el) => { state.modal.item.variants[Number(el.dataset.i)].trackStock = el.checked; render(); },
@@ -868,7 +875,7 @@ on({
   'item-submit': () => busy(async () => {
     const it = state.modal.item;
     const body = {
-      id: it.id, name: it.name, categoryId: it.forSale ? it.categoryId || null : null, color: it.color, forSale: it.forSale, unit: it.forSale ? null : it.unit,
+      id: it.id, name: it.name, categoryId: it.forSale ? it.categoryId || null : null, color: it.color, emoji: it.forSale && mediaMode(it) === 'emoji' ? it.emoji : null, forSale: it.forSale, unit: it.forSale ? null : it.unit,
       modifierIds: it.modifierIds,
       variants: it.variants.map((v) => ({
         id: v.id, name: v.name ?? '', price: it.forSale ? num(v.price, 'السعر') : 0, cost: v.recipe?.length ? '0' : String(v.cost || '0'),
@@ -1060,3 +1067,28 @@ on({
 });
 
 export { sub as currentAdminSection };
+
+// صورة الصنف أو إيموجي له (اختياري) مع معاينة البطاقة كما تظهر في شاشة البيع
+function mediaMode(it) {
+  // «صورة» بلا صورة مرفوعة = إيموجي تلقائي حسب الاسم والتصنيف
+  return it.mediaMode ?? (!it.newImage && !(it.imageV && !it.removeImage) && it.emoji ? 'emoji' : 'image');
+}
+function itemMediaPicker(it, cats) {
+  const mode = mediaMode(it);
+  const catName = cats.find((c) => c.id === it.categoryId)?.name ?? '';
+  const img = mode === 'image' ? (it.newImage?.src ?? (it.removeImage ? null : imageSrc(it))) : null;
+  const emoji = mode === 'emoji' && it.emoji ? it.emoji : guessEmoji(it.name, catName);
+  const preview = `<div class="tile c-${it.color} item-preview">${img ? `<img class="t-media" src="${img}" alt="">` : `<span class="t-media t-emoji" aria-hidden="true">${esc(emoji)}</span>`}
+    <span class="t-info"><span class="t-name">${esc(it.name || 'اسم الصنف')}</span><span class="t-price num">${money(parseAmount(String(it.variants[0]?.price ?? '')) ?? 0)}</span></span></div>`;
+  const tab = (k, l) => `<button type="button" class="${mode === k ? 'on' : ''}" data-action="it-media" data-v="${k}">${l}</button>`;
+  let body = '';
+  if (mode === 'image') {
+    body = `<div class="row wrap"><label class="btn sm"><input type="file" accept="image/*" hidden data-change="it-image" id="it-image">${icon('camera', 'sm')} ${img ? 'تغيير الصورة' : 'رفع صورة'}</label>
+      ${img ? `<button type="button" class="btn sm ghost danger" data-action="it-image-remove">${icon('trash', 'sm')} حذف</button>` : ''}</div>
+      <span class="muted small">${img ? 'تُقصّ مربعاً وتُصغّر تلقائياً' : 'بلا صورة يظهر إيموجي يُختار تلقائياً حسب اسم الصنف'}</span>`;
+  } else {
+    body = `<div class="emoji-pick">${EMOJIS.map((e) => `<button type="button" class="${e === emoji ? 'on' : ''}" data-action="it-emoji" data-v="${e}" aria-label="${e}">${e}</button>`).join('')}</div>`;
+  }
+  return `<div class="item-photo">${preview}<div class="stack" style="gap:8px;min-width:0"><span class="label">شكل الصنف على شاشة البيع</span>
+    <div class="seg">${tab('image', 'صورة')}${tab('emoji', 'إيموجي')}</div>${body}</div></div>`;
+}

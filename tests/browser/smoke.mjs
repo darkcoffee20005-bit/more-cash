@@ -384,6 +384,21 @@ try {
   await page.click('[data-action="item-submit"]');
   await page.waitForSelector('.toast.ok:has-text("حُفظ الصنف")');
   await page.waitForSelector('tr.click:has-text("موكا") img.thumb').catch(() => errors.push('item thumbnail missing in list'));
+  // إيموجي لصنف بلا صورة: يُختار من المحرر ويظهر على البطاقة المربعة، والصورة تملأ بطاقة الموكا
+  await page.click('tr.click:has-text("ماء")');
+  await page.click('[data-action="it-media"][data-v="emoji"]');
+  await page.click('[data-action="it-emoji"][data-v="🧊"]');
+  await page.waitForSelector('.item-preview .t-emoji:has-text("🧊")');
+  await shot('23d-item-emoji');
+  await page.click('[data-action="item-submit"]');
+  await page.waitForSelector('.toast.ok:has-text("حُفظ الصنف")');
+  await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
+  await page.waitForSelector('.tile');
+  await page.waitForSelector('.tile:has-text("ماء") .t-emoji:has-text("🧊")').catch(() => errors.push('chosen emoji not on POS tile'));
+  await page.waitForSelector('.tile:has-text("موكا") img.t-media').catch(() => errors.push('item photo not on POS tile'));
+  const sq = await page.$eval('.tile', (el) => { const r = el.getBoundingClientRect(); return Math.abs(r.width - r.height); });
+  if (sq > 2) errors.push(`POS tile not square (${sq}px)`);
+  await shot('23e-pos-square-tiles');
   await page.goto(`http://127.0.0.1:${PORT}/#/admin/inventory`);
   await page.waitForSelector('[data-action="rcv-open"]');
   // جرد يُنزل مادة تحت الحد → تنبيه على شاشة البيع وشارة على الإدارة
@@ -398,7 +413,7 @@ try {
   await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
   await page.waitForSelector('.low-banner');
   if (!(await page.isVisible('.rail .badge.bad'))) errors.push('low-stock badge missing on admin');
-  await page.waitForSelector('.tile:has-text("موكا") img.t-img').catch(() => errors.push('item photo not shown on POS tile'));
+  await page.waitForSelector('.tile:has-text("موكا") img.t-media').catch(() => errors.push('item photo not shown on POS tile'));
   // المخزون لا يصبح سالباً: تشيز كيك بقي منه 2، والثالثة تُرفض برسالة واضحة
   for (let i = 0; i < 3; i++) await page.click('.tile:has-text("تشيز كيك")');
   await page.waitForSelector('.toast.bad:has-text("المتوفر 2")').catch(() => errors.push('no stock limit message on POS'));

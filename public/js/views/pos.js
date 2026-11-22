@@ -6,6 +6,7 @@ import { icon } from '../icons.js';
 import { busy, can, closeModal, fail, field, modalFrame, on, onRendered, openModal, render, set, state, toast } from '../ui.js';
 import { printReceipt } from './receipts.js';
 import { imageSrc, syncImages } from '../images.js';
+import { itemEmoji } from '../emoji.js';
 import { discardFailed, failedSales, pendingSales, queueSale, rememberBootstrap, retryFailed, savedBootstrap } from '../offline.js';
 
 // ---------------------------------------------------------------- البيانات
@@ -179,6 +180,7 @@ function catalogPane(s) {
     if (q) return i.name.includes(q) || i.variants.some((v) => v.sku && v.sku.toLowerCase() === q.toLowerCase());
     return !categoryId || i.categoryId === categoryId;
   });
+  const catNames = new Map(s.catalog.categories.map((c) => [c.id, c.name]));
   const cats = [`<button class="chip cat-chip c-slate ${!categoryId && !q ? 'on' : ''}" data-action="pos-cat" data-id="">الكل</button>`,
     ...s.catalog.categories.map((c) => `<button class="chip cat-chip c-${c.color} ${categoryId === c.id && !q ? 'on' : ''}" data-action="pos-cat" data-id="${c.id}">${esc(c.name)}</button>`)];
   return `<section class="catalog" aria-label="الأصناف">
@@ -189,7 +191,7 @@ function catalogPane(s) {
       <div class="cats" role="tablist">${cats.join('')}</div>
     </div>
     <div class="tiles" data-keep-scroll="tiles">
-      ${items.length ? items.map(tile).join('') : `<div class="empty" style="grid-column:1/-1">${icon('search')}<p>لا أصناف مطابقة</p></div>`}
+      ${items.length ? items.map((i) => tile(i, catNames.get(i.categoryId))).join('') : `<div class="empty" style="grid-column:1/-1">${icon('search')}<p>لا أصناف مطابقة</p></div>`}
     </div>
   </section>`;
 }
@@ -228,18 +230,18 @@ function lowBanner(s) {
     <button class="icon-btn" data-action="low-dismiss" aria-label="إخفاء التنبيه">${icon('x', 'sm')}</button></div>`;
 }
 
-function tile(item) {
+function tile(item, catName) {
   const prices = item.variants.map((v) => v.price);
   const min = Math.min(...prices);
   const out = item.variants.every((v) => v.available !== null && v.available <= 0);
   const low = !out && item.variants.some((v) => v.available !== null && v.available > 0 && v.available <= 3);
-  const meta = [item.variants.length === 2 ? 'حجمان' : item.variants.length > 2 ? `${item.variants.length} أحجام` : item.variants[0].name, item.modifierIds.length ? 'إضافات' : ''].filter(Boolean).join(' · ');
-  return `<button class="tile c-${item.color} ${out ? 'out' : ''} ${imageSrc(item) ? 'has-img' : ''}" data-action="pos-item" data-id="${item.id}">
+  const img = imageSrc(item);
+  // بطاقة مربعة: صورة الصنف أو إيموجي على خلفية بلونه، والاسم والسعر فوقها بتدرّج داكن في الأسفل
+  return `<button class="tile c-${item.color} ${out ? 'out' : ''} ${img ? 'has-img' : ''}" data-action="pos-item" data-id="${item.id}">
+    ${img ? `<img class="t-media" src="${img}" alt="" loading="lazy">` : `<span class="t-media t-emoji" aria-hidden="true">${esc(itemEmoji(item, catName))}</span>`}
     ${out ? '<span class="t-flag pill bad">نفد</span>' : low ? '<span class="t-flag pill warn">قليل</span>' : ''}
-    ${imageSrc(item) ? `<img class="t-img" src="${imageSrc(item)}" alt="" loading="lazy">` : ''}
-    <span class="t-name">${esc(item.name)}</span>
-    ${meta ? `<span class="t-meta">${esc(meta)}</span>` : ''}
-    <span class="t-price num">${prices.length > 1 && Math.max(...prices) !== min ? 'من ' : ''}${money(min)}</span>
+    <span class="t-info"><span class="t-name">${esc(item.name)}</span>
+    <span class="t-price num">${prices.length > 1 && Math.max(...prices) !== min ? 'من ' : ''}${money(min)}</span></span>
   </button>`;
 }
 

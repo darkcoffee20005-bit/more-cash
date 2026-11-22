@@ -5,6 +5,14 @@ import { COLORS, audit, bad, conflict, id as checkId, int, isDup, notFound, oneO
 
 const MAX_VARIANTS = 8;
 
+/** إيموجي الصنف (اختياري): رمز واحد قصير، وإلا null فتختار الواجهة تلقائياً حسب الاسم والتصنيف */
+function emojiOf(value) {
+  const e = str(value, { field: 'emoji', max: 16, optional: true });
+  if (e === null) return null;
+  if (!/\p{Extended_Pictographic}/u.test(e) || /[\p{L}\p{N}<>&"']/u.test(e.replace(/[\u{1F1E6}-\u{1F1FF}]/gu, ''))) throw bad('INVALID_TEXT', 'emoji');
+  return e;
+}
+
 export function createCatalog(ctx) {
   const { db, now, newId } = ctx;
   const C = (n) => db.collection(n);
@@ -124,6 +132,7 @@ export function createCatalog(ctx) {
       name: str(input.name, { field: 'name', min: 1, max: 50 }),
       categoryId,
       color: oneOf(input.color ?? 'olive', COLORS, 'color'),
+      emoji: forSale ? emojiOf(input.emoji) : null,
       forSale,
       unit: forSale ? null : str(input.unit, { field: 'unit', min: 1, max: 10 }),
       modifierIds: forSale ? modifierIds : [],

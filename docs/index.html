@@ -257,26 +257,29 @@ input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color:
 .cat-chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
 .cat-chip.on { background: var(--olive-grad); border-color: transparent; color: #fff; box-shadow: 0 4px 12px rgb(104 123 27 / 22%); }
 .cat-chip.on::before { background: rgb(255 255 255 / 75%); }
-.tiles { flex: 1; overflow-y: auto; padding: 12px 14px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; align-content: start; }
-/* بطاقة الصنف بألوان التصميم السابق: شريط علوي بلون الصنف وتدرّج خفيف منه */
+.tiles { flex: 1; overflow-y: auto; padding: 12px 14px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 10px; align-content: start; }
+/* overflow: clip وليس hidden: hidden يجعل الحد الأدنى للارتفاع صفراً فتتداخل البطاقات المربعة في الشبكة */
+/* بطاقة الصنف مربعة: صورة الصنف أو إيموجي على خلفية بلون الصنف، والاسم والسعر فوقها بتدرّج داكن */
 .tile {
   --c: var(--tile-olive);
-  position: relative; min-height: 94px; border-radius: var(--r-md); border: 1px solid var(--line); border-top: 4px solid var(--c);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 7%, var(--surface)) 0%, var(--surface) 55%);
-  padding: 9px 11px; text-align: start; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow-1);
-  transition: transform .08s ease, box-shadow .15s, border-color .15s;
+  position: relative; aspect-ratio: 1 / 1; border-radius: var(--r-md); border: 1px solid var(--line); overflow: clip; padding: 0;
+  text-align: start; display: block; box-shadow: var(--shadow-1); background: color-mix(in srgb, var(--c) 30%, #fff);
+  transition: transform .08s ease, box-shadow .15s;
 }
-.tile:hover { box-shadow: 0 6px 18px rgb(30 57 50 / 12%); }
+.tile:hover { box-shadow: 0 6px 18px rgb(30 57 50 / 14%); }
 .tile:active { transform: scale(.97); }
-/* صورة الصنف في الزاوية، فلا تزيد ارتفاع البطاقة ولا تدفع السعر */
-.tile .t-img { position: absolute; top: 8px; inset-inline-end: 8px; width: 38px; height: 38px; border-radius: 10px; object-fit: cover; background: var(--surface-3); }
-.tile.has-img .t-name, .tile.has-img .t-meta { padding-inline-end: 42px; }
-.tile.has-img .t-flag { top: auto; bottom: 8px; }
-.tile .t-name { font-family: var(--font-display); font-weight: 600; font-size: .95rem; line-height: 1.3; }
-.tile .t-meta { font-size: .72rem; color: var(--muted); }
-.tile .t-price { margin-top: auto; font-weight: 600; font-size: .9rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.tile .t-flag { position: absolute; top: 10px; inset-inline-end: 10px; }
-.tile.out { opacity: .55; filter: grayscale(.6); }
+.tile .t-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tile .t-emoji { display: grid; place-items: center; padding-bottom: 22%; font-size: 2.6rem; line-height: 1;
+  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--c) 18%, #fff) 0%, color-mix(in srgb, var(--c) 42%, #fff) 72%);
+  filter: drop-shadow(0 3px 3px rgb(0 0 0 / 12%)); }
+.tile .t-info { position: absolute; inset: auto 0 0 0; padding: 20px 9px 7px; display: flex; flex-direction: column;
+  background: linear-gradient(180deg, transparent, rgb(7 30 30 / 80%)); color: #fff; }
+.tile .t-name { font-family: var(--font-display); font-weight: 700; font-size: .9rem; line-height: 1.25; text-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tile .t-price { font-weight: 600; font-size: .8rem; opacity: .95; font-variant-numeric: tabular-nums; }
+.tile .t-flag { position: absolute; z-index: 1; top: 6px; inset-inline-end: 6px; }
+.tile.out .t-media { filter: grayscale(.8); opacity: .55; }
+.tile.out .t-info { background: linear-gradient(180deg, transparent, rgb(40 48 48 / 78%)); }
 .c-olive { --c: var(--tile-olive); } .c-petrol { --c: var(--tile-petrol); } .c-sage { --c: var(--tile-sage); } .c-teal { --c: var(--tile-teal); }
 .c-sand { --c: var(--tile-sand); } .c-clay { --c: var(--tile-clay); } .c-mocha { --c: var(--tile-mocha); } .c-slate { --c: var(--tile-slate); }
 
@@ -679,6 +682,11 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
 .item-photo { display: flex; gap: 14px; align-items: center; padding: 10px; border: 1px dashed var(--line-strong); border-radius: var(--r-md); background: var(--surface-2); }
 .item-photo .ph { width: 84px; height: 84px; flex: none; border-radius: 16px; overflow: hidden; display: grid; place-items: center; background: var(--surface-3); color: var(--muted); }
 .item-photo .ph img { width: 100%; height: 100%; object-fit: cover; }
+.item-photo .item-preview { width: 112px; flex: none; cursor: default; }
+.item-photo .item-preview:active { transform: none; }
+.emoji-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.emoji-pick button { width: 40px; height: 40px; display: grid; place-items: center; font-size: 1.35rem; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); }
+.emoji-pick button.on { border-color: var(--olive-b, #687b1b); box-shadow: inset 0 0 0 1px var(--olive-b, #687b1b); background: #f3f7e4; }
 img.thumb { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; flex: none; }
 .link-num { border: none; background: none; padding: 4px 6px; border-radius: 8px; font: inherit; font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
 .link-num svg.i { width: 14px; height: 14px; color: var(--muted); }
@@ -2071,6 +2079,14 @@ const { COLORS, audit, bad, conflict, id: checkId, int, isDup, notFound, oneOf, 
 
 const MAX_VARIANTS = 8;
 
+/** إيموجي الصنف (اختياري): رمز واحد قصير، وإلا null فتختار الواجهة تلقائياً حسب الاسم والتصنيف */
+function emojiOf(value) {
+  const e = str(value, { field: 'emoji', max: 16, optional: true });
+  if (e === null) return null;
+  if (!/\p{Extended_Pictographic}/u.test(e) || /[\p{L}\p{N}<>&"']/u.test(e.replace(/[\u{1F1E6}-\u{1F1FF}]/gu, ''))) throw bad('INVALID_TEXT', 'emoji');
+  return e;
+}
+
 function createCatalog(ctx) {
   const { db, now, newId } = ctx;
   const C = (n) => db.collection(n);
@@ -2190,6 +2206,7 @@ function createCatalog(ctx) {
       name: str(input.name, { field: 'name', min: 1, max: 50 }),
       categoryId,
       color: oneOf(input.color ?? 'olive', COLORS, 'color'),
+      emoji: forSale ? emojiOf(input.emoji) : null,
       forSale,
       unit: forSale ? null : str(input.unit, { field: 'unit', min: 1, max: 10 }),
       modifierIds: forSale ? modifierIds : [],
@@ -5013,6 +5030,9 @@ async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
     }
     // تذكرتان مفتوحتان لطاولات
     offset = 0;
+    // كيكة الشوكولاتة شارفت على النفاد دائماً (حتى بعد منتصف الليل حين يبدأ يوم جديد باستلام صباحي) فيظهر تنبيه المخزون
+    const cake = (await call('GET', '/api/admin/inventory')).rows.find((r) => r.name === 'كيكة شوكولاتة — قطعة');
+    if (cake && cake.stock > 2) await call('POST', '/api/admin/inventory/adjust', { clientId: crypto.randomUUID(), variantId: cake.variantId, type: 'count', qty: 2, note: 'جرد' });
     const latte = catalog.items.find((i) => i.name === 'لاتيه');
     const tea = catalog.items.find((i) => i.name === 'شاي عراقي');
     await call('POST', '/api/tickets', { name: 'طاولة 3', lines: [{ variantId: latte.variants[0].id, qty: 2, modifierOptionIds: [mods.get(latte.modifierIds[0]).options[0].id] }], displayTotal: 10000 });
@@ -5826,6 +5846,47 @@ async function resizeImage(file, size = 240) {
 return { imageSrc, syncImages, putImage, resizeImage };
 })();
 
+// ---- public/js/emoji.js
+const __m_public_js_emoji_js = await (async () => {
+
+// إيموجي الصنف على شاشة البيع: ما اختاره المالك، وإلا تخمين من اسم الصنف ثم تصنيفه.
+const EMOJIS = ['☕', '🍵', '🧋', '🫖', '🥤', '🧃', '🥛', '🧊', '🍫', '🥐', '🍰', '🍪', '🧁', '🍩', '🥪', '💧', '🍋', '🍓', '🍦', '🥯'];
+
+const RULES = [
+  [/ماتشا|matcha/i, '🍵'],
+  [/آيس ?كريم|ايس ?كريم|جيلاتو|ice ?cream|gelato/i, '🍦'],
+  [/شاي|tea|كرك/i, '🫖'],
+  [/فرابي|فراب|frapp|سموذي|smooth|ميلك ?شيك|shake|موهيتو|mojito/i, '🥤'],
+  [/عصير|juice|برتقال/i, '🧃'],
+  [/ليمون|lemon/i, '🍋'],
+  [/آيس|ايس|مثلج|بارد|\bice\b|iced|cold/i, '🧋'],
+  [/ماء|مي |water/i, '💧'],
+  [/كرواس|croiss/i, '🥐'],
+  [/كوكي|cookie|بسكو/i, '🍪'],
+  [/مافن|كب ?كيك|muffin|cupcake/i, '🧁'],
+  [/دونات|donut/i, '🍩'],
+  [/كيك|كيكة|تشيز|cake|براوني|brown/i, '🍰'],
+  [/ساندو|سندويش|sandw|توست|toast/i, '🥪'],
+  [/بيغل|bagel|معجن|فطير/i, '🥯'],
+  [/هوت ?شوك|شوكولا|كاكاو|choco|cocoa/i, '🍫'],
+  [/حلو|مخبوز|dessert|bake/i, '🍰'],
+  [/قهوة|اسبريسو|إسبريسو|لاتيه|كابت|موكا|امريكان|أمريكان|coffee|espresso|latte|mocha/i, '☕'],
+  [/حليب|milk/i, '🥛'],
+];
+
+function guessEmoji(name = '', categoryName = '') {
+  for (const text of [name, categoryName]) {
+    for (const [re, e] of RULES) if (re.test(text)) return e;
+  }
+  return '☕';
+}
+
+/** الإيموجي الظاهر للصنف */
+const itemEmoji = (item, categoryName) => item?.emoji || guessEmoji(item?.name, categoryName);
+
+return { EMOJIS, guessEmoji, itemEmoji };
+})();
+
 // ---- public/js/views/pos.js
 const __m_public_js_views_pos_js = await (async () => {
 const { calculateTicket, unitPrice } = __m_shared_calc_js;
@@ -5835,8 +5896,10 @@ const { icon } = __m_public_js_icons_js;
 const { busy, can, closeModal, fail, field, modalFrame, on, onRendered, openModal, render, set, state, toast } = __m_public_js_ui_js;
 const { printReceipt } = __m_public_js_views_receipts_js;
 const { imageSrc, syncImages } = __m_public_js_images_js;
+const { itemEmoji } = __m_public_js_emoji_js;
 const { discardFailed, failedSales, pendingSales, queueSale, rememberBootstrap, retryFailed, savedBootstrap } = __m_public_js_offline_js;
 // شاشة البيع: الأصناف ← التذكرة ← الدفع. الحساب للعرض بنفس كود الخادم (shared/calc.js).
+
 
 
 
@@ -6017,6 +6080,7 @@ function catalogPane(s) {
     if (q) return i.name.includes(q) || i.variants.some((v) => v.sku && v.sku.toLowerCase() === q.toLowerCase());
     return !categoryId || i.categoryId === categoryId;
   });
+  const catNames = new Map(s.catalog.categories.map((c) => [c.id, c.name]));
   const cats = [`<button class="chip cat-chip c-slate ${!categoryId && !q ? 'on' : ''}" data-action="pos-cat" data-id="">الكل</button>`,
     ...s.catalog.categories.map((c) => `<button class="chip cat-chip c-${c.color} ${categoryId === c.id && !q ? 'on' : ''}" data-action="pos-cat" data-id="${c.id}">${esc(c.name)}</button>`)];
   return `<section class="catalog" aria-label="الأصناف">
@@ -6027,7 +6091,7 @@ function catalogPane(s) {
       <div class="cats" role="tablist">${cats.join('')}</div>
     </div>
     <div class="tiles" data-keep-scroll="tiles">
-      ${items.length ? items.map(tile).join('') : `<div class="empty" style="grid-column:1/-1">${icon('search')}<p>لا أصناف مطابقة</p></div>`}
+      ${items.length ? items.map((i) => tile(i, catNames.get(i.categoryId))).join('') : `<div class="empty" style="grid-column:1/-1">${icon('search')}<p>لا أصناف مطابقة</p></div>`}
     </div>
   </section>`;
 }
@@ -6066,18 +6130,18 @@ function lowBanner(s) {
     <button class="icon-btn" data-action="low-dismiss" aria-label="إخفاء التنبيه">${icon('x', 'sm')}</button></div>`;
 }
 
-function tile(item) {
+function tile(item, catName) {
   const prices = item.variants.map((v) => v.price);
   const min = Math.min(...prices);
   const out = item.variants.every((v) => v.available !== null && v.available <= 0);
   const low = !out && item.variants.some((v) => v.available !== null && v.available > 0 && v.available <= 3);
-  const meta = [item.variants.length === 2 ? 'حجمان' : item.variants.length > 2 ? `${item.variants.length} أحجام` : item.variants[0].name, item.modifierIds.length ? 'إضافات' : ''].filter(Boolean).join(' · ');
-  return `<button class="tile c-${item.color} ${out ? 'out' : ''} ${imageSrc(item) ? 'has-img' : ''}" data-action="pos-item" data-id="${item.id}">
+  const img = imageSrc(item);
+  // بطاقة مربعة: صورة الصنف أو إيموجي على خلفية بلونه، والاسم والسعر فوقها بتدرّج داكن في الأسفل
+  return `<button class="tile c-${item.color} ${out ? 'out' : ''} ${img ? 'has-img' : ''}" data-action="pos-item" data-id="${item.id}">
+    ${img ? `<img class="t-media" src="${img}" alt="" loading="lazy">` : `<span class="t-media t-emoji" aria-hidden="true">${esc(itemEmoji(item, catName))}</span>`}
     ${out ? '<span class="t-flag pill bad">نفد</span>' : low ? '<span class="t-flag pill warn">قليل</span>' : ''}
-    ${imageSrc(item) ? `<img class="t-img" src="${imageSrc(item)}" alt="" loading="lazy">` : ''}
-    <span class="t-name">${esc(item.name)}</span>
-    ${meta ? `<span class="t-meta">${esc(meta)}</span>` : ''}
-    <span class="t-price num">${prices.length > 1 && Math.max(...prices) !== min ? 'من ' : ''}${money(min)}</span>
+    <span class="t-info"><span class="t-name">${esc(item.name)}</span>
+    <span class="t-price num">${prices.length > 1 && Math.max(...prices) !== min ? 'من ' : ''}${money(min)}</span></span>
   </button>`;
 }
 
@@ -7460,9 +7524,11 @@ const { accountCard, loadAccount } = __m_public_js_views_account_js;
 const { printHtml } = __m_public_js_views_receipts_js;
 const { rememberSession } = __m_public_js_offline_js;
 const { imageSrc, putImage, resizeImage, syncImages } = __m_public_js_images_js;
+const { EMOJIS, guessEmoji } = __m_public_js_emoji_js;
 const { hrPage, loadHr } = __m_public_js_views_hr_js;
 const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
 // لوحة الإدارة (Back Office): المتابعة، التقارير، الأصناف، التصنيفات، الإضافات، الخصومات، المخزون، الموظفون، الورديات، الإعدادات.
+
 
 
 
@@ -7961,11 +8027,7 @@ const modals = {
         ${it.forSale ? field('التصنيف', `<select id="it-cat" data-change="it-field" data-k="categoryId"><option value="">بلا تصنيف</option>${cats.filter((c) => c.active !== false).map((c) => `<option value="${c.id}" ${c.id === it.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`)
           : field('وحدة القياس', `<input id="it-unit" data-input="it-field" data-k="unit" value="${esc(it.unit ?? '')}" placeholder="غ، مل، قطعة" maxlength="10">`)}</div>
       ${it.forSale ? `<div class="stack" style="gap:8px"><span class="label">اللون على شاشة البيع</span><div class="row wrap">${Object.entries(COLORS).map(([k, l]) => `<button type="button" class="chip c-${k} ${it.color === k ? 'on' : ''}" style="${it.color === k ? 'background:var(--c);border-color:var(--c);color:#fff' : ''}" data-action="it-color" data-v="${k}"><span style="width:12px;height:12px;border-radius:3px;background:var(--c)"></span>${l}</button>`).join('')}</div></div>
-        <div class="item-photo"><div class="ph">${it.removeImage ? '' : it.newImage ? `<img src="${it.newImage.src}" alt="">` : imageSrc(it) ? `<img src="${imageSrc(it)}" alt="">` : icon('camera')}</div>
-          <div class="stack" style="gap:6px"><span class="label">صورة الصنف على شاشة البيع</span><div class="row wrap">
-            <label class="btn sm"><input type="file" accept="image/*" hidden data-change="it-image" id="it-image">${icon('camera', 'sm')} ${it.newImage || (imageSrc(it) && !it.removeImage) ? 'تغيير الصورة' : 'رفع صورة'}</label>
-            ${it.newImage || (it.imageV && !it.removeImage) ? `<button type="button" class="btn sm ghost danger" data-action="it-image-remove">${icon('trash', 'sm')} حذف</button>` : ''}</div>
-            <span class="muted small">تُقصّ مربعاً وتُصغّر تلقائياً</span></div></div>
+        ${itemMediaPicker(it, cats)}
         <div class="stack" style="gap:8px"><span class="label">مجموعات الإضافات</span><div class="row wrap">${mods.map((g) => `<button type="button" class="chip ${it.modifierIds.includes(g.id) ? 'on' : ''}" data-action="it-mod" data-v="${g.id}">${esc(g.name)}</button>`).join('') || '<span class="muted small">لا إضافات بعد</span>'}</div></div>` : ''}
       <div class="row"><h3 style="margin-inline-end:auto">${it.forSale ? 'الأحجام والأسعار' : 'التكلفة والمخزون'}</h3>${it.forSale && it.variants.length < 8 ? `<button type="button" class="btn sm" data-action="v-add">${icon('plus', 'sm')} حجم</button>` : ''}</div>
       ${variantRows}`;
@@ -8317,6 +8379,16 @@ on({
     } catch { toast('تعذّرت قراءة الصورة', 'bad'); }
   },
   'it-image-remove': () => { Object.assign(state.modal.item, { newImage: null, removeImage: true }); render(); },
+  'it-media': (el) => {
+    const it = state.modal.item;
+    const mode = el.dataset.v;
+    const cat = (A().categories ?? []).find((c) => c.id === it.categoryId)?.name ?? '';
+    // الإيموجي والتلقائي يلغيان الصورة عند الحفظ؛ العودة للصورة تُبقي الصورة المحفوظة
+    if (mode === 'image') Object.assign(it, { mediaMode: mode, removeImage: false });
+    else Object.assign(it, { mediaMode: mode, newImage: null, removeImage: Boolean(it.imageV), emoji: mode === 'emoji' ? (it.emoji || guessEmoji(it.name, cat)) : null });
+    render();
+  },
+  'it-emoji': (el) => { Object.assign(state.modal.item, { emoji: el.dataset.v, mediaMode: 'emoji' }); render(); },
   'it-mod': (el) => { const it = state.modal.item; it.modifierIds = it.modifierIds.includes(el.dataset.v) ? it.modifierIds.filter((x) => x !== el.dataset.v) : [...it.modifierIds, el.dataset.v]; render(); },
   'v-field': (el) => { state.modal.item.variants[Number(el.dataset.i)][el.dataset.k] = el.value; },
   'v-track': (el) => { state.modal.item.variants[Number(el.dataset.i)].trackStock = el.checked; render(); },
@@ -8332,7 +8404,7 @@ on({
   'item-submit': () => busy(async () => {
     const it = state.modal.item;
     const body = {
-      id: it.id, name: it.name, categoryId: it.forSale ? it.categoryId || null : null, color: it.color, forSale: it.forSale, unit: it.forSale ? null : it.unit,
+      id: it.id, name: it.name, categoryId: it.forSale ? it.categoryId || null : null, color: it.color, emoji: it.forSale && mediaMode(it) === 'emoji' ? it.emoji : null, forSale: it.forSale, unit: it.forSale ? null : it.unit,
       modifierIds: it.modifierIds,
       variants: it.variants.map((v) => ({
         id: v.id, name: v.name ?? '', price: it.forSale ? num(v.price, 'السعر') : 0, cost: v.recipe?.length ? '0' : String(v.cost || '0'),
@@ -8523,6 +8595,31 @@ on({
   }),
 });
 
+
+// صورة الصنف أو إيموجي له (اختياري) مع معاينة البطاقة كما تظهر في شاشة البيع
+function mediaMode(it) {
+  // «صورة» بلا صورة مرفوعة = إيموجي تلقائي حسب الاسم والتصنيف
+  return it.mediaMode ?? (!it.newImage && !(it.imageV && !it.removeImage) && it.emoji ? 'emoji' : 'image');
+}
+function itemMediaPicker(it, cats) {
+  const mode = mediaMode(it);
+  const catName = cats.find((c) => c.id === it.categoryId)?.name ?? '';
+  const img = mode === 'image' ? (it.newImage?.src ?? (it.removeImage ? null : imageSrc(it))) : null;
+  const emoji = mode === 'emoji' && it.emoji ? it.emoji : guessEmoji(it.name, catName);
+  const preview = `<div class="tile c-${it.color} item-preview">${img ? `<img class="t-media" src="${img}" alt="">` : `<span class="t-media t-emoji" aria-hidden="true">${esc(emoji)}</span>`}
+    <span class="t-info"><span class="t-name">${esc(it.name || 'اسم الصنف')}</span><span class="t-price num">${money(parseAmount(String(it.variants[0]?.price ?? '')) ?? 0)}</span></span></div>`;
+  const tab = (k, l) => `<button type="button" class="${mode === k ? 'on' : ''}" data-action="it-media" data-v="${k}">${l}</button>`;
+  let body = '';
+  if (mode === 'image') {
+    body = `<div class="row wrap"><label class="btn sm"><input type="file" accept="image/*" hidden data-change="it-image" id="it-image">${icon('camera', 'sm')} ${img ? 'تغيير الصورة' : 'رفع صورة'}</label>
+      ${img ? `<button type="button" class="btn sm ghost danger" data-action="it-image-remove">${icon('trash', 'sm')} حذف</button>` : ''}</div>
+      <span class="muted small">${img ? 'تُقصّ مربعاً وتُصغّر تلقائياً' : 'بلا صورة يظهر إيموجي يُختار تلقائياً حسب اسم الصنف'}</span>`;
+  } else {
+    body = `<div class="emoji-pick">${EMOJIS.map((e) => `<button type="button" class="${e === emoji ? 'on' : ''}" data-action="it-emoji" data-v="${e}" aria-label="${e}">${e}</button>`).join('')}</div>`;
+  }
+  return `<div class="item-photo">${preview}<div class="stack" style="gap:8px;min-width:0"><span class="label">شكل الصنف على شاشة البيع</span>
+    <div class="seg">${tab('image', 'صورة')}${tab('emoji', 'إيموجي')}</div>${body}</div></div>`;
+}
 
 return { routes, modals, enter, currentAdminSection: sub };
 })();

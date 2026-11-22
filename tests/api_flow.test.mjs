@@ -621,6 +621,15 @@ test('حد التنبيه من شاشة المخزون، وصورة لكل صن�
   await ok('owner', 'DELETE', `/api/admin/items/${latte.id}/image`);
   assert.equal(findItem((await ok('owner', 'GET', '/api/pos/bootstrap')).catalog, 'لاتيه').imageV, undefined);
   assert.deepEqual(await ok('owner', 'GET', '/api/pos/images'), {});
+
+  // إيموجي الصنف اختياري: رمز واحد يُحفظ ويظهر في قائمة البيع، والنص العادي مرفوض، والفارغ يعود تلقائياً
+  const full = (await ok('owner', 'GET', '/api/admin/items')).find((i) => i.id === latte.id);
+  const save = (emoji) => call('owner', 'POST', '/api/admin/items', { ...full, emoji, variants: full.variants.map((v) => ({ ...v, cost: undefined })) });
+  assert.equal((await save('🧋')).status, 200);
+  assert.equal(findItem((await ok('owner', 'GET', '/api/pos/bootstrap')).catalog, 'لاتيه').emoji, '🧋');
+  for (const badEmoji of ['abc', '<b>', 'قهوة ☕', '🧋'.repeat(9)]) assert.equal((await save(badEmoji)).status, 400, badEmoji);
+  assert.equal((await save('')).status, 200);
+  assert.equal(findItem((await ok('owner', 'GET', '/api/pos/bootstrap')).catalog, 'لاتيه').emoji, null);
 });
 
 test('بيع بلا إنترنت يصل بعد إغلاق ورديته: يُنسب لها ويُحدَّث نقدها المتوقع وفرقها، حتى بلا وردية مفتوحة', async () => {

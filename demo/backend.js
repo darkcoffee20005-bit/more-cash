@@ -147,6 +147,9 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
     }
     // تذكرتان مفتوحتان لطاولات
     offset = 0;
+    // كيكة الشوكولاتة شارفت على النفاد دائماً (حتى بعد منتصف الليل حين يبدأ يوم جديد باستلام صباحي) فيظهر تنبيه المخزون
+    const cake = (await call('GET', '/api/admin/inventory')).rows.find((r) => r.name === 'كيكة شوكولاتة — قطعة');
+    if (cake && cake.stock > 2) await call('POST', '/api/admin/inventory/adjust', { clientId: crypto.randomUUID(), variantId: cake.variantId, type: 'count', qty: 2, note: 'جرد' });
     const latte = catalog.items.find((i) => i.name === 'لاتيه');
     const tea = catalog.items.find((i) => i.name === 'شاي عراقي');
     await call('POST', '/api/tickets', { name: 'طاولة 3', lines: [{ variantId: latte.variants[0].id, qty: 2, modifierOptionIds: [mods.get(latte.modifierIds[0]).options[0].id] }], displayTotal: 10000 });
