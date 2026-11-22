@@ -51,8 +51,22 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
     const morning = catalog.discounts.find((d) => d.name === 'عرض الصباح');
     const startOfToday = new Date(); startOfToday.setUTCHours(-3 + 24 * (new Date().getUTCHours() >= 21 ? 1 : 0), 0, 0, 0);
 
+    // الموظفون يسجّلون حضورهم وانصرافهم بأنفسهم (جلسة لكل موظف، تُجدَّد كل يوم)
+    const staff = [['manager', 7.7, 16], ['cashier', 7.9, 22.5], ['barista', 8.1, 23]];
+    let staffTokens = {};
+    const asStaff = async (role, method, path, body) => {
+      if (!staffTokens[role]) staffTokens[role] = (await app.handle({ method: 'POST', path: '/api/auth/pin', body: { pin: DEMO_PINS[role] }, token: null, deviceToken, ip: 'demo' })).setToken;
+      return app.handle({ method, path, body, token: staffTokens[role], deviceToken, ip: 'demo' });
+    };
+    const employees = await call('GET', '/api/admin/employees');
+
     for (let day = 6; day >= 0; day--) {
       const base = startOfToday.getTime() - day * 86400000;
+      staffTokens = {};
+      for (const [role, inAt] of staff) {
+        offset = base + (inAt + rand() * 0.4) * 3600000 - Date.now();
+        await asStaff(role, 'POST', '/api/hr/clock', { clientId: crypto.randomUUID(), action: 'in' });
+      }
       offset = base + 8 * 3600000 - Date.now(); // 8 صباحاً بتوقيت بغداد
       await call('POST', '/api/shifts/open', { startingCash: 50000 });
       // استلام صباحي من المورد كما في مقهى حقيقي
@@ -118,6 +132,17 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
         const cur = await call('GET', '/api/shifts/current');
         const diff = rand() < 0.7 ? 0 : -250 * Math.ceil(rand() * 4);
         await call('POST', '/api/shifts/close', { actualCash: cur.live.expectedCash + diff, note: diff ? 'فرق صرف' : null });
+        staffTokens = {}; // جلسة الموظف تنتهي بعد 12 ساعة: يدخل برمزه من جديد ليسجّل انصرافه
+        for (const [role, , outAt] of staff) {
+          offset = base + (outAt - rand() * 0.5) * 3600000 - Date.now();
+          await asStaff(role, 'POST', '/api/hr/clock', { clientId: crypto.randomUUID(), action: 'out' });
+        }
+        // حوافز وغرامات متفرقة كما في أسبوع عمل حقيقي
+        const pickEmp = employees.find((e) => e.role === pick(['cashier', 'barista']));
+        if (pickEmp && rand() < 0.35) {
+          const fine = rand() < 0.5;
+          await call('POST', '/api/hr/adjustments', { clientId: crypto.randomUUID(), employeeId: pickEmp.id, type: fine ? 'fine' : 'bonus', amount: fine ? 5000 : 10000, reason: fine ? 'تأخير عن الدوام' : 'خدمة ممتازة للزبائن' });
+        }
       }
     }
     // تذكرتان مفتوحتان لطاولات
