@@ -4,7 +4,7 @@ import { costOf, formatMilli, parseMilli, weightedCost } from '../../shared/calc
 import { AppError, audit, bad, id as checkId, int, isDup, notFound, oneOf, requirePerm, str } from './core.js';
 
 export const MOVE_REASON = Object.freeze({
-  initial: 'رصيد افتتاحي', sale: 'بيع', refund: 'استرجاع', receive: 'استلام', loss: 'هدر/تالف', count: 'جرد', adjust: 'تعديل',
+  initial: 'رصيد افتتاحي', sale: 'بيع', refund: 'استرجاع', receive: 'استلام', receive_fix: 'تصحيح استلام', loss: 'هدر/تالف', count: 'جرد', adjust: 'تعديل',
 });
 
 export function createInventory(ctx) {
@@ -13,12 +13,12 @@ export function createInventory(ctx) {
   const variants = () => db.collection('variants');
 
   /** يطبّق حركة مرة واحدة فقط. يعيد true إن طُبّقت الآن، false إن كانت مطبّقة سابقاً. */
-  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null }) {
+  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null }) {
     if (!Number.isSafeInteger(delta) || delta === 0) return false;
     // البيع لا ينزل بالرصيد تحت الصفر (بيع بلا إنترنت أو بيعان متزامنان على آخر قطعة): يُخصم المتوفر فقط
     if (reason === 'sale' && delta < 0) return applySaleMove({ key, variantId, delta, refId, by });
     try {
-      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli });
+      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}) });
     } catch (e) {
       if (isDup(e)) return false;
       throw e;
@@ -81,10 +81,11 @@ export function createInventory(ctx) {
     const note = str(input.note, { field: 'note', max: 120, optional: true });
     let delta;
     let costMilli = null;
+    let unitCostMilli = null;
     if (type === 'receive') {
       const qty = int(input.qty, { field: 'qty', min: 1, max: 10_000_000 });
       delta = qty;
-      if (input.cost !== undefined && input.cost !== '') costMilli = weightedCost(v.stock, v.costMilli, qty, parseMilli(input.cost));
+      if (input.cost !== undefined && input.cost !== '') { unitCostMilli = parseMilli(input.cost); costMilli = weightedCost(v.stock, v.costMilli, qty, unitCostMilli); }
     } else if (type === 'loss') {
       delta = -int(input.qty, { field: 'qty', min: 1, max: 10_000_000 });
       if (!note) throw bad('REQUIRED', 'note');
@@ -97,7 +98,7 @@ export function createInventory(ctx) {
       if (!note) throw bad('REQUIRED', 'note');
       if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     }
-    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note });
+    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli });
     if (applied) await audit({ ...ctx, actor }, `inventory.${type}`, { variantId: v._id, delta, note });
     const after = await variants().findOne({ _id: v._id });
     return { applied, delta, stock: after.stock, costMilli: after.costMilli };
@@ -171,6 +172,62 @@ export function createInventory(ctx) {
     return { received: results.filter((r) => r.applied).length, lines: results };
   }
 
+  // ---------------------------------------------------------------- مراجعة الاستلام وتصحيحه
+  // استلام سُجّل خطأً (كمية أو سعر) يُصحَّح بحركة "تصحيح استلام" مرتبطة به: لا يُحذف شيء من الدفتر،
+  // والرصيد ومتوسط التكلفة يُعدَّلان بالفرق فقط. الاستلام الأصلي يبقى ظاهراً ومعه ما صُحّح.
+  async function receipts(actor, { days = 45 } = {}) {
+    requirePerm(actor, 'admin.inventory');
+    const since = new Date(now().getTime() - Math.min(Number(days) || 45, 365) * 86400000);
+    const rows = (await moves().find({ reason: 'receive', at: { $gte: since } }).toArray()).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 300);
+    const vs = await variants().find({ _id: { $in: [...new Set(rows.map((m) => m.variantId))] } }).toArray();
+    const items = new Map((await db.collection('items').find({ _id: { $in: [...new Set(vs.map((v) => v.itemId))] } }).toArray()).map((i) => [i._id, i]));
+    const vmap = new Map(vs.map((v) => [v._id, v]));
+    return rows.map((m) => {
+      const v = vmap.get(m.variantId);
+      const item = v ? items.get(v.itemId) : null;
+      return {
+        id: m._id, at: m.at, variantId: m.variantId, name: item ? (v.name ? `${item.name} — ${v.name}` : item.name) : '—', unit: item?.unit ?? 'قطعة',
+        qty: m.fixedQty ?? m.delta, originalQty: m.delta, unitCostMilli: m.fixedUnitCostMilli ?? m.unitCostMilli ?? null,
+        originalUnitCostMilli: m.unitCostMilli ?? null, note: m.note, byName: m.byName, fixes: m.fixes ?? [],
+      };
+    });
+  }
+
+  async function fixReceipt(actor, moveId, input = {}) {
+    requirePerm(actor, 'admin.inventory');
+    const clientId = checkId(input.clientId, 'clientId');
+    const m = await moves().findOne({ _id: checkId(moveId) });
+    if (!m || m.reason !== 'receive') throw notFound();
+    if (await moves().findOne({ key: `rcvfix:${clientId}` })) return { applied: false };
+    const note = str(input.note, { field: 'note', min: 2, max: 120 });
+    const v = await variants().findOne({ _id: m.variantId });
+    if (!v) throw notFound();
+    const oldQty = m.fixedQty ?? m.delta;
+    const oldUnit = m.fixedUnitCostMilli ?? m.unitCostMilli ?? v.costMilli;
+    const newQty = int(input.qty, { field: 'qty', min: 0, max: 10_000_000 });
+    const newUnit = input.cost === undefined || input.cost === '' || input.cost === null ? oldUnit : parseMilli(input.cost);
+    const delta = newQty - oldQty;
+    if (delta === 0 && newUnit === oldUnit) throw bad('NO_CHANGE');
+    // ما صُرف من الاستلام لا يُستعاد: لا ينزل الرصيد تحت الصفر
+    if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
+    // متوسط التكلفة: نُخرج قيمة الاستلام القديمة وندخل الصحيحة
+    const newStock = v.stock + delta;
+    const value = BigInt(Math.max(0, v.stock)) * BigInt(v.costMilli) - BigInt(oldQty) * BigInt(oldUnit) + BigInt(newQty) * BigInt(newUnit);
+    const costMilli = newStock > 0 && value > 0n ? Number((value * 2n + BigInt(newStock)) / (2n * BigInt(newStock))) : newUnit;
+    try {
+      await moves().insertOne({ _id: ctx.newId(), key: `rcvfix:${clientId}`, variantId: v._id, delta, reason: 'receive_fix', refId: m._id, note, by: actor.id, byName: actor.name, at: now(), costMilli, unitCostMilli: newUnit, fixOf: { qty: oldQty, unitCostMilli: oldUnit } });
+    } catch (e) {
+      if (isDup(e)) return { applied: false };
+      throw e;
+    }
+    await variants().updateOne({ _id: v._id }, { ...(delta ? { $inc: { stock: delta } } : {}), $set: { costMilli } });
+    const fix = { at: now(), byName: actor.name, note, from: { qty: oldQty, unitCostMilli: oldUnit }, to: { qty: newQty, unitCostMilli: newUnit } };
+    await moves().updateOne({ _id: m._id }, { $set: { fixedQty: newQty, fixedUnitCostMilli: newUnit }, $push: { fixes: fix } });
+    await audit({ ...ctx, actor }, 'inventory.receive_fix', { variantId: v._id, delta, note, from: oldQty, to: newQty });
+    const after = await variants().findOne({ _id: v._id });
+    return { applied: true, delta, stock: after.stock, costMilli: after.costMilli };
+  }
+
   async function history(actor, variantId, limit = 100) {
     requirePerm(actor, 'admin.inventory');
     const rows = await moves().find({ variantId: checkId(variantId, 'variantId') }).sort({ at: -1 }).limit(Math.min(limit, 500)).toArray();
@@ -208,5 +265,5 @@ export function createInventory(ctx) {
     return { variantId: v._id, lowStock, low: v.stock <= lowStock };
   }
 
-  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch, setLowStock };
+  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch, setLowStock, receipts, fixReceipt };
 }

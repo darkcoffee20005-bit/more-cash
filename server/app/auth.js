@@ -1,6 +1,6 @@
 // الإعداد الأول، الدخول بالرمز السري، الجلسات، والموظفون.
 import { ROLES, permissionsOf } from '../../shared/perms.js';
-import { AppError, audit, bad, bool, conflict, getSettings, id as checkId, isDup, notFound, oneOf, out, requirePerm, str } from './core.js';
+import { AppError, audit, bad, bool, conflict, getSettings, id as checkId, int, isDup, notFound, oneOf, out, requirePerm, str } from './core.js';
 import { normalizePin, pinLookup, randomToken, sha256, validPin } from './security.js';
 import { DEFAULT_SETTINGS, seedMenu } from './seed.js';
 
@@ -96,6 +96,9 @@ export function createAuth(ctx) {
     const phone = str(input.phone, { field: 'phone', max: 20, optional: true });
     const active = input.active !== false;
     const set = { name, role, phone, active, updatedAt: now() };
+    // الموارد البشرية: الراتب الشهري (اختياري) ورصيد الإجازة السنوية المدفوعة بالأيام
+    if (input.salary !== undefined && input.salary !== null && input.salary !== '') set.salary = int(input.salary, { field: 'salary', min: 0, max: 1_000_000_000 });
+    if (input.annualLeave !== undefined && input.annualLeave !== null && input.annualLeave !== '') set.annualLeave = int(input.annualLeave, { field: 'annualLeave', min: 0, max: 90 });
     if (input.pin) {
       input.pin = normalizePin(input.pin);
       if (!validPin(input.pin)) throw bad('WEAK_PIN');

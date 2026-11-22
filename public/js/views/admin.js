@@ -8,6 +8,7 @@ import { accountCard, loadAccount } from './account.js';
 import { printHtml } from './receipts.js';
 import { rememberSession } from '../offline.js';
 import { imageSrc, putImage, resizeImage, syncImages } from '../images.js';
+import { hrPage, loadHr } from './hr.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 
 const COLORS = { olive: 'أخضر', petrol: 'أخضر داكن', sage: 'مريمية', teal: 'نعناعي', sand: 'ذهبي', clay: 'طيني', mocha: 'موكا', slate: 'رمادي' };
@@ -25,6 +26,7 @@ const SECTIONS = [
   ['modifiers', 'الإضافات', 'plus', 'admin.catalog'],
   ['discounts', 'الخصومات', 'tag', 'admin.catalog'],
   ['inventory', 'المخزون', 'box', 'admin.inventory'],
+  ['hr', 'الموارد البشرية', 'users', 'hr.manage'],
   ['employees', 'الموظفون', 'users', 'admin.employees'],
   ['settings', 'الإعدادات', 'gear', 'admin.settings'],
 ];
@@ -43,6 +45,21 @@ export const routes = {
 };
 
 // ---------------------------------------------------------------- رسوم بيانية بسيطة (SVG بمقياس واحد)
+// أيام الأسبوع بترتيب العراق (السبت أولاً)
+const WEEKDAY_ORDER = [6, 0, 1, 2, 3, 4, 5];
+const WEEKDAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+function weekdaysCard(w) {
+  if (!w) return '';
+  const days = WEEKDAY_ORDER.map((i) => w.days[i]);
+  const best = days.reduce((b, d, i) => (d.avgNet > days[b].avgNet ? i : b), 0);
+  const worst = days.reduce((b, d, i) => (d.avgNet < days[b].avgNet ? i : b), 0);
+  const any = days.some((d) => d.avgNet > 0);
+  return `<section class="card pad stack"><div class="row wrap"><h2 style="margin-inline-end:auto">أفضل أيام العمل</h2><span class="muted small">متوسط صافي المبيعات لكل يوم · آخر ${w.weeks} أسابيع</span></div>
+    ${any ? `${barChart(days.map((d) => d.avgNet), days.map((d) => WEEKDAY_NAMES[d.weekday]), { highlight: best })}
+    <div class="row wrap small"><span class="pill ok">الأفضل: ${WEEKDAY_NAMES[days[best].weekday]} · ${money(days[best].avgNet)} · ${days[best].avgSales} إيصال</span>
+      <span class="pill">الأضعف: ${WEEKDAY_NAMES[days[worst].weekday]} · ${money(days[worst].avgNet)}</span></div>` : '<p class="muted">لا مبيعات كافية بعد لمقارنة الأيام</p>'}</section>`;
+}
+
 function barChart(values, labels, { height = 200, highlight = -1, fmt = (v) => money(v, { symbol: false }) } = {}) {
   const w = 600;
   const pad = { t: 18, b: 28, l: 6, r: 6 };
@@ -72,6 +89,7 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  hr: () => hrPage(),
   branches(s, a) {
     const list = a.branches;
     const rep = a.branchReport;
@@ -108,7 +126,7 @@ const PAGES = {
   },
 
   audit(s, a) {
-    const groups = [['', 'الكل'], ['receipt', 'الاسترجاع والإلغاء'], ['discount', 'الخصومات'], ['inventory', 'المخزون'], ['item', 'الأصناف والأسعار'], ['shift', 'الورديات والنقد'], ['ticket', 'التذاكر'], ['employee', 'الموظفون'], ['settings', 'الإعدادات']];
+    const groups = [['', 'الكل'], ['receipt', 'الاسترجاع والإلغاء'], ['hr', 'الموارد البشرية'], ['discount', 'الخصومات'], ['inventory', 'المخزون'], ['item', 'الأصناف والأسعار'], ['shift', 'الورديات والنقد'], ['ticket', 'التذاكر'], ['employee', 'الموظفون'], ['settings', 'الإعدادات']];
     const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر']];
     const rows = a.audit;
     return `<div class="page-head"><h1>سجل العمليات</h1><span class="muted small">كل عملية حساسة مع الموظف ووقتها. لا يمكن تعديل السجل أو حذفه.</span></div>
@@ -186,6 +204,7 @@ const PAGES = {
         <section class="card pad stack"><h2>المبيعات حسب الساعة</h2>${barChart(hours.map((h) => h.net), hours.map((h) => `${h.hour}`), { highlight: hourNow - 6 })}</section>
         <section class="card pad stack"><h2>آخر 7 أيام</h2>${barChart(d.week.map((x) => x.net), d.week.map((x) => x.key.slice(5)), { highlight: 6 })}</section>
       </div>
+      ${weekdaysCard(d.weekdays)}
       <div class="split-view">
         <section class="card pad stack"><h2>الأكثر مبيعاً اليوم</h2>
           ${d.topItems.length ? d.topItems.map((i) => `<div class="stack" style="gap:4px"><div class="r-line"><span>${esc(i.label)} <span class="muted small">× ${i.qty - i.refundedQty}</span></span><span class="num">${money(i.net)}</span></div>
@@ -275,6 +294,7 @@ const PAGES = {
           ${can('admin.catalog') ? `<button class="btn" data-action="mat-new">${icon('plus', 'sm')} مادة جديدة</button>` : ''}
           <button class="btn primary" data-action="rcv-open">${icon('plus', 'sm')} استلام مشتريات</button>
           <label class="btn"><input type="file" accept="image/*" capture="environment" hidden data-change="rcv-scan" id="rcv-file">${icon('camera', 'sm')} تصوير فاتورة</label>
+          <button class="btn" data-action="rcv-review">${icon('list', 'sm')} مراجعة الاستلام</button>
           <button class="btn sm ghost" data-action="inv-reconcile">${icon('check', 'sm')} مطابقة مع الدفتر</button></div></div>
       ${inv.lowCount ? `<div class="alert-low" role="alert">${icon('alert')}<div><b>${inv.lowCount} ${inv.lowCount === 1 ? 'مادة' : 'مواد'} تحت حد التنبيه</b>
         <div class="small">${inv.rows.filter((r) => r.low).map((r) => `${esc(r.name)}: ${r.stock.toLocaleString('en-US')} ${esc(r.unit)}`).join(' · ')}</div></div></div>` : ''}
@@ -337,14 +357,15 @@ const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: '�
 
 // ---------------------------------------------------------------- سجل العمليات
 const AUDIT_LABELS = {
-  'receipt.refund': 'استرجاع', 'receipt.cancel': 'إلغاء طلب', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
+  'receipt.refund': 'استرجاع', 'receipt.cancel': 'إلغاء طلب', 'inventory.receive_fix': 'تصحيح استلام', 'inventory.threshold': 'تعديل حد التنبيه', 'inventory.shortfall': 'بيع بنقص مخزون',
+  'hr.bonus': 'حافز', 'hr.fine': 'غرامة', 'hr.adjustment_delete': 'حذف حافز/غرامة', 'hr.attendance_fix': 'تصحيح حضور', 'hr.leave_approved': 'موافقة إجازة', 'hr.leave_rejected': 'رفض إجازة', 'hr.award': 'موظف الشهر', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
   'inventory.receive': 'استلام مخزون', 'inventory.loss': 'هدر/تالف', 'inventory.count': 'جرد', 'inventory.adjust': 'تعديل مخزون', 'inventory.reconcile': 'مطابقة المخزون',
   'item.create': 'صنف جديد', 'item.update': 'تعديل صنف/سعر', 'items.archive': 'أرشفة صنف', 'categories.archive': 'أرشفة تصنيف', 'modifiers.archive': 'أرشفة إضافة',
   'shift.open': 'فتح وردية', 'shift.close': 'إغلاق وردية', 'shift.pay_in': 'إدخال نقد للدرج', 'shift.pay_out': 'سحب نقد من الدرج',
   'ticket.delete': 'حذف تذكرة محفوظة', 'employee.create': 'موظف جديد', 'employee.update': 'تعديل موظف', 'settings.update': 'تعديل الإعدادات',
   'expense.create': 'مصروف', 'expense.delete': 'حذف مصروف',
 };
-const AUDIT_WARN = new Set(['receipt.refund', 'receipt.cancel', 'discount.restricted', 'inventory.loss', 'inventory.adjust', 'shift.pay_out', 'ticket.delete', 'item.update', 'expense.delete']);
+const AUDIT_WARN = new Set(['receipt.refund', 'receipt.cancel', 'inventory.receive_fix', 'hr.adjustment_delete', 'hr.attendance_fix', 'discount.restricted', 'inventory.loss', 'inventory.adjust', 'shift.pay_out', 'ticket.delete', 'item.update', 'expense.delete']);
 
 function auditDetails(x) {
   const d = x.data ?? {};
@@ -527,6 +548,8 @@ export const modals = {
       ${field('الاسم', `<input name="name" id="em-name" required maxlength="40" value="${esc(e.name)}" autofocus>`)}
       <div class="grid-2">${field('الدور', `<select name="role" id="em-role">${Object.entries(ROLES).map(([k, l]) => `<option value="${k}" ${e.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
         ${field('الهاتف', `<input name="phone" id="em-phone" dir="ltr" value="${esc(e.phone ?? '')}">`)}</div>
+      <div class="grid-2">${field('الراتب الشهري (د.ع)', `<input name="salary" id="em-salary" inputmode="numeric" value="${esc(e.salary ?? '')}" placeholder="اختياري">`, 'يظهر للمالك وللموظف نفسه فقط')}
+        ${field('الإجازة السنوية المدفوعة (أيام)', `<input name="annualLeave" id="em-leave" inputmode="numeric" value="${esc(e.annualLeave ?? 14)}">`)}</div>
       ${field(e.id ? 'رمز جديد (اتركه فارغاً للإبقاء)' : 'رمز الدخول', `<input name="pin" id="em-pin" inputmode="numeric" pattern="[0-9٠-٩۰-۹]{4,6}" maxlength="6" type="password" ${e.id ? '' : 'required'} autocomplete="new-password">`, '4–6 أرقام، فريد لكل موظف')}
       ${e.id ? `<label class="check"><input type="checkbox" name="active" ${e.active ? 'checked' : ''}> فعال</label>` : ''}
       <p class="muted small">المالك: كل شيء · المدير: كل شيء عدا الموظفين والإعدادات · الكاشير: البيع والوردية والعملاء · الباريستا: شاشة التحضير فقط.</p>
@@ -558,6 +581,26 @@ export const modals = {
         ${field('تكلفة الوحدة (د.ع)', '<input name="cost" id="mat-cost" inputmode="decimal" placeholder="مثلاً: 2.5" autocomplete="off">')}
         ${field('حد التنبيه', '<input name="lowStock" id="mat-low" inputmode="numeric" placeholder="0" autocomplete="off">', 'تنبيه عند الوصول له')}</div>
       <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>إضافة المادة</button></form>` });
+  },
+
+  'rcv-review'(s) {
+    const rows = s.modal.rows;
+    return modalFrame({ title: 'مراجعة الاستلام', sub: 'آخر 45 يوماً · صحّح أي سطر دخل خطأً دون حذفه من المخزون', cls: 'wide', body: rows === null ? '<p class="muted">جارٍ التحميل…</p>'
+      : `<div class="table-wrap"><table><thead><tr><th>المادة</th><th class="num">الكمية</th><th class="num">سعر الوحدة</th><th>التاريخ</th><th></th></tr></thead><tbody>
+        ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b><div class="muted small">${esc(r.note ?? '')}${r.byName ? ` · ${esc(r.byName)}` : ''}</div>
+          ${r.fixes.length ? `<div class="small" style="color:var(--warn)">صُحّح ${r.fixes.length === 1 ? 'مرة' : `${r.fixes.length} مرات`}: كان ${r.originalQty.toLocaleString('en-US')} ${esc(r.unit)}${r.originalUnitCostMilli !== null ? ` بسعر ${formatMilli(r.originalUnitCostMilli)}` : ''} — ${esc(r.fixes.at(-1).note)}</div>` : ''}</td>
+          <td class="num">${r.qty.toLocaleString('en-US')} ${esc(r.unit)}</td><td class="num">${r.unitCostMilli !== null ? `${formatMilli(r.unitCostMilli)} د.ع` : '—'}</td>
+          <td class="small">${dateTime(r.at, tz())}</td><td><button class="btn sm" data-action="rcv-fix" data-id="${r.id}">تصحيح</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">لا استلام في آخر 45 يوماً</td></tr>'}
+      </tbody></table></div>` });
+  },
+  'rcv-fix'(s) {
+    const r = s.modal.row;
+    return modalFrame({ title: `تصحيح استلام: ${r.name}`, sub: `المسجّل الآن ${r.qty.toLocaleString('en-US')} ${r.unit}${r.unitCostMilli !== null ? ` بسعر ${formatMilli(r.unitCostMilli)} د.ع` : ''}`, body: `<form class="stack" data-form="rcv-fix-save" id="rcv-fix-form">
+      <div class="grid-2">${field(`الكمية الصحيحة (${esc(r.unit)})`, `<input class="amount-input" name="qty" id="rf-qty" inputmode="numeric" required value="${r.qty}">`)}
+        ${field('سعر الوحدة الصحيح (د.ع)', `<input name="cost" id="rf-cost" inputmode="decimal" value="${r.unitCostMilli !== null ? formatMilli(r.unitCostMilli) : ''}" placeholder="اتركه للإبقاء">`)}</div>
+      ${field('سبب التصحيح', '<input name="note" id="rf-note" required minlength="2" maxlength="120" placeholder="أُدخلت الكمية بصفر زائد">')}
+      <p class="muted small">يُسجَّل التصحيح حركةً مستقلة مرتبطة بالاستلام الأصلي (الأصل لا يُحذف)، ويُعدَّل الرصيد ومتوسط التكلفة بالفرق فقط. لا يمكن إنقاص كمية صُرفت فعلاً.</p>
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ التصحيح</button></form>` });
   },
 
   'branch-new'(s) {
@@ -664,6 +707,7 @@ async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
+    hr: () => loadHr(),
     branches: async () => {
       if (!a.branchPreset) a.branchPreset = 'today';
       const [from, to] = presetRange(a.branchPreset);
@@ -899,6 +943,22 @@ on({
     A().items = null;
     await loadSection('inventory');
   }),
+  'rcv-review': async () => {
+    openModal({ type: 'rcv-review', rows: null });
+    try { state.modal.rows = await get('/api/admin/inventory/receipts'); } catch (e) { state.modal = null; fail(e); }
+    render();
+  },
+  'rcv-fix': (el) => {
+    const row = state.modal.rows.find((x) => x.id === el.dataset.id);
+    openModal({ type: 'rcv-fix', row, rows: state.modal.rows, clientId: uid() });
+  },
+  'rcv-fix-save': (_el, _e, d) => busy(async () => {
+    const m = state.modal;
+    const r = await post(`/api/admin/inventory/receipts/${m.row.id}/fix`, { clientId: m.clientId, qty: num(d.qty, 'الكمية'), cost: d.cost || undefined, note: d.note });
+    toast(r.applied ? `صُحّح الاستلام (${r.delta > 0 ? '+' : ''}${r.delta.toLocaleString('en-US')})` : 'سبق تسجيل هذا التصحيح', 'ok');
+    openModal({ type: 'rcv-review', rows: await get('/api/admin/inventory/receipts') });
+    await loadSection('inventory');
+  }),
   'inv-filter': (el) => { A().invFilter = el.dataset.f; render(); },
   'rcv-open': async () => {
     await ensureStockItems();
@@ -972,7 +1032,8 @@ on({
   'employee-edit': (el) => openModal({ type: 'employee-form', doc: A().employees.find((x) => x.id === el.dataset.id) }),
   'employee-save': (_el, _e, d) => busy(async () => {
     const doc = state.modal.doc;
-    await post('/api/admin/employees', { id: doc?.id, name: d.name, role: d.role, phone: d.phone || null, pin: d.pin || undefined, active: doc ? d.active : true });
+    await post('/api/admin/employees', { id: doc?.id, name: d.name, role: d.role, phone: d.phone || null, pin: d.pin || undefined, active: doc ? d.active : true,
+      salary: d.salary === '' ? undefined : num(d.salary, 'الراتب'), annualLeave: d.annualLeave === '' ? undefined : num(d.annualLeave, 'الإجازة') });
     state.modal = null; toast('حُفظ الموظف', 'ok'); await loadSection('employees');
   }),
 

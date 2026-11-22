@@ -24,6 +24,7 @@ export const PERMISSIONS = Object.freeze({
   'admin.catalog': 'المنتجات والإضافات والخصومات',
   'admin.inventory': 'المخزون',
   'admin.employees': 'الموظفون',
+  'hr.manage': 'الموارد البشرية (الحضور، الحوافز والغرامات، الإجازات)',
   'admin.settings': 'الإعدادات',
 });
 

@@ -10,10 +10,11 @@ import * as admin from './views/admin.js';
 import * as account from './views/account.js';
 import * as platform from './views/platform.js';
 import * as cancel from './views/cancel.js';
+import * as hr from './views/hr.js';
 import { mark } from './brand.js';
 import { flushSales, initOffline, rememberSession, savedSession } from './offline.js';
 
-const modules = [pos, receipts, ops, admin, account, platform, cancel];
+const modules = [pos, receipts, ops, admin, account, platform, cancel, hr];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
@@ -24,10 +25,12 @@ const NAV = [
   ['shift', 'الوردية', 'clock', 'shift.manage'],
   ['customers', 'العملاء', 'users', 'customers.manage'],
   ['admin', 'الإدارة', 'chart', 'admin.reports'],
+  ['me', 'سجلي', 'user', null], // لكل موظف: حضوره وحوافزه وإجازاته
 ];
+const allowedNav = (p) => !p || can(p);
 
 function defaultRoute() {
-  return NAV.find(([, , , p]) => can(p))?.[0] ?? 'kds';
+  return NAV.find(([r, , , p]) => r !== 'me' && can(p))?.[0] ?? 'kds';
 }
 
 function parseHash() {
@@ -41,7 +44,7 @@ export async function navigate() {
   if (!state.employee) { state.authPage = route; state.modal = null; return render(); }
   const name = route || defaultRoute();
   const allowed = NAV.find(([r]) => r === name);
-  if (allowed && !can(allowed[3]) && !(name === 'admin' && can('admin.catalog'))) {
+  if (allowed && !allowedNav(allowed[3]) && !(name === 'admin' && (can('admin.catalog') || can('hr.manage')))) {
     location.hash = `#/${defaultRoute()}`;
     return undefined;
   }
@@ -89,6 +92,7 @@ function topbarView(s) {
     <div class="tb-end">
       ${globalThis.MORECASH_BACKEND ? '<span class="demo-tag" title="البيانات في هذا المتصفح فقط">تجريبي</span>' : ''}
       <span class="tb-net ${online ? '' : 'off'}" role="status"><i></i>${online ? 'متصل' : 'غير متصل'}</span>
+      ${hr.clockButton(s)}
       ${canFullscreen() ? `<button class="tb-btn" data-action="fullscreen" title="${isFullscreen() ? 'تصغير' : 'ملء الشاشة'}" aria-label="${isFullscreen() ? 'تصغير' : 'ملء الشاشة'}">${icon(isFullscreen() ? 'shrink' : 'expand', 'sm')}</button>` : ''}
       <span class="tb-me"><span class="avatar">${esc(initials(s.employee.name))}</span><span class="tb-name"><b>${esc(s.employee.name)}</b><small>${ROLE_NAMES[s.employee.role] ?? ''}</small></span></span>
       <button class="tb-btn" data-action="lock" title="قفل الشاشة" aria-label="قفل الشاشة">${icon('lock', 'sm')}<span>قفل</span></button>
@@ -97,7 +101,7 @@ function topbarView(s) {
 }
 
 function railView(s) {
-  const links = NAV.filter(([r, , , p]) => can(p) || (r === 'admin' && can('admin.catalog'))).map(([r, label, ic]) => {
+  const links = NAV.filter(([r, , , p]) => allowedNav(p) || (r === 'admin' && (can('admin.catalog') || can('hr.manage')))).map(([r, label, ic]) => {
     const low = s.catalog?.lowStock?.length ?? 0;
     const badge = r === 'pos' && s.ticketsCount ? `<span class="badge">${s.ticketsCount}</span>`
       : r === 'admin' && low && can('admin.inventory') ? `<span class="badge bad" title="مواد تحت حد التنبيه">${low}</span>` : '';
@@ -136,6 +140,7 @@ async function loadSession(employee) {
   state.view = {};
   if (state.online !== false) rememberSession(state.shop, employee);
   if (can('pos.sell') || can('kds.use')) await pos.loadBootstrap().catch(fail);
+  if (state.online !== false) await hr.loadMe();
   await navigate();
   flushSales();
 }

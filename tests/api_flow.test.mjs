@@ -11,7 +11,7 @@ async function boot({ seed = true, readInvoice = null } = {}) {
   const db = new MemoryDb({ newId: randomUUID });
   await ensureIndexes(db);
   let clock = new Date('2026-10-14T07:00:00Z'); // 10:00 بتوقيت بغداد
-  const app = createApp({ db, now: () => clock, log: { error() {}, warn() {}, info() {} }, readInvoice });
+  const app = createApp({ db, now: () => clock, log: { error: (e) => process.env.DEBUG_LOG && console.error(e), warn() {}, info() {} }, readInvoice });
   const tokens = {};
   const call = async (who, method, path, body, query) => {
     const r = await app.handle({ method, path, body, query, token: tokens[who] ?? null, ip: who });
@@ -649,4 +649,142 @@ test('بيع بلا إنترنت يصل بعد إغلاق ورديته: يُنس
   assert.ok(s.revisedAt);
   // بيع عادي بلا وردية مفتوحة يبقى مرفوضاً
   assert.equal((await call('owner', 'POST', '/api/sales', { clientId: randomUUID(), lines, clientTotal: total, payments: [{ typeId: 'cash', amount: total }] })).body.error, 'NO_OPEN_SHIFT');
+});
+
+test('الموارد البشرية: حضور وانصراف، تصحيح، حوافز وغرامات، إجازات برصيد، توزيع الحوافز حسب الساعات، وموظف الشهر', async () => {
+  const { ok, call, tick } = await boot();
+  const sara = await ok('owner', 'POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: '2468', salary: 600000, annualLeave: 10 });
+  const ali = await ok('owner', 'POST', '/api/admin/employees', { name: 'علي', role: 'barista', pin: '1122' });
+  await ok('owner', 'POST', '/api/admin/employees', { name: 'زينب', role: 'manager', pin: '2580' });
+  await ok('sara', 'POST', '/api/auth/pin', { pin: '2468' });
+  await ok('ali', 'POST', '/api/auth/pin', { pin: '1122' });
+  await ok('mgr', 'POST', '/api/auth/pin', { pin: '2580' });
+
+  // الحضور: الموظف يسجّل لنفسه، ولا حضوران مفتوحان، وإعادة الإرسال لا تكرر
+  const inBody = { clientId: randomUUID(), action: 'in' };
+  await ok('sara', 'POST', '/api/hr/clock', inBody);
+  assert.equal((await ok('sara', 'POST', '/api/hr/clock', inBody)).duplicate, true);
+  assert.equal((await call('sara', 'POST', '/api/hr/clock', { clientId: randomUUID(), action: 'in' })).body.error, 'ALREADY_CLOCKED_IN');
+  await ok('ali', 'POST', '/api/hr/clock', { clientId: randomUUID(), action: 'in' });
+  tick(8 * 3600_000);
+  await ok('sara', 'POST', '/api/hr/clock', { clientId: randomUUID(), action: 'out' });
+  tick(2 * 3600_000);
+  await ok('ali', 'POST', '/api/hr/clock', { clientId: randomUUID(), action: 'out' });
+  assert.equal((await call('ali', 'POST', '/api/hr/clock', { clientId: randomUUID(), action: 'out' })).body.error, 'NOT_CLOCKED_IN');
+
+  // سجل الموظف لنفسه، والكاشير لا يرى سجل غيره ولا لوحة الموارد البشرية
+  const mine = await ok('sara', 'GET', '/api/hr/record/me', null, { month: '2026-10' });
+  assert.equal(mine.summary.minutes, 480);
+  assert.equal(mine.summary.salary, 600000, 'الموظف يرى راتبه');
+  assert.equal((await call('sara', 'GET', `/api/hr/record/${ali.id}`, null, { month: '2026-10' })).status, 403);
+  assert.equal((await call('sara', 'GET', '/api/hr/overview', null, { month: '2026-10' })).status, 403);
+
+  // الحوافز والغرامات (المدير يملك hr.manage) ولا يرى الرواتب
+  const fineBody = { clientId: randomUUID(), employeeId: sara.id, type: 'fine', amount: 5000, reason: 'تأخير' };
+  await ok('mgr', 'POST', '/api/hr/adjustments', fineBody);
+  await ok('mgr', 'POST', '/api/hr/adjustments', fineBody);
+  await ok('mgr', 'POST', '/api/hr/adjustments', { clientId: randomUUID(), employeeId: ali.id, type: 'bonus', amount: 10000, reason: 'خدمة ممتازة' });
+  let ov = await ok('mgr', 'GET', '/api/hr/overview', null, { month: '2026-10' });
+  const row = (o, id) => o.rows.find((r) => r.id === id);
+  assert.equal(row(ov, sara.id).fine, 5000, 'الغرامة لا تتكرر عند إعادة الإرسال');
+  assert.equal(row(ov, sara.id).salary, undefined, 'المدير لا يرى الرواتب');
+  assert.equal(ov.rows[0].id, ali.id, 'الترتيب حسب الساعات: علي 10 ساعات أولاً');
+  assert.equal(row(ov, ali.id).rank, 1);
+  ov = await ok('owner', 'GET', '/api/hr/overview', null, { month: '2026-10' });
+  assert.equal(row(ov, sara.id).net, 600000 - 5000, 'صافي = الراتب + الحوافز − الغرامات');
+
+  // توزيع حافز 18,001 حسب الساعات (8 و10): المجموع بالضبط، والإعادة لا تكرر
+  const pool = { clientId: randomUUID(), month: '2026-10', pool: 18001 };
+  const d = await ok('mgr', 'POST', '/api/hr/incentives', pool);
+  assert.equal(d.total, 18001);
+  await ok('mgr', 'POST', '/api/hr/incentives', pool);
+  ov = await ok('mgr', 'GET', '/api/hr/overview', null, { month: '2026-10' });
+  assert.equal(row(ov, sara.id).bonus + row(ov, ali.id).bonus, 18001 + 10000);
+  assert.equal(row(ov, ali.id).bonus - 10000, 10001, 'علي (10 ساعات) يأخذ الحصة الأكبر');
+
+  // موظف الشهر بمكافأة؛ تغييره يلغي مكافأة السابق
+  await ok('mgr', 'POST', '/api/hr/award', { month: '2026-10', employeeId: ali.id, bonus: 25000 });
+  await ok('mgr', 'POST', '/api/hr/award', { month: '2026-10', employeeId: sara.id, bonus: 25000, note: 'أفضل خدمة' });
+  ov = await ok('mgr', 'GET', '/api/hr/overview', null, { month: '2026-10' });
+  assert.equal(ov.award.employeeId, sara.id);
+  assert.equal(row(ov, ali.id).bonus, 10000 + 10001, 'لا مكافأة موظف الشهر لعلي بعد التغيير');
+  assert.equal(row(ov, sara.id).employeeOfMonth, true);
+
+  // الإجازات: طلب، رصيد، تداخل، موافقة
+  const lv = await ok('sara', 'POST', '/api/hr/leaves', { clientId: randomUUID(), from: '2026-10-20', to: '2026-10-23', type: 'annual', reason: 'سفر' });
+  assert.equal(lv.days, 4);
+  assert.equal(lv.status, 'pending');
+  assert.equal((await call('sara', 'POST', '/api/hr/leaves', { clientId: randomUUID(), from: '2026-10-22', to: '2026-10-25' })).body.error, 'LEAVE_OVERLAP');
+  assert.equal((await call('sara', 'POST', `/api/hr/leaves/${lv.id}/decide`, { status: 'approved' })).status, 403, 'الموظف لا يوافق على إجازته');
+  await ok('mgr', 'POST', `/api/hr/leaves/${lv.id}/decide`, { status: 'approved' });
+  const big = await ok('sara', 'POST', '/api/hr/leaves', { clientId: randomUUID(), from: '2026-11-01', to: '2026-11-07', type: 'annual' });
+  assert.equal((await call('mgr', 'POST', `/api/hr/leaves/${big.id}/decide`, { status: 'approved' })).body.error, 'LEAVE_BALANCE', 'رصيد 10 أيام: 4 مستخدمة، والمطلوب 7');
+  const rec = await ok('sara', 'GET', '/api/hr/record/me', null, { month: '2026-10' });
+  assert.deepEqual(rec.leaveBalance, { total: 10, used: 4, left: 6 });
+
+  // تصحيح حضور منسي (المدير)، مع ملاحظة إلزامية
+  await ok('ali', 'POST', '/api/hr/clock', { clientId: randomUUID(), action: 'in' });
+  tick(20 * 3600_000);
+  await ok('ali', 'POST', '/api/auth/pin', { pin: '1122' }); // انتهت الجلسة (12 ساعة)
+  await ok('mgr', 'POST', '/api/auth/pin', { pin: '2580' });
+  let r = await ok('ali', 'GET', '/api/hr/record/me', null, { month: '2026-10' });
+  assert.equal(r.clockedIn.forgot, true, 'حضور مفتوح 20 ساعة = نُسي الانصراف');
+  const minutesBefore = r.summary.minutes;
+  assert.equal((await call('mgr', 'POST', `/api/hr/attendance/${r.clockedIn.id}/fix`, { outAt: new Date(Date.parse(r.clockedIn.inAt) + 6 * 3600_000).toISOString() })).body.error, 'REQUIRED');
+  await ok('mgr', 'POST', `/api/hr/attendance/${r.clockedIn.id}/fix`, { outAt: new Date(Date.parse(r.clockedIn.inAt) + 6 * 3600_000).toISOString(), note: 'نسي تسجيل الانصراف' });
+  r = await ok('ali', 'GET', '/api/hr/record/me', null, { month: '2026-10' });
+  assert.equal(r.clockedIn, null);
+  assert.equal(r.summary.minutes, minutesBefore + 360);
+});
+
+test('مراجعة الاستلام: تصحيح كمية وسعر استلام خاطئ بحركة مرتبطة، بلا حذف، ولا رصيد سالب', async () => {
+  const { ok, call } = await boot();
+  const inv = await ok('owner', 'GET', '/api/admin/inventory');
+  const milk = inv.rows.find((r) => r.name === 'حليب كامل');
+  // استلام خاطئ: 10,000 مل بسعر 3 د.ع والصحيح 1,000 مل بسعر 2.5
+  await ok('owner', 'POST', '/api/admin/inventory/receive', { supplier: 'مورد الألبان', lines: [{ id: randomUUID(), variantId: milk.variantId, qty: 10000, total: 30000 }] });
+  const list = await ok('owner', 'GET', '/api/admin/inventory/receipts');
+  const wrong = list.find((x) => x.variantId === milk.variantId);
+  assert.equal(wrong.qty, 10000);
+  assert.equal(wrong.unitCostMilli, 3000);
+  const before = (await ok('owner', 'GET', '/api/admin/inventory')).rows.find((r) => r.variantId === milk.variantId);
+  assert.equal(before.stock, milk.stock + 10000);
+  assert.equal((await call('owner', 'POST', `/api/admin/inventory/receipts/${wrong.id}/fix`, { clientId: randomUUID(), qty: 1000 })).body.error, 'REQUIRED', 'سبب التصحيح إلزامي');
+  const body = { clientId: randomUUID(), qty: 1000, cost: '2.5', note: 'أُدخلت الكمية بصفر زائد' };
+  const fix = await ok('owner', 'POST', `/api/admin/inventory/receipts/${wrong.id}/fix`, body);
+  assert.equal(fix.delta, -9000);
+  assert.equal((await ok('owner', 'POST', `/api/admin/inventory/receipts/${wrong.id}/fix`, body)).applied, false, 'لا يتكرر');
+  const after = (await ok('owner', 'GET', '/api/admin/inventory')).rows.find((r) => r.variantId === milk.variantId);
+  assert.equal(after.stock, milk.stock + 1000, 'الرصيد كأن الاستلام الصحيح هو الذي سُجّل');
+  // متوسط التكلفة = (الرصيد السابق × تكلفته + 1000 × 2.5) ÷ المجموع
+  const expectCost = Math.round((milk.stock * milk.costMilli + 1000 * 2500) / (milk.stock + 1000));
+  assert.ok(Math.abs(after.costMilli - expectCost) <= 1, `${after.costMilli} ≈ ${expectCost}`);
+  // الأصل باقٍ في السجل ومعه التصحيح، والدفتر مطابق للرصيد
+  const again = (await ok('owner', 'GET', '/api/admin/inventory/receipts')).find((x) => x.id === wrong.id);
+  assert.equal(again.originalQty, 10000);
+  assert.equal(again.qty, 1000);
+  assert.equal(again.fixes.length, 1);
+  const hist = await ok('owner', 'GET', `/api/admin/inventory/${milk.variantId}/history`);
+  assert.ok(hist.some((h) => h.reason === 'receive' && h.delta === 10000) && hist.some((h) => h.reason === 'receive_fix' && h.delta === -9000));
+  assert.deepEqual((await ok('owner', 'POST', '/api/admin/inventory/reconcile', {})).fixed, []);
+  // لا يُنقص التصحيح أكثر مما بقي في المخزون
+  await ok('owner', 'POST', '/api/admin/inventory/adjust', { clientId: randomUUID(), variantId: milk.variantId, type: 'count', qty: 500 });
+  assert.equal((await call('owner', 'POST', `/api/admin/inventory/receipts/${wrong.id}/fix`, { clientId: randomUUID(), qty: 0, note: 'لم يصل شيء' })).body.error, 'INSUFFICIENT_STOCK');
+});
+
+test('أفضل أيام العمل: متوسط كل يوم من الأسبوع على آخر 8 أسابيع', async () => {
+  const { ok } = await boot();
+  const { catalog, settings } = await ok('owner', 'GET', '/api/pos/bootstrap');
+  await ok('owner', 'POST', '/api/shifts/open', { startingCash: 0 });
+  const water = findItem(catalog, 'ماء').variants[0];
+  const lines = [{ variantId: water.id, qty: 4 }];
+  const total = clientTotal(catalog, settings, lines);
+  await ok('owner', 'POST', '/api/sales', { clientId: randomUUID(), lines, clientTotal: total, payments: [{ typeId: 'cash', amount: total }] });
+  const w = (await ok('owner', 'GET', '/api/admin/dashboard')).weekdays;
+  assert.equal(w.days.reduce((a, d) => a + d.days, 0), 56, '8 أسابيع × 7 أيام');
+  assert.ok(w.days.every((d) => d.days === 8));
+  const wd = new Date('2026-10-14T12:00:00Z').getUTCDay(); // الأربعاء
+  assert.equal(w.days[wd].net, total);
+  assert.equal(w.days[wd].avgNet, Math.round(total / 8), 'المتوسط على كل أيام الأربعاء في الفترة');
+  assert.equal(w.days.reduce((a, d) => a + d.net, 0), total);
 });

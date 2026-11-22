@@ -1119,6 +1119,14 @@ async function ensureIndexes(db) {
     ix('stock_moves', t({ variantId: 1, at: -1 }), { name: 'by_variant' }),
     ix('stock_moves', t({ at: -1 }), { name: 'by_date' }),
     ix('point_moves', t({ key: 1 }), { unique: true, name: 'uniq_key' }),
+    ix('attendance', t({ clientId: 1 }), { unique: true, name: 'uniq_client_id' }),
+    ix('attendance', t({ employeeId: 1 }), { unique: true, name: 'one_open_per_employee', partialFilterExpression: { open: true } }),
+    ix('attendance', t({ day: -1 }), { name: 'by_day' }),
+    ix('hr_adjustments', t({ clientId: 1 }), { unique: true, name: 'uniq_client_id' }),
+    ix('hr_adjustments', t({ employeeId: 1, day: -1 }), { name: 'by_employee' }),
+    ix('leaves', t({ clientId: 1 }), { unique: true, name: 'uniq_client_id' }),
+    ix('leaves', t({ employeeId: 1, from: -1 }), { name: 'by_employee' }),
+    ix('hr_awards', t({ month: 1 }), { unique: true, name: 'uniq_month' }),
     ix('customers', t({ phone: 1 }), { unique: true, name: 'uniq_phone', partialFilterExpression: { phone: { $type: 'string' } } }),
     ix('customers', t({ name: 1 }), { name: 'by_name' }),
     ix('categories', t({ name: 1 }), { unique: true, name: 'uniq_name' }),
@@ -1241,6 +1249,7 @@ const PERMISSIONS = Object.freeze({
   'admin.catalog': 'المنتجات والإضافات والخصومات',
   'admin.inventory': 'المخزون',
   'admin.employees': 'الموظفون',
+  'hr.manage': 'الموارد البشرية (الحضور، الحوافز والغرامات، الإجازات)',
   'admin.settings': 'الإعدادات',
 });
 
@@ -1561,7 +1570,7 @@ return { DEFAULT_SETTINGS, seedMenu };
 // ---- server/app/auth.js
 const __m_server_app_auth_js = await (async () => {
 const { ROLES, permissionsOf } = __m_shared_perms_js;
-const { AppError, audit, bad, bool, conflict, getSettings, id: checkId, isDup, notFound, oneOf, out, requirePerm, str } = __m_server_app_core_js;
+const { AppError, audit, bad, bool, conflict, getSettings, id: checkId, int, isDup, notFound, oneOf, out, requirePerm, str } = __m_server_app_core_js;
 const { normalizePin, pinLookup, randomToken, sha256, validPin } = __m_server_app_security_js;
 const { DEFAULT_SETTINGS, seedMenu } = __m_server_app_seed_js;
 // الإعداد الأول، الدخول بالرمز السري، الجلسات، والموظفون.
@@ -1662,6 +1671,9 @@ function createAuth(ctx) {
     const phone = str(input.phone, { field: 'phone', max: 20, optional: true });
     const active = input.active !== false;
     const set = { name, role, phone, active, updatedAt: now() };
+    // الموارد البشرية: الراتب الشهري (اختياري) ورصيد الإجازة السنوية المدفوعة بالأيام
+    if (input.salary !== undefined && input.salary !== null && input.salary !== '') set.salary = int(input.salary, { field: 'salary', min: 0, max: 1_000_000_000 });
+    if (input.annualLeave !== undefined && input.annualLeave !== null && input.annualLeave !== '') set.annualLeave = int(input.annualLeave, { field: 'annualLeave', min: 0, max: 90 });
     if (input.pin) {
       input.pin = normalizePin(input.pin);
       if (!validPin(input.pin)) throw bad('WEAK_PIN');
@@ -2350,7 +2362,7 @@ const { AppError, audit, bad, id: checkId, int, isDup, notFound, oneOf, requireP
 
 
 const MOVE_REASON = Object.freeze({
-  initial: 'رصيد افتتاحي', sale: 'بيع', refund: 'استرجاع', receive: 'استلام', loss: 'هدر/تالف', count: 'جرد', adjust: 'تعديل',
+  initial: 'رصيد افتتاحي', sale: 'بيع', refund: 'استرجاع', receive: 'استلام', receive_fix: 'تصحيح استلام', loss: 'هدر/تالف', count: 'جرد', adjust: 'تعديل',
 });
 
 function createInventory(ctx) {
@@ -2359,12 +2371,12 @@ function createInventory(ctx) {
   const variants = () => db.collection('variants');
 
   /** يطبّق حركة مرة واحدة فقط. يعيد true إن طُبّقت الآن، false إن كانت مطبّقة سابقاً. */
-  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null }) {
+  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null }) {
     if (!Number.isSafeInteger(delta) || delta === 0) return false;
     // البيع لا ينزل بالرصيد تحت الصفر (بيع بلا إنترنت أو بيعان متزامنان على آخر قطعة): يُخصم المتوفر فقط
     if (reason === 'sale' && delta < 0) return applySaleMove({ key, variantId, delta, refId, by });
     try {
-      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli });
+      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}) });
     } catch (e) {
       if (isDup(e)) return false;
       throw e;
@@ -2427,10 +2439,11 @@ function createInventory(ctx) {
     const note = str(input.note, { field: 'note', max: 120, optional: true });
     let delta;
     let costMilli = null;
+    let unitCostMilli = null;
     if (type === 'receive') {
       const qty = int(input.qty, { field: 'qty', min: 1, max: 10_000_000 });
       delta = qty;
-      if (input.cost !== undefined && input.cost !== '') costMilli = weightedCost(v.stock, v.costMilli, qty, parseMilli(input.cost));
+      if (input.cost !== undefined && input.cost !== '') { unitCostMilli = parseMilli(input.cost); costMilli = weightedCost(v.stock, v.costMilli, qty, unitCostMilli); }
     } else if (type === 'loss') {
       delta = -int(input.qty, { field: 'qty', min: 1, max: 10_000_000 });
       if (!note) throw bad('REQUIRED', 'note');
@@ -2443,7 +2456,7 @@ function createInventory(ctx) {
       if (!note) throw bad('REQUIRED', 'note');
       if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     }
-    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note });
+    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli });
     if (applied) await audit({ ...ctx, actor }, `inventory.${type}`, { variantId: v._id, delta, note });
     const after = await variants().findOne({ _id: v._id });
     return { applied, delta, stock: after.stock, costMilli: after.costMilli };
@@ -2517,6 +2530,62 @@ function createInventory(ctx) {
     return { received: results.filter((r) => r.applied).length, lines: results };
   }
 
+  // ---------------------------------------------------------------- مراجعة الاستلام وتصحيحه
+  // استلام سُجّل خطأً (كمية أو سعر) يُصحَّح بحركة "تصحيح استلام" مرتبطة به: لا يُحذف شيء من الدفتر،
+  // والرصيد ومتوسط التكلفة يُعدَّلان بالفرق فقط. الاستلام الأصلي يبقى ظاهراً ومعه ما صُحّح.
+  async function receipts(actor, { days = 45 } = {}) {
+    requirePerm(actor, 'admin.inventory');
+    const since = new Date(now().getTime() - Math.min(Number(days) || 45, 365) * 86400000);
+    const rows = (await moves().find({ reason: 'receive', at: { $gte: since } }).toArray()).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 300);
+    const vs = await variants().find({ _id: { $in: [...new Set(rows.map((m) => m.variantId))] } }).toArray();
+    const items = new Map((await db.collection('items').find({ _id: { $in: [...new Set(vs.map((v) => v.itemId))] } }).toArray()).map((i) => [i._id, i]));
+    const vmap = new Map(vs.map((v) => [v._id, v]));
+    return rows.map((m) => {
+      const v = vmap.get(m.variantId);
+      const item = v ? items.get(v.itemId) : null;
+      return {
+        id: m._id, at: m.at, variantId: m.variantId, name: item ? (v.name ? `${item.name} — ${v.name}` : item.name) : '—', unit: item?.unit ?? 'قطعة',
+        qty: m.fixedQty ?? m.delta, originalQty: m.delta, unitCostMilli: m.fixedUnitCostMilli ?? m.unitCostMilli ?? null,
+        originalUnitCostMilli: m.unitCostMilli ?? null, note: m.note, byName: m.byName, fixes: m.fixes ?? [],
+      };
+    });
+  }
+
+  async function fixReceipt(actor, moveId, input = {}) {
+    requirePerm(actor, 'admin.inventory');
+    const clientId = checkId(input.clientId, 'clientId');
+    const m = await moves().findOne({ _id: checkId(moveId) });
+    if (!m || m.reason !== 'receive') throw notFound();
+    if (await moves().findOne({ key: `rcvfix:${clientId}` })) return { applied: false };
+    const note = str(input.note, { field: 'note', min: 2, max: 120 });
+    const v = await variants().findOne({ _id: m.variantId });
+    if (!v) throw notFound();
+    const oldQty = m.fixedQty ?? m.delta;
+    const oldUnit = m.fixedUnitCostMilli ?? m.unitCostMilli ?? v.costMilli;
+    const newQty = int(input.qty, { field: 'qty', min: 0, max: 10_000_000 });
+    const newUnit = input.cost === undefined || input.cost === '' || input.cost === null ? oldUnit : parseMilli(input.cost);
+    const delta = newQty - oldQty;
+    if (delta === 0 && newUnit === oldUnit) throw bad('NO_CHANGE');
+    // ما صُرف من الاستلام لا يُستعاد: لا ينزل الرصيد تحت الصفر
+    if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
+    // متوسط التكلفة: نُخرج قيمة الاستلام القديمة وندخل الصحيحة
+    const newStock = v.stock + delta;
+    const value = BigInt(Math.max(0, v.stock)) * BigInt(v.costMilli) - BigInt(oldQty) * BigInt(oldUnit) + BigInt(newQty) * BigInt(newUnit);
+    const costMilli = newStock > 0 && value > 0n ? Number((value * 2n + BigInt(newStock)) / (2n * BigInt(newStock))) : newUnit;
+    try {
+      await moves().insertOne({ _id: ctx.newId(), key: `rcvfix:${clientId}`, variantId: v._id, delta, reason: 'receive_fix', refId: m._id, note, by: actor.id, byName: actor.name, at: now(), costMilli, unitCostMilli: newUnit, fixOf: { qty: oldQty, unitCostMilli: oldUnit } });
+    } catch (e) {
+      if (isDup(e)) return { applied: false };
+      throw e;
+    }
+    await variants().updateOne({ _id: v._id }, { ...(delta ? { $inc: { stock: delta } } : {}), $set: { costMilli } });
+    const fix = { at: now(), byName: actor.name, note, from: { qty: oldQty, unitCostMilli: oldUnit }, to: { qty: newQty, unitCostMilli: newUnit } };
+    await moves().updateOne({ _id: m._id }, { $set: { fixedQty: newQty, fixedUnitCostMilli: newUnit }, $push: { fixes: fix } });
+    await audit({ ...ctx, actor }, 'inventory.receive_fix', { variantId: v._id, delta, note, from: oldQty, to: newQty });
+    const after = await variants().findOne({ _id: v._id });
+    return { applied: true, delta, stock: after.stock, costMilli: after.costMilli };
+  }
+
   async function history(actor, variantId, limit = 100) {
     requirePerm(actor, 'admin.inventory');
     const rows = await moves().find({ variantId: checkId(variantId, 'variantId') }).sort({ at: -1 }).limit(Math.min(limit, 500)).toArray();
@@ -2554,7 +2623,7 @@ function createInventory(ctx) {
     return { variantId: v._id, lowStock, low: v.stock <= lowStock };
   }
 
-  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch, setLowStock };
+  return { applyMove, list, adjust, history, reconcile, stockItems, scanInvoice, receiveBatch, setLowStock, receipts, fixReceipt };
 }
 
 return { MOVE_REASON, createInventory };
@@ -2764,6 +2833,29 @@ function createReports(ctx) {
     };
   }
 
+  /**
+   * أفضل أيام العمل: متوسط صافي المبيعات وعدد الإيصالات لكل يوم من أيام الأسبوع في آخر 8 أسابيع.
+   * المتوسط على عدد مرات ذلك اليوم في الفترة (حتى لو لم يُبع فيه شيء)، فلا يتضخم يوم عمل فيه مرة واحدة.
+   */
+  async function weekdays(settings, weeks = 8) {
+    const tz = settings.tzOffsetMin;
+    const today = localDate(now(), tz);
+    const from = localDate(now().getTime() - (weeks * 7 - 1) * 86400000, tz);
+    const r = dayRange(from, today, tz);
+    const rep = buildReport(await receiptsIn(r.from, r.to), { tzOffsetMin: tz });
+    const byDay = new Map(rep.byDay.map((d) => [d.key, d]));
+    const out = Array.from({ length: 7 }, (_, i) => ({ weekday: i, net: 0, salesCount: 0, days: 0 }));
+    for (let i = 0; i < weeks * 7; i++) {
+      const key = localDate(Date.parse(`${from}T12:00:00Z`) + i * 86400000, 0);
+      const wd = new Date(`${key}T12:00:00Z`).getUTCDay();
+      const d = byDay.get(key);
+      out[wd].days += 1;
+      if (d) { out[wd].net += d.net; out[wd].salesCount += d.salesCount; }
+    }
+    for (const w of out) { w.avgNet = w.days ? Math.round(w.net / w.days) : 0; w.avgSales = w.days ? Math.round((w.salesCount / w.days) * 10) / 10 : 0; }
+    return { from, to: today, weeks, days: out };
+  }
+
   async function dashboard(actor) {
     requirePerm(actor, 'admin.reports');
     const settings = await getSettings(db);
@@ -2779,6 +2871,7 @@ function createReports(ctx) {
     const weekRep = buildReport(weekR, opts);
     const tracked = await db.collection('variants').find({ active: true, trackStock: true }).project({ stock: 1, lowStock: 1 }).toArray();
     return {
+      weekdays: await weekdays(settings),
       today, todaySummary: todayRep.summary, yesterdaySummary: buildReport(yesterdayR, opts).summary,
       byHour: todayRep.byHour, topItems: todayRep.byItem.slice(0, 6), byPayment: todayRep.byPayment,
       week: fillDays(weekRep.byDay, weekAgo, 7),
@@ -2895,6 +2988,283 @@ function view(d) {
 }
 
 return { EXPENSE_CATEGORIES, createExpenses };
+})();
+
+// ---- server/app/hr.js
+const __m_server_app_hr_js = await (async () => {
+const { localDate } = __m_shared_format_js;
+const { AppError, audit, bad, conflict, getSettings, id: checkId, int, isDup, notFound, oneOf, requirePerm, str } = __m_server_app_core_js;
+const { can } = __m_shared_perms_js;
+// الموارد البشرية: الحضور والانصراف، الحوافز والغرامات، الإجازات (طلب وموافقة ورصيد مدفوع)،
+// سجل لكل موظف، ترتيب الحوافز حسب ساعات العمل، وموظف الشهر.
+// كل عملية كتابة من الجهاز تحمل clientId (لا تتكرر عند إعادة الإرسال)، والمبالغ دنانير صحيحة.
+
+
+
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH = /^\d{4}-\d{2}$/;
+const LEAVE_TYPES = { annual: 'إجازة سنوية', sick: 'إجازة مرضية', unpaid: 'إجازة بدون راتب' };
+const FORGOT_MIN = 16 * 60; // حضور مفتوح أكثر من 16 ساعة: غالباً نُسي الانصراف
+
+/** تقسيم مبلغ صحيح على أوزان بأكبر باقٍ: الحصص أعداد صحيحة ومجموعها = المبلغ بالضبط */
+function splitByWeight(weights, amount) {
+  const total = weights.reduce((a, w) => a + BigInt(w), 0n);
+  if (total === 0n) return weights.map(() => 0);
+  const A = BigInt(amount);
+  const shares = weights.map((w) => (A * BigInt(w)) / total);
+  const rem = weights.map((w) => (A * BigInt(w)) % total);
+  let left = A - shares.reduce((a, x) => a + x, 0n);
+  const order = weights.map((_, i) => i).sort((i, j) => (rem[j] > rem[i] ? 1 : rem[j] < rem[i] ? -1 : i - j));
+  for (const i of order) { if (left === 0n) break; shares[i] += 1n; left -= 1n; }
+  return shares.map(Number);
+}
+
+const daysBetween = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
+
+function createHr(ctx) {
+  const { db, now, newId } = ctx;
+  const ATT = () => db.collection('attendance');
+  const ADJ = () => db.collection('hr_adjustments');
+  const LV = () => db.collection('leaves');
+  const AW = () => db.collection('hr_awards');
+  const EMP = () => db.collection('employees');
+  const tz = async () => (await getSettings(db)).tzOffsetMin;
+
+  const minutesOf = (a, at = now()) => Math.max(0, Math.floor(((a.outAt ? new Date(a.outAt) : at) - new Date(a.inAt)) / 60000));
+  const viewAtt = (a) => ({ id: a._id, employeeId: a.employeeId, employeeName: a.employeeName, inAt: a.inAt, outAt: a.outAt ?? null, day: a.day,
+    minutes: minutesOf(a), open: !a.outAt, forgot: !a.outAt && minutesOf(a) > FORGOT_MIN, fixed: a.fixed ?? null });
+
+  // ---------------------------------------------------------------- الحضور والانصراف (للموظف نفسه)
+  async function clock(actor, input = {}) {
+    if (!actor) throw new AppError(401, 'NOT_AUTHENTICATED');
+    const clientId = checkId(input.clientId, 'clientId');
+    const action = oneOf(input.action, ['in', 'out'], 'action');
+    const open = await ATT().findOne({ employeeId: actor.id, open: true });
+    if (action === 'in') {
+      const prior = await ATT().findOne({ clientId });
+      if (prior) return { attendance: viewAtt(prior), duplicate: true };
+      if (open) throw conflict('ALREADY_CLOCKED_IN');
+      const doc = { _id: newId(), clientId, employeeId: actor.id, employeeName: actor.name, inAt: now(), outAt: null, open: true, day: localDate(now(), await tz()) };
+      try { await ATT().insertOne(doc); } catch (e) { if (isDup(e)) throw conflict('ALREADY_CLOCKED_IN'); throw e; }
+      return { attendance: viewAtt(doc), duplicate: false };
+    }
+    const done = await ATT().findOne({ outClientId: clientId });
+    if (done) return { attendance: viewAtt(done), duplicate: true };
+    if (!open) throw conflict('NOT_CLOCKED_IN');
+    const r = await ATT().updateOne({ _id: open._id, open: true }, { $set: { outAt: now(), open: false, outClientId: clientId } });
+    if (!r.matchedCount) throw conflict('NOT_CLOCKED_IN');
+    return { attendance: viewAtt(await ATT().findOne({ _id: open._id })), duplicate: false };
+  }
+
+  // ---------------------------------------------------------------- الإجازات
+  async function requestLeave(actor, input = {}) {
+    if (!actor) throw new AppError(401, 'NOT_AUTHENTICATED');
+    const clientId = checkId(input.clientId, 'clientId');
+    const prior = await LV().findOne({ clientId });
+    if (prior) return viewLeave(prior);
+    const from = String(input.from ?? '');
+    const to = String(input.to ?? '');
+    if (!DATE.test(from) || !DATE.test(to) || from > to) throw bad('INVALID_RANGE');
+    const days = daysBetween(from, to);
+    if (days > 60) throw bad('INVALID_RANGE');
+    const type = oneOf(input.type ?? 'annual', Object.keys(LEAVE_TYPES), 'type');
+    const reason = str(input.reason, { field: 'reason', max: 160, optional: true });
+    // الموظف يطلب لنفسه؛ مسؤول الموارد البشرية يمكنه تسجيل إجازة لموظف آخر
+    let employeeId = actor.id;
+    if (input.employeeId && input.employeeId !== actor.id) { requirePerm(actor, 'hr.manage'); employeeId = checkId(input.employeeId, 'employeeId'); }
+    const emp = await EMP().findOne({ _id: employeeId });
+    if (!emp) throw notFound();
+    const overlap = await LV().findOne({ employeeId, status: { $in: ['pending', 'approved'] }, from: { $lte: to }, to: { $gte: from } });
+    if (overlap) throw conflict('LEAVE_OVERLAP');
+    const doc = { _id: newId(), clientId, employeeId, employeeName: emp.name, from, to, days, type, paid: type !== 'unpaid', reason, status: 'pending', requestedAt: now(), requestedBy: actor.name };
+    try { await LV().insertOne(doc); } catch (e) { if (isDup(e)) return viewLeave(await LV().findOne({ clientId })); throw e; }
+    return viewLeave(doc);
+  }
+
+  async function leaveBalance(emp, year) {
+    const used = (await LV().find({ employeeId: emp._id, status: 'approved', type: 'annual' }).toArray())
+      .filter((l) => l.from.startsWith(year)).reduce((a, l) => a + l.days, 0);
+    const total = emp.annualLeave ?? 14;
+    return { total, used, left: total - used };
+  }
+
+  async function decideLeave(actor, leaveId, input = {}) {
+    requirePerm(actor, 'hr.manage');
+    const l = await LV().findOne({ _id: checkId(leaveId) });
+    if (!l) throw notFound();
+    const status = oneOf(input.status, ['approved', 'rejected'], 'status');
+    if (l.status === status) return viewLeave(l);
+    if (l.status !== 'pending') throw conflict('LEAVE_ALREADY_DECIDED');
+    if (status === 'approved' && l.type === 'annual') {
+      const emp = await EMP().findOne({ _id: l.employeeId });
+      const bal = await leaveBalance(emp, l.from.slice(0, 4));
+      if (l.days > bal.left) throw bad('LEAVE_BALANCE', String(bal.left));
+    }
+    const r = await LV().updateOne({ _id: l._id, status: 'pending' }, { $set: { status, decidedAt: now(), decidedBy: actor.name, note: str(input.note, { field: 'note', max: 160, optional: true }) } });
+    if (!r.matchedCount) throw conflict('LEAVE_ALREADY_DECIDED');
+    await audit({ ...ctx, actor }, `hr.leave_${status}`, { name: l.employeeName, from: l.from, to: l.to, days: l.days, type: LEAVE_TYPES[l.type] });
+    return viewLeave(await LV().findOne({ _id: l._id }));
+  }
+
+  const viewLeave = (l) => ({ id: l._id, employeeId: l.employeeId, employeeName: l.employeeName, from: l.from, to: l.to, days: l.days, type: l.type, typeName: LEAVE_TYPES[l.type], paid: l.paid, reason: l.reason, status: l.status, requestedAt: l.requestedAt, decidedBy: l.decidedBy ?? null, note: l.note ?? null });
+
+  // ---------------------------------------------------------------- الحوافز والغرامات
+  async function addAdjustment(actor, input = {}) {
+    requirePerm(actor, 'hr.manage');
+    const clientId = checkId(input.clientId, 'clientId');
+    const prior = await ADJ().findOne({ clientId });
+    if (prior) return viewAdj(prior);
+    const type = oneOf(input.type, ['bonus', 'fine'], 'type');
+    const amount = int(input.amount, { field: 'amount', min: 1, max: 100_000_000 });
+    const reason = str(input.reason, { field: 'reason', min: 2, max: 160 });
+    const emp = await EMP().findOne({ _id: checkId(input.employeeId, 'employeeId') });
+    if (!emp) throw notFound();
+    const t = await tz();
+    const day = input.day && DATE.test(input.day) ? input.day : localDate(now(), t);
+    if (day > localDate(now(), t)) throw bad('INVALID_DATE');
+    const doc = { _id: newId(), clientId, employeeId: emp._id, employeeName: emp.name, type, amount, reason, day, source: input.source ?? 'manual', by: actor.id, byName: actor.name, createdAt: now() };
+    try { await ADJ().insertOne(doc); } catch (e) { if (isDup(e)) return viewAdj(await ADJ().findOne({ clientId })); throw e; }
+    await audit({ ...ctx, actor }, `hr.${type}`, { name: emp.name, amount, reason });
+    return viewAdj(doc);
+  }
+
+  async function removeAdjustment(actor, id) {
+    requirePerm(actor, 'hr.manage');
+    const a = await ADJ().findOne({ _id: checkId(id) });
+    if (!a) throw notFound();
+    await ADJ().deleteOne({ _id: a._id });
+    await audit({ ...ctx, actor }, 'hr.adjustment_delete', { name: a.employeeName, type: a.type, amount: a.amount, reason: a.reason });
+    return { ok: true };
+  }
+
+  const viewAdj = (a) => ({ id: a._id, employeeId: a.employeeId, employeeName: a.employeeName, type: a.type, amount: a.amount, reason: a.reason, day: a.day, source: a.source, byName: a.byName });
+
+  // ---------------------------------------------------------------- تصحيح الحضور (نسي الانصراف، وقت خاطئ)
+  async function fixAttendance(actor, attId, input = {}) {
+    requirePerm(actor, 'hr.manage');
+    const a = await ATT().findOne({ _id: checkId(attId) });
+    if (!a) throw notFound();
+    const inAt = input.inAt ? new Date(input.inAt) : new Date(a.inAt);
+    const outAt = input.outAt ? new Date(input.outAt) : null;
+    if (Number.isNaN(inAt.getTime()) || (outAt && Number.isNaN(outAt.getTime()))) throw bad('INVALID_DATE');
+    if (outAt && (outAt <= inAt || outAt - inAt > 24 * 3600_000)) throw bad('INVALID_RANGE');
+    if (inAt > now() || (outAt && outAt > now())) throw bad('INVALID_DATE');
+    const note = str(input.note, { field: 'note', min: 2, max: 160 });
+    const set = { inAt, outAt, open: !outAt, day: localDate(inAt, await tz()), fixed: { byName: actor.name, at: now(), note, before: { inAt: a.inAt, outAt: a.outAt ?? null } } };
+    try { await ATT().updateOne({ _id: a._id }, { $set: set }); } catch (e) { if (isDup(e)) throw conflict('ALREADY_CLOCKED_IN'); throw e; }
+    await audit({ ...ctx, actor }, 'hr.attendance_fix', { name: a.employeeName, note });
+    return viewAtt(await ATT().findOne({ _id: a._id }));
+  }
+
+  // ---------------------------------------------------------------- الملخص الشهري والترتيب
+  async function monthData(month) {
+    if (!MONTH.test(String(month ?? ''))) throw new AppError(400, 'INVALID_RANGE');
+    const emps = await EMP().find({}).toArray();
+    const att = (await ATT().find({}).toArray()).filter((a) => a.day?.startsWith(month));
+    const adj = (await ADJ().find({}).toArray()).filter((a) => a.day.startsWith(month));
+    const lv = (await LV().find({}).toArray()).filter((l) => l.status === 'approved' && l.from <= `${month}-31` && l.to >= `${month}-01`);
+    const award = await AW().findOne({ month });
+    const rows = emps.filter((e) => e.active || att.some((a) => a.employeeId === e._id)).map((e) => {
+      const mine = att.filter((a) => a.employeeId === e._id);
+      const bonus = adj.filter((a) => a.employeeId === e._id && a.type === 'bonus').reduce((s, a) => s + a.amount, 0);
+      const fine = adj.filter((a) => a.employeeId === e._id && a.type === 'fine').reduce((s, a) => s + a.amount, 0);
+      // الحضور المنسي (أكثر من 16 ساعة) لا يُحسب حتى يُصحَّح، كي لا يتضخم الترتيب
+      const minutes = mine.reduce((s, a) => s + (!a.outAt && minutesOf(a) > FORGOT_MIN ? 0 : minutesOf(a)), 0);
+      return {
+        id: e._id, name: e.name, role: e.role, active: e.active, minutes, days: new Set(mine.map((a) => a.day)).size,
+        openNow: mine.some((a) => !a.outAt), forgot: mine.some((a) => !a.outAt && minutesOf(a) > FORGOT_MIN),
+        bonus, fine, paidLeaveDays: lv.filter((l) => l.employeeId === e._id && l.paid).reduce((s, l) => s + l.days, 0),
+        salary: e.salary ?? 0, employeeOfMonth: award?.employeeId === e._id,
+      };
+    });
+    rows.sort((a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name, 'ar'));
+    rows.forEach((r, i) => { r.rank = r.minutes ? i + 1 : null; });
+    return { month, rows, award: award ? { employeeId: award.employeeId, name: award.name, note: award.note, bonus: award.bonus ?? 0 } : null };
+  }
+
+  async function overview(actor, { month } = {}) {
+    requirePerm(actor, 'hr.manage');
+    const m = await monthData(month);
+    const showPay = can(actor.role, 'admin.employees'); // الرواتب للمالك فقط
+    for (const r of m.rows) { if (!showPay) delete r.salary; else r.net = r.salary + r.bonus - r.fine; }
+    const t = await tz();
+    const today = localDate(now(), t);
+    const present = (await ATT().find({ open: true }).toArray()).map(viewAtt);
+    const pending = (await LV().find({ status: 'pending' }).toArray()).map(viewLeave).sort((a, b) => a.from.localeCompare(b.from));
+    const onLeaveToday = (await LV().find({ status: 'approved', from: { $lte: today }, to: { $gte: today } }).toArray()).map(viewLeave);
+    return { ...m, present, pending, onLeaveToday, showPay };
+  }
+
+  /** سجل الموظف: لنفسه، أو لمسؤول الموارد البشرية لأي موظف */
+  async function record(actor, employeeId, { month } = {}) {
+    if (!actor) throw new AppError(401, 'NOT_AUTHENTICATED');
+    const id = employeeId === 'me' ? actor.id : checkId(employeeId);
+    if (id !== actor.id) requirePerm(actor, 'hr.manage');
+    const emp = await EMP().findOne({ _id: id });
+    if (!emp) throw notFound();
+    const t = await tz();
+    const m = month && MONTH.test(month) ? month : localDate(now(), t).slice(0, 7);
+    const att = (await ATT().find({ employeeId: id }).toArray()).filter((a) => a.day?.startsWith(m)).sort((a, b) => new Date(b.inAt) - new Date(a.inAt)).map(viewAtt);
+    const adj = (await ADJ().find({ employeeId: id }).toArray()).filter((a) => a.day.startsWith(m)).sort((a, b) => b.day.localeCompare(a.day)).map(viewAdj);
+    const leaves = (await LV().find({ employeeId: id }).toArray()).sort((a, b) => b.from.localeCompare(a.from)).slice(0, 30).map(viewLeave);
+    const awards = (await AW().find({ employeeId: id }).toArray()).sort((a, b) => b.month.localeCompare(a.month)).map((a) => a.month);
+    const open = await ATT().findOne({ employeeId: id, open: true });
+    const summary = (await monthData(m)).rows.find((r) => r.id === id) ?? { minutes: 0, days: 0, bonus: 0, fine: 0, paidLeaveDays: 0, rank: null };
+    const showPay = id === actor.id || can(actor.role, 'admin.employees');
+    if (!showPay) delete summary.salary; else summary.net = (summary.salary ?? 0) + summary.bonus - summary.fine;
+    return {
+      employee: { id: emp._id, name: emp.name, role: emp.role, phone: emp.phone ?? null, active: emp.active, annualLeave: emp.annualLeave ?? 14 },
+      month: m, summary, attendance: att, adjustments: adj, leaves, awards, clockedIn: open ? viewAtt(open) : null,
+      leaveBalance: await leaveBalance(emp, m.slice(0, 4)),
+    };
+  }
+
+  /** توزيع مبلغ حوافز الشهر على الموظفين حسب ساعات عملهم (مجموع الحصص = المبلغ بالضبط) */
+  async function distributeIncentives(actor, input = {}) {
+    requirePerm(actor, 'hr.manage');
+    const clientId = checkId(input.clientId, 'clientId');
+    const pool = int(input.pool, { field: 'pool', min: 1, max: 1_000_000_000 });
+    const { month, rows } = await monthData(input.month);
+    const eligible = rows.filter((r) => r.active && r.minutes > 0);
+    if (!eligible.length) throw bad('NO_HOURS');
+    const shares = splitByWeight(eligible.map((r) => r.minutes), pool);
+    const today = localDate(now(), await tz());
+    if (month > today.slice(0, 7)) throw bad('INVALID_RANGE');
+    const day = today.startsWith(month) ? today : `${month}-28`;
+    const out = [];
+    for (const [i, r] of eligible.entries()) {
+      if (!shares[i]) continue;
+      out.push(await addAdjustment(actor, { clientId: `i${clientId.slice(0, 28)}-${r.id.slice(0, 30)}`, employeeId: r.id, type: 'bonus', amount: shares[i], reason: `حافز الشهر حسب الساعات (${Math.round(r.minutes / 60)} ساعة)`, day, source: 'hours' }));
+    }
+    return { month, pool, total: out.reduce((a, x) => a + x.amount, 0), rows: out };
+  }
+
+  async function setAward(actor, input = {}) {
+    requirePerm(actor, 'hr.manage');
+    const { month } = await monthData(input.month);
+    const emp = await EMP().findOne({ _id: checkId(input.employeeId, 'employeeId') });
+    if (!emp) throw notFound();
+    const note = str(input.note, { field: 'note', max: 160, optional: true });
+    const bonus = input.bonus ? int(input.bonus, { field: 'bonus', min: 0, max: 100_000_000 }) : 0;
+    const prev = await AW().findOne({ month });
+    if (prev) await AW().updateOne({ _id: prev._id }, { $set: { employeeId: emp._id, name: emp.name, note, bonus, by: actor.name, at: now() } });
+    else {
+      try { await AW().insertOne({ _id: newId(), month, employeeId: emp._id, name: emp.name, note, bonus, by: actor.name, at: now() }); } catch (e) { if (!isDup(e)) throw e; }
+    }
+    if (bonus) {
+      // مكافأة موظف الشهر: واحدة لكل شهر؛ تغيير الموظف يلغي مكافأة السابق
+      await ADJ().deleteMany({ source: 'award', day: { $gte: `${month}-01`, $lte: `${month}-31` }, employeeId: { $ne: emp._id } });
+      await addAdjustment(actor, { clientId: `award-${month}-${emp._id}`.slice(0, 64), employeeId: emp._id, type: 'bonus', amount: bonus, reason: `موظف الشهر ${month}`, day: localDate(now(), await tz()).startsWith(month) ? undefined : `${month}-28`, source: 'award' });
+    }
+    await audit({ ...ctx, actor }, 'hr.award', { month, name: emp.name, bonus });
+    return { month, employeeId: emp._id, name: emp.name, note, bonus };
+  }
+
+  return { clock, requestLeave, decideLeave, addAdjustment, removeAdjustment, fixAttendance, overview, record, distributeIncentives, setAward };
+}
+
+return { splitByWeight, createHr };
 })();
 
 // ---- server/app/sales.js
@@ -3673,10 +4043,12 @@ const { createCatalog } = __m_server_app_catalog_js;
 const { createInventory } = __m_server_app_inventory_js;
 const { createReports } = __m_server_app_reports_js;
 const { createExpenses } = __m_server_app_expenses_js;
+const { createHr } = __m_server_app_hr_js;
 const { createSales } = __m_server_app_sales_js;
 const { createShifts } = __m_server_app_shifts_js;
 // تجميع الخدمات وواجهة API كدالة نقية: handle(request) → response.
 // خادم Node (server/http.js) والنسخة التجريبية في المتصفح يستخدمان نفس الدالة.
+
 
 
 
@@ -3693,6 +4065,7 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
   ctx.inventory = createInventory(ctx);
   ctx.shifts = createShifts(ctx);
   ctx.expenses = createExpenses(ctx);
+  ctx.hr = createHr(ctx);
   const auth = createAuth(ctx);
   const settings = createSettings(ctx);
   const catalog = createCatalog(ctx);
@@ -3743,6 +4116,17 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['GET', '/api/admin/reports', (actor, req) => reports.report(actor, req.query)],
     ['GET', '/api/admin/reports/daily', (actor, req) => reports.daily(actor, req.query)],
     ['GET', '/api/admin/expenses', (actor, req) => ctx.expenses.list(actor, req.query)],
+    // الموارد البشرية
+    ['POST', '/api/hr/clock', (actor, req) => ctx.hr.clock(actor, req.body)],
+    ['POST', '/api/hr/leaves', (actor, req) => ctx.hr.requestLeave(actor, req.body)],
+    ['POST', '/api/hr/leaves/:id/decide', (actor, req, p) => ctx.hr.decideLeave(actor, p.id, req.body)],
+    ['GET', '/api/hr/overview', (actor, req) => ctx.hr.overview(actor, req.query)],
+    ['GET', '/api/hr/record/:id', (actor, req, p) => ctx.hr.record(actor, p.id, req.query)],
+    ['POST', '/api/hr/adjustments', (actor, req) => ctx.hr.addAdjustment(actor, req.body)],
+    ['DELETE', '/api/hr/adjustments/:id', (actor, req, p) => ctx.hr.removeAdjustment(actor, p.id)],
+    ['POST', '/api/hr/attendance/:id/fix', (actor, req, p) => ctx.hr.fixAttendance(actor, p.id, req.body)],
+    ['POST', '/api/hr/incentives', (actor, req) => ctx.hr.distributeIncentives(actor, req.body)],
+    ['POST', '/api/hr/award', (actor, req) => ctx.hr.setAward(actor, req.body)],
     ['POST', '/api/admin/expenses', (actor, req) => ctx.expenses.create(actor, req.body)],
     ['DELETE', '/api/admin/expenses/:id', (actor, req, p) => ctx.expenses.remove(actor, p.id)],
     // سجل العمليات الحساسة: للمالك فقط
@@ -3777,6 +4161,8 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['GET', '/api/admin/inventory', (actor) => ctx.inventory.list(actor)],
     ['POST', '/api/admin/inventory/adjust', (actor, req) => ctx.inventory.adjust(actor, req.body)],
     ['POST', '/api/admin/inventory/low-stock', (actor, req) => ctx.inventory.setLowStock(actor, req.body)],
+    ['GET', '/api/admin/inventory/receipts', (actor, req) => ctx.inventory.receipts(actor, req.query)],
+    ['POST', '/api/admin/inventory/receipts/:id/fix', (actor, req, p) => ctx.inventory.fixReceipt(actor, p.id, req.body)],
     ['GET', '/api/admin/inventory/:id/history', (actor, req, p) => ctx.inventory.history(actor, p.id)],
     ['POST', '/api/admin/inventory/reconcile', (actor) => ctx.inventory.reconcile(actor)],
     ['GET', '/api/admin/inventory/stock-items', async (actor) => { requirePerm(actor, 'admin.inventory'); return ctx.inventory.stockItems(); }],
@@ -4832,6 +5218,13 @@ const ERRORS = {
   TOTAL_MISMATCH: 'تغيّرت الأسعار على الخادم. حدّث القائمة ثم أعد المحاولة.',
   MODIFIER_REQUIRED: 'اختر الإضافة الإلزامية للصنف.',
   UNKNOWN_ITEM: 'صنف غير متوفر. حدّث القائمة.',
+  ALREADY_CLOCKED_IN: 'أنت مسجّل حضور بالفعل.',
+  NOT_CLOCKED_IN: 'لا يوجد حضور مفتوح لتسجيل الانصراف.',
+  LEAVE_OVERLAP: 'يوجد طلب إجازة آخر في نفس الأيام.',
+  LEAVE_BALANCE: 'رصيد الإجازة السنوية لا يكفي لهذه المدة.',
+  LEAVE_ALREADY_DECIDED: 'سبق البت في هذا الطلب.',
+  NO_HOURS: 'لا ساعات عمل مسجّلة في هذا الشهر لتوزيع الحوافز عليها.',
+  NO_CHANGE: 'لم يتغير شيء: الكمية والسعر كما هما.',
   OUT_OF_STOCK: 'هذا الصنف غير متوفر حالياً — نفد من المخزون.',
   INSUFFICIENT_STOCK: 'الكمية أكبر من الرصيد الموجود في المخزون.',
   INSUFFICIENT_POINTS: 'رصيد النقاط غير كافٍ.',
@@ -6754,6 +7147,283 @@ async function loadAccount() {
 return { DEMO_ACCOUNT, disabledView, gateView, accountCard, modals, initAccount, loadAccount, mark };
 })();
 
+// ---- public/js/views/hr.js
+const __m_public_js_views_hr_js = await (async () => {
+const { dateTime, esc, localDate, money, parseAmount, time } = __m_shared_format_js;
+const { del, get, post, uid } = __m_public_js_api_js;
+const { icon } = __m_public_js_icons_js;
+const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
+// الموارد البشرية: صفحة «سجلي» لكل موظف (حضور/انصراف، ساعاته، حوافزه وغراماته، إجازاته وطلب إجازة)،
+// وقسم الإدارة (الحاضرون الآن، ترتيب الموظفين بالساعات، الإجازات، الحوافز والغرامات، موظف الشهر).
+
+
+
+
+
+const tz = () => state.settings?.tzOffsetMin ?? 180;
+const thisMonth = () => localDate(Date.now(), tz()).slice(0, 7);
+const hours = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
+const ROLES = { owner: 'المالك', manager: 'مدير', cashier: 'كاشير', barista: 'باريستا' };
+const STATUS = { pending: ['بانتظار الموافقة', 'warn'], approved: ['موافق عليها', 'ok'], rejected: ['مرفوضة', 'bad'] };
+const H = () => state.view.hr ?? (state.view.hr = { month: thisMonth(), tab: 'team' });
+
+// ---------------------------------------------------------------- الحضور في الشريط العلوي
+async function loadMe() {
+  try { state.me = await get('/api/hr/record/me', { month: thisMonth() }); } catch { state.me = null; }
+}
+
+function clockButton(s) {
+  const c = s.me?.clockedIn;
+  if (s.me === undefined || s.online === false) return '';
+  return c
+    ? `<button class="tb-btn on" data-action="hr-clock" data-act="out" title="مسجّل حضور منذ ${time(c.inAt, tz())}">${icon('clock', 'sm')}<span>انصراف · ${hours(c.minutes)}</span></button>`
+    : `<button class="tb-btn" data-action="hr-clock" data-act="in">${icon('clock', 'sm')}<span>تسجيل حضور</span></button>`;
+}
+
+// ---------------------------------------------------------------- سجل الموظف (يُستخدم لـ «سجلي» ولسجل أي موظف عند الإدارة)
+function recordView(r, { self }) {
+  const S = r.summary;
+  const pay = S.salary !== undefined;
+  return `<div class="kpis">
+      <div class="kpi lead"><span class="label">ساعات العمل · ${esc(r.month)}</span><b class="num">${hours(S.minutes)}</b><span class="small">${S.days} يوم${S.rank ? ` · الترتيب ${S.rank}` : ''}</span></div>
+      <div class="kpi"><span class="label">الحوافز</span><b style="color:var(--ok)">${money(S.bonus)}</b></div>
+      <div class="kpi"><span class="label">الغرامات</span><b style="color:var(--bad)">${money(S.fine)}</b></div>
+      ${pay ? `<div class="kpi"><span class="label">صافي الشهر</span><b>${money(S.net)}</b><span class="muted small">راتب ${money(S.salary)}</span></div>`
+        : `<div class="kpi"><span class="label">إجازات مدفوعة</span><b class="num">${S.paidLeaveDays} يوم</b></div>`}</div>
+    ${r.awards.includes(r.month) ? `<div class="alert-low" style="background:var(--gold-soft);color:var(--gold-ink);border-color:transparent">${icon('star')}<div><b>موظف الشهر</b><div class="small">${esc(r.month)}</div></div></div>` : ''}
+    <div class="grid-2" style="align-items:start">
+      <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">الحضور والانصراف</h2>${self ? clockButtonBig(r) : ''}</div>
+        <div class="table-wrap" style="box-shadow:none"><table><thead><tr><th>اليوم</th><th>حضور</th><th>انصراف</th><th class="num">المدة</th>${self ? '' : '<th></th>'}</tr></thead><tbody>
+        ${r.attendance.map((a) => `<tr><td class="small">${esc(a.day)}</td><td class="num">${time(a.inAt, tz())}</td>
+          <td class="num">${a.outAt ? time(a.outAt, tz()) : a.forgot ? '<span class="pill bad">لم يُسجَّل</span>' : '<span class="pill ok">الآن</span>'}</td>
+          <td class="num">${hours(a.minutes)}${a.fixed ? ` <span class="pill" title="${esc(a.fixed.note)}">مُصحَّح</span>` : ''}</td>
+          ${self ? '' : `<td>${can('hr.manage') ? `<button class="btn sm ghost" data-action="hr-fix" data-id="${a.id}">تصحيح</button>` : ''}</td>`}</tr>`).join('') || `<tr><td colspan="${self ? 4 : 5}" class="muted">لا حضور مسجّل هذا الشهر</td></tr>`}
+        </tbody></table></div></section>
+      <section class="card pad stack"><h2>الحوافز والغرامات</h2>
+        ${r.adjustments.map((a) => `<div class="r-line"><span><span class="pill ${a.type === 'bonus' ? 'ok' : 'bad'}">${a.type === 'bonus' ? 'حافز' : 'غرامة'}</span> ${esc(a.reason)} <span class="muted small">${esc(a.day)}</span></span>
+          <span class="row" style="gap:6px"><b class="num">${a.type === 'bonus' ? '+' : '−'}${money(a.amount)}</b>${!self && can('hr.manage') ? `<button class="icon-btn" data-action="hr-adj-del" data-id="${a.id}" aria-label="حذف">${icon('x', 'sm')}</button>` : ''}</span></div>`).join('') || '<p class="muted">لا شيء هذا الشهر</p>'}
+      </section></div>
+    <section class="card pad stack"><div class="row wrap"><h2 style="margin-inline-end:auto">الإجازات</h2>
+        <span class="pill olive">الرصيد السنوي المتبقي ${r.leaveBalance.left} من ${r.leaveBalance.total} يوم</span>
+        ${self ? `<button class="btn sm primary" data-action="hr-leave-new">${icon('plus', 'sm')} طلب إجازة</button>` : ''}</div>
+      ${r.leaves.map((l) => `<div class="r-line"><span>${esc(l.typeName)} · ${esc(l.from)} → ${esc(l.to)} <span class="muted small">(${l.days} يوم${l.paid ? '، مدفوعة' : ''})</span>${l.reason ? ` <span class="muted small">— ${esc(l.reason)}</span>` : ''}</span>
+        <span class="pill ${STATUS[l.status][1]}">${STATUS[l.status][0]}</span></div>`).join('') || '<p class="muted">لا إجازات</p>'}
+    </section>`;
+}
+
+function clockButtonBig(r) {
+  return r.clockedIn
+    ? `<button class="btn danger" data-action="hr-clock" data-act="out">${icon('clock', 'sm')} تسجيل انصراف (${hours(r.clockedIn.minutes)})</button>`
+    : `<button class="btn primary" data-action="hr-clock" data-act="in">${icon('clock', 'sm')} تسجيل حضور</button>`;
+}
+
+const routes = {
+  me(s) {
+    const r = s.view.me;
+    return `<div class="page"><div class="page-head"><h1>سجلي</h1><span class="muted">${esc(s.employee?.name ?? '')} · ${ROLES[s.employee?.role] ?? ''}</span>
+      <input type="month" id="me-month" value="${esc(r?.month ?? thisMonth())}" data-change="me-month" aria-label="الشهر"></div>
+      ${r ? recordView(r, { self: true }) : '<p class="muted">جارٍ التحميل…</p>'}</div>`;
+  },
+};
+
+async function enter() {
+  state.view.me = await get('/api/hr/record/me', { month: state.view.meMonth ?? thisMonth() });
+  state.me = state.view.me.month === thisMonth() ? state.view.me : state.me;
+  render();
+}
+
+// ---------------------------------------------------------------- قسم الإدارة
+async function loadHr() {
+  const h = H();
+  h.data = null; render();
+  h.data = await get('/api/hr/overview', { month: h.month });
+  render();
+}
+
+function hrPage() {
+  const h = H();
+  const d = h.data;
+  const TABS = [['team', 'الموظفون والترتيب'], ['present', 'الحاضرون الآن'], ['leaves', `الإجازات${d?.pending.length ? ` (${d.pending.length})` : ''}`]];
+  const head = `<div class="page-head"><h1>الموارد البشرية</h1><input type="month" id="hr-month" value="${esc(h.month)}" max="${thisMonth()}" data-change="hr-month" aria-label="الشهر">
+      <span class="spacer"></span>
+      <button class="btn" data-action="hr-adj-new" data-type="bonus">${icon('plus', 'sm')} حافز</button>
+      <button class="btn" data-action="hr-adj-new" data-type="fine">${icon('minus', 'sm')} غرامة</button>
+      <button class="btn" data-action="hr-pool">توزيع حوافز حسب الساعات</button>
+      <button class="btn primary" data-action="hr-award">${icon('star', 'sm')} موظف الشهر</button></div>
+    <div class="toolbar"><div class="seg">${TABS.map(([k, l]) => `<button class="${h.tab === k ? 'on' : ''}" data-action="hr-tab" data-k="${k}">${l}</button>`).join('')}</div></div>`;
+  if (!d) return `${head}<p class="muted">جارٍ التحميل…</p>`;
+  const award = d.award ? `<div class="alert-low" style="background:var(--gold-soft);color:var(--gold-ink);border-color:transparent">${icon('star')}<div><b>موظف الشهر ${esc(d.month)}: ${esc(d.award.name)}</b>
+    <div class="small">${d.award.bonus ? `مكافأة ${money(d.award.bonus)}` : ''}${d.award.note ? ` · ${esc(d.award.note)}` : ''}</div></div></div>` : '';
+  if (h.tab === 'present') {
+    return `${head}<div class="table-wrap"><table><thead><tr><th>الموظف</th><th>منذ</th><th class="num">المدة</th><th></th></tr></thead><tbody>
+      ${d.present.map((a) => `<tr><td><b>${esc(a.employeeName)}</b></td><td class="small">${dateTime(a.inAt, tz())}</td><td class="num">${hours(a.minutes)} ${a.forgot ? '<span class="pill bad">نُسي الانصراف</span>' : ''}</td>
+        <td><button class="btn sm" data-action="hr-fix" data-id="${a.id}">تسجيل انصراف / تصحيح</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">لا أحد مسجّل حضور الآن</td></tr>'}
+      </tbody></table></div>
+      ${d.onLeaveToday.length ? `<p class="small">في إجازة اليوم: ${d.onLeaveToday.map((l) => esc(l.employeeName)).join('، ')}</p>` : ''}`;
+  }
+  if (h.tab === 'leaves') {
+    return `${head}<div class="stack">${d.pending.map((l) => `<div class="card pad row wrap"><div style="flex:1;min-width:0"><b>${esc(l.employeeName)}</b> · ${esc(l.typeName)} · ${esc(l.from)} → ${esc(l.to)} (${l.days} يوم${l.paid ? '، مدفوعة' : ''})
+        ${l.reason ? `<div class="muted small">${esc(l.reason)}</div>` : ''}</div>
+        <button class="btn sm primary" data-action="hr-leave-decide" data-id="${l.id}" data-s="approved">موافقة</button>
+        <button class="btn sm danger" data-action="hr-leave-decide" data-id="${l.id}" data-s="rejected">رفض</button></div>`).join('') || '<p class="muted">لا طلبات إجازة معلّقة</p>'}</div>`;
+  }
+  return `${head}${award}<div class="table-wrap"><table><thead><tr><th>#</th><th>الموظف</th><th class="num">الساعات</th><th class="num">الأيام</th><th class="num">الحوافز</th><th class="num">الغرامات</th><th class="num">إجازة مدفوعة</th>${d.showPay ? '<th class="num">صافي الشهر</th>' : ''}</tr></thead><tbody>
+    ${d.rows.map((r) => `<tr class="click" data-action="hr-open" data-id="${r.id}"><td class="num">${r.rank ?? '—'}</td>
+      <td><b>${esc(r.name)}</b> <span class="muted small">${ROLES[r.role] ?? ''}</span>${r.employeeOfMonth ? ` <span class="pill olive">${icon('star', 'sm')} موظف الشهر</span>` : ''}${r.openNow ? ' <span class="pill ok">حاضر</span>' : ''}${r.forgot ? ' <span class="pill bad">نُسي الانصراف</span>' : ''}</td>
+      <td class="num"><b>${hours(r.minutes)}</b></td><td class="num">${r.days}</td><td class="num">${r.bonus ? money(r.bonus) : '—'}</td><td class="num">${r.fine ? money(r.fine) : '—'}</td><td class="num">${r.paidLeaveDays || '—'}</td>
+      ${d.showPay ? `<td class="num">${money(r.net)}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+    <p class="muted small">الترتيب حسب ساعات العمل المسجّلة في الشهر. الحضور المنسي (أكثر من 16 ساعة) لا يُحسب حتى يُصحَّح.</p>`;
+}
+
+/** تقسيم مبلغ على الساعات كما يفعل الخادم (للمعاينة قبل التأكيد) */
+function splitPreview(weights, amount) {
+  const total = weights.reduce((a, w) => a + w, 0);
+  if (!total) return weights.map(() => 0);
+  const shares = weights.map((w) => Math.floor((amount * w) / total));
+  let left = amount - shares.reduce((a, x) => a + x, 0);
+  const order = weights.map((w, i) => [((amount * w) % total), i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (const [, i] of order) { if (!left) break; shares[i] += 1; left -= 1; }
+  return shares;
+}
+
+const modals = {
+  'hr-record'(s) {
+    const r = s.modal.record;
+    return modalFrame({ title: `سجل ${r.employee.name}`, sub: `${ROLES[r.employee.role] ?? ''} · ${r.month}`, cls: 'full', body: recordView(r, { self: false }) });
+  },
+  'hr-adj'(s) {
+    const m = s.modal;
+    const rows = H().data?.rows ?? [];
+    return modalFrame({ title: m.adjType === 'bonus' ? 'حافز لموظف' : 'غرامة على موظف', body: `<form class="stack" data-form="hr-adj-save" id="hr-adj-form">
+      ${field('الموظف', `<select name="employeeId" id="adj-emp">${rows.filter((r) => r.active).map((r) => `<option value="${r.id}" ${r.id === m.employeeId ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>`)}
+      <div class="grid-2">${field('المبلغ (د.ع)', '<input class="amount-input" name="amount" id="adj-amount" inputmode="numeric" required autocomplete="off">')}
+        ${field('السبب', `<input name="reason" id="adj-reason" required minlength="2" maxlength="160" placeholder="${m.adjType === 'bonus' ? 'خدمة ممتازة، ساعات إضافية' : 'تأخير، كسر أكواب'}">`)}</div>
+      <button class="btn ${m.adjType === 'bonus' ? 'primary' : 'danger solid'} lg" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل</button></form>` });
+  },
+  'hr-pool'(s) {
+    const m = s.modal;
+    const rows = (H().data?.rows ?? []).filter((r) => r.active && r.minutes > 0);
+    const pool = parseAmount(m.pool ?? '') ?? 0;
+    const shares = pool > 0 ? splitPreview(rows.map((r) => r.minutes), pool) : [];
+    return modalFrame({ title: `توزيع حوافز ${H().month} حسب ساعات العمل`, body: `
+      ${field('مبلغ الحوافز الكلي (د.ع)', `<input class="amount-input" id="pool-amount" inputmode="numeric" value="${esc(m.pool ?? '')}" data-input="hr-pool-amount" autocomplete="off">`, 'يُقسَّم على الموظفين بنسبة ساعات عمل كل واحد، والمجموع يساوي المبلغ بالضبط')}
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>الموظف</th><th class="num">الساعات</th><th class="num">الحصة</th></tr></thead><tbody>
+        ${rows.map((r, i) => `<tr><td>${esc(r.name)}</td><td class="num">${hours(r.minutes)}</td><td class="num"><b>${shares[i] ? money(shares[i]) : '—'}</b></td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="muted">لا ساعات عمل مسجّلة في هذا الشهر</p>'}`,
+    foot: `<button class="btn primary" data-action="hr-pool-save" ${pool > 0 && rows.length && !s.busy ? '' : 'disabled'}>تسجيل الحوافز</button>` });
+  },
+  'hr-award'(s) {
+    const rows = (H().data?.rows ?? []).filter((r) => r.active);
+    const pick = s.modal.employeeId ?? H().data?.award?.employeeId ?? rows[0]?.id;
+    return modalFrame({ title: `موظف الشهر ${H().month}`, body: `<form class="stack" data-form="hr-award-save" id="hr-award-form">
+      <p class="muted small">المقترح: الأعلى ساعات عمل. يمكنك اختيار غيره.</p>
+      <div class="opts">${rows.map((r) => `<button type="button" class="opt ${r.id === pick ? 'on' : ''}" data-action="hr-award-pick" data-id="${r.id}"><span>${esc(r.name)}</span><small>${hours(r.minutes)} ساعة${r.rank ? ` · #${r.rank}` : ''}</small></button>`).join('')}</div>
+      <div class="grid-2">${field('مكافأة (د.ع، اختياري)', `<input name="bonus" id="aw-bonus" inputmode="numeric" value="${esc(H().data?.award?.bonus || '')}">`)}
+        ${field('ملاحظة', `<input name="note" id="aw-note" maxlength="160" value="${esc(H().data?.award?.note ?? '')}" placeholder="أفضل خدمة للزبائن">`)}</div>
+      <button class="btn primary lg" type="submit" ${pick && !s.busy ? '' : 'disabled'}>${icon('star', 'sm')} اعتماد</button></form>` });
+  },
+  'hr-fix'(s) {
+    const a = s.modal.att;
+    const local = (d) => (d ? new Date(new Date(d).getTime() + tz() * 60000).toISOString().slice(0, 16) : '');
+    return modalFrame({ title: `تصحيح حضور ${a.employeeName}`, body: `<form class="stack" data-form="hr-fix-save" id="hr-fix-form">
+      <div class="grid-2">${field('وقت الحضور', `<input type="datetime-local" name="inAt" id="fx-in" value="${local(a.inAt)}" required>`)}
+        ${field('وقت الانصراف', `<input type="datetime-local" name="outAt" id="fx-out" value="${local(a.outAt ?? (a.forgot ? null : new Date()))}">`, 'اتركه فارغاً إن كان ما زال حاضراً')}</div>
+      ${field('السبب', '<input name="note" id="fx-note" required minlength="2" maxlength="160" placeholder="نسي تسجيل الانصراف">')}
+      <button class="btn primary" type="submit" ${s.busy ? 'disabled' : ''}>حفظ التصحيح</button></form>` });
+  },
+  'hr-leave'(s) {
+    const today = localDate(Date.now(), tz());
+    return modalFrame({ title: 'طلب إجازة', body: `<form class="stack" data-form="hr-leave-save" id="hr-leave-form">
+      <div class="seg">${[['annual', 'سنوية مدفوعة'], ['sick', 'مرضية'], ['unpaid', 'بدون راتب']].map(([k, l]) => `<button type="button" class="${(s.modal.leaveType ?? 'annual') === k ? 'on' : ''}" data-action="hr-leave-type" data-k="${k}">${l}</button>`).join('')}</div>
+      <div class="grid-2">${field('من', `<input type="date" name="from" id="lv-from" min="${today}" required>`)}${field('إلى', `<input type="date" name="to" id="lv-to" min="${today}" required>`)}</div>
+      ${field('السبب (اختياري)', '<input name="reason" id="lv-reason" maxlength="160">')}
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>إرسال الطلب</button></form>` });
+  },
+};
+
+async function refreshAfterChange() {
+  if (state.route === 'admin') await loadHr();
+  if (state.route === 'me') await enter();
+  if (state.modal?.type === 'hr-record') state.modal.record = await get(`/api/hr/record/${state.modal.record.employee.id}`, { month: H().month });
+  render();
+}
+
+on({
+  'hr-clock': (el) => busy(async () => {
+    const r = await post('/api/hr/clock', { clientId: uid(), action: el.dataset.act });
+    toast(el.dataset.act === 'in' ? `سُجّل حضورك ${time(r.attendance.inAt, tz())}` : `سُجّل انصرافك · ${hours(r.attendance.minutes)} ساعة`, 'ok');
+    await loadMe();
+    if (state.route === 'me') await enter();
+  }),
+  'me-month': (el) => { state.view.meMonth = el.value || thisMonth(); enter().catch(fail); },
+  'hr-month': (el) => { H().month = el.value || thisMonth(); loadHr().catch(fail); },
+  'hr-tab': (el) => { H().tab = el.dataset.k; render(); },
+  'hr-open': (el) => busy(async () => openModal({ type: 'hr-record', record: await get(`/api/hr/record/${el.dataset.id}`, { month: H().month }) })),
+  'hr-adj-new': (el) => openModal({ type: 'hr-adj', adjType: el.dataset.type, clientId: uid() }),
+  'hr-adj-save': (_el, _e, d) => busy(async () => {
+    const m = state.modal;
+    const amount = parseAmount(d.amount);
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('أدخل مبلغاً صحيحاً');
+    await post('/api/hr/adjustments', { clientId: m.clientId, employeeId: d.employeeId, type: m.adjType, amount, reason: d.reason });
+    state.modal = null;
+    toast(m.adjType === 'bonus' ? 'سُجّل الحافز' : 'سُجّلت الغرامة', 'ok');
+    await refreshAfterChange();
+  }),
+  'hr-adj-del': (el) => busy(async () => {
+    const h = H();
+    if (h.confirmDel !== el.dataset.id) { h.confirmDel = el.dataset.id; toast('اضغط مرة أخرى للحذف (يُسجَّل في سجل العمليات)'); return; }
+    await del(`/api/hr/adjustments/${el.dataset.id}`);
+    h.confirmDel = null;
+    await refreshAfterChange();
+  }),
+  'hr-pool': () => openModal({ type: 'hr-pool', clientId: uid(), pool: '' }),
+  'hr-pool-amount': (el) => { state.modal.pool = el.value; render(); },
+  'hr-pool-save': () => busy(async () => {
+    const r = await post('/api/hr/incentives', { clientId: state.modal.clientId, month: H().month, pool: parseAmount(state.modal.pool) });
+    state.modal = null;
+    toast(`وُزّعت حوافز بقيمة ${money(r.total)} على ${r.rows.length} موظف`, 'ok');
+    await loadHr();
+  }),
+  'hr-award': () => openModal({ type: 'hr-award', employeeId: null }),
+  'hr-award-pick': (el) => { state.modal.employeeId = el.dataset.id; render(); },
+  'hr-award-save': (_el, _e, d) => busy(async () => {
+    const pick = state.modal.employeeId ?? H().data?.award?.employeeId ?? (H().data?.rows ?? []).find((r) => r.active)?.id;
+    const r = await post('/api/hr/award', { month: H().month, employeeId: pick, bonus: d.bonus ? parseAmount(d.bonus) : 0, note: d.note || null });
+    state.modal = null;
+    toast(`موظف الشهر: ${r.name}`, 'ok');
+    await loadHr();
+  }),
+  'hr-fix': (el) => {
+    const d = H().data;
+    const a = d?.present.find((x) => x.id === el.dataset.id) ?? state.modal?.record?.attendance.find((x) => x.id === el.dataset.id);
+    if (a) openModal({ type: 'hr-fix', att: a, back: state.modal?.type === 'hr-record' ? state.modal : null });
+  },
+  'hr-fix-save': (_el, _e, d) => busy(async () => {
+    const m = state.modal;
+    const toIso = (v) => (v ? new Date(new Date(`${v}:00Z`).getTime() - tz() * 60000).toISOString() : null);
+    await post(`/api/hr/attendance/${m.att.id}/fix`, { inAt: toIso(d.inAt), outAt: toIso(d.outAt), note: d.note });
+    state.modal = m.back;
+    toast('حُفظ التصحيح', 'ok');
+    await refreshAfterChange();
+  }),
+  'hr-leave-new': () => openModal({ type: 'hr-leave', clientId: uid(), leaveType: 'annual' }),
+  'hr-leave-type': (el) => { state.modal.leaveType = el.dataset.k; render(); },
+  'hr-leave-save': (_el, _e, d) => busy(async () => {
+    await post('/api/hr/leaves', { clientId: state.modal.clientId, from: d.from, to: d.to, type: state.modal.leaveType, reason: d.reason || null });
+    state.modal = null;
+    toast('أُرسل طلب الإجازة للموافقة', 'ok');
+    await enter();
+  }),
+  'hr-leave-decide': (el) => busy(async () => {
+    await post(`/api/hr/leaves/${el.dataset.id}/decide`, { status: el.dataset.s });
+    toast(el.dataset.s === 'approved' ? 'تمت الموافقة على الإجازة' : 'رُفضت الإجازة', 'ok');
+    await loadHr();
+  }),
+});
+
+return { loadMe, clockButton, routes, enter, loadHr, hrPage, modals };
+})();
+
 // ---- public/js/views/admin.js
 const __m_public_js_views_admin_js = await (async () => {
 const { formatMilli } = __m_shared_calc_js;
@@ -6765,8 +7435,10 @@ const { accountCard, loadAccount } = __m_public_js_views_account_js;
 const { printHtml } = __m_public_js_views_receipts_js;
 const { rememberSession } = __m_public_js_offline_js;
 const { imageSrc, putImage, resizeImage, syncImages } = __m_public_js_images_js;
+const { hrPage, loadHr } = __m_public_js_views_hr_js;
 const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
 // لوحة الإدارة (Back Office): المتابعة، التقارير، الأصناف، التصنيفات، الإضافات، الخصومات، المخزون، الموظفون، الورديات، الإعدادات.
+
 
 
 
@@ -6793,6 +7465,7 @@ const SECTIONS = [
   ['modifiers', 'الإضافات', 'plus', 'admin.catalog'],
   ['discounts', 'الخصومات', 'tag', 'admin.catalog'],
   ['inventory', 'المخزون', 'box', 'admin.inventory'],
+  ['hr', 'الموارد البشرية', 'users', 'hr.manage'],
   ['employees', 'الموظفون', 'users', 'admin.employees'],
   ['settings', 'الإعدادات', 'gear', 'admin.settings'],
 ];
@@ -6811,6 +7484,21 @@ const routes = {
 };
 
 // ---------------------------------------------------------------- رسوم بيانية بسيطة (SVG بمقياس واحد)
+// أيام الأسبوع بترتيب العراق (السبت أولاً)
+const WEEKDAY_ORDER = [6, 0, 1, 2, 3, 4, 5];
+const WEEKDAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+function weekdaysCard(w) {
+  if (!w) return '';
+  const days = WEEKDAY_ORDER.map((i) => w.days[i]);
+  const best = days.reduce((b, d, i) => (d.avgNet > days[b].avgNet ? i : b), 0);
+  const worst = days.reduce((b, d, i) => (d.avgNet < days[b].avgNet ? i : b), 0);
+  const any = days.some((d) => d.avgNet > 0);
+  return `<section class="card pad stack"><div class="row wrap"><h2 style="margin-inline-end:auto">أفضل أيام العمل</h2><span class="muted small">متوسط صافي المبيعات لكل يوم · آخر ${w.weeks} أسابيع</span></div>
+    ${any ? `${barChart(days.map((d) => d.avgNet), days.map((d) => WEEKDAY_NAMES[d.weekday]), { highlight: best })}
+    <div class="row wrap small"><span class="pill ok">الأفضل: ${WEEKDAY_NAMES[days[best].weekday]} · ${money(days[best].avgNet)} · ${days[best].avgSales} إيصال</span>
+      <span class="pill">الأضعف: ${WEEKDAY_NAMES[days[worst].weekday]} · ${money(days[worst].avgNet)}</span></div>` : '<p class="muted">لا مبيعات كافية بعد لمقارنة الأيام</p>'}</section>`;
+}
+
 function barChart(values, labels, { height = 200, highlight = -1, fmt = (v) => money(v, { symbol: false }) } = {}) {
   const w = 600;
   const pad = { t: 18, b: 28, l: 6, r: 6 };
@@ -6840,6 +7528,7 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  hr: () => hrPage(),
   branches(s, a) {
     const list = a.branches;
     const rep = a.branchReport;
@@ -6876,7 +7565,7 @@ const PAGES = {
   },
 
   audit(s, a) {
-    const groups = [['', 'الكل'], ['receipt', 'الاسترجاع والإلغاء'], ['discount', 'الخصومات'], ['inventory', 'المخزون'], ['item', 'الأصناف والأسعار'], ['shift', 'الورديات والنقد'], ['ticket', 'التذاكر'], ['employee', 'الموظفون'], ['settings', 'الإعدادات']];
+    const groups = [['', 'الكل'], ['receipt', 'الاسترجاع والإلغاء'], ['hr', 'الموارد البشرية'], ['discount', 'الخصومات'], ['inventory', 'المخزون'], ['item', 'الأصناف والأسعار'], ['shift', 'الورديات والنقد'], ['ticket', 'التذاكر'], ['employee', 'الموظفون'], ['settings', 'الإعدادات']];
     const presets = [['today', 'اليوم'], ['week', '7 أيام'], ['month', 'هذا الشهر']];
     const rows = a.audit;
     return `<div class="page-head"><h1>سجل العمليات</h1><span class="muted small">كل عملية حساسة مع الموظف ووقتها. لا يمكن تعديل السجل أو حذفه.</span></div>
@@ -6954,6 +7643,7 @@ const PAGES = {
         <section class="card pad stack"><h2>المبيعات حسب الساعة</h2>${barChart(hours.map((h) => h.net), hours.map((h) => `${h.hour}`), { highlight: hourNow - 6 })}</section>
         <section class="card pad stack"><h2>آخر 7 أيام</h2>${barChart(d.week.map((x) => x.net), d.week.map((x) => x.key.slice(5)), { highlight: 6 })}</section>
       </div>
+      ${weekdaysCard(d.weekdays)}
       <div class="split-view">
         <section class="card pad stack"><h2>الأكثر مبيعاً اليوم</h2>
           ${d.topItems.length ? d.topItems.map((i) => `<div class="stack" style="gap:4px"><div class="r-line"><span>${esc(i.label)} <span class="muted small">× ${i.qty - i.refundedQty}</span></span><span class="num">${money(i.net)}</span></div>
@@ -7043,6 +7733,7 @@ const PAGES = {
           ${can('admin.catalog') ? `<button class="btn" data-action="mat-new">${icon('plus', 'sm')} مادة جديدة</button>` : ''}
           <button class="btn primary" data-action="rcv-open">${icon('plus', 'sm')} استلام مشتريات</button>
           <label class="btn"><input type="file" accept="image/*" capture="environment" hidden data-change="rcv-scan" id="rcv-file">${icon('camera', 'sm')} تصوير فاتورة</label>
+          <button class="btn" data-action="rcv-review">${icon('list', 'sm')} مراجعة الاستلام</button>
           <button class="btn sm ghost" data-action="inv-reconcile">${icon('check', 'sm')} مطابقة مع الدفتر</button></div></div>
       ${inv.lowCount ? `<div class="alert-low" role="alert">${icon('alert')}<div><b>${inv.lowCount} ${inv.lowCount === 1 ? 'مادة' : 'مواد'} تحت حد التنبيه</b>
         <div class="small">${inv.rows.filter((r) => r.low).map((r) => `${esc(r.name)}: ${r.stock.toLocaleString('en-US')} ${esc(r.unit)}`).join(' · ')}</div></div></div>` : ''}
@@ -7105,14 +7796,15 @@ const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: '�
 
 // ---------------------------------------------------------------- سجل العمليات
 const AUDIT_LABELS = {
-  'receipt.refund': 'استرجاع', 'receipt.cancel': 'إلغاء طلب', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
+  'receipt.refund': 'استرجاع', 'receipt.cancel': 'إلغاء طلب', 'inventory.receive_fix': 'تصحيح استلام', 'inventory.threshold': 'تعديل حد التنبيه', 'inventory.shortfall': 'بيع بنقص مخزون',
+  'hr.bonus': 'حافز', 'hr.fine': 'غرامة', 'hr.adjustment_delete': 'حذف حافز/غرامة', 'hr.attendance_fix': 'تصحيح حضور', 'hr.leave_approved': 'موافقة إجازة', 'hr.leave_rejected': 'رفض إجازة', 'hr.award': 'موظف الشهر', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
   'inventory.receive': 'استلام مخزون', 'inventory.loss': 'هدر/تالف', 'inventory.count': 'جرد', 'inventory.adjust': 'تعديل مخزون', 'inventory.reconcile': 'مطابقة المخزون',
   'item.create': 'صنف جديد', 'item.update': 'تعديل صنف/سعر', 'items.archive': 'أرشفة صنف', 'categories.archive': 'أرشفة تصنيف', 'modifiers.archive': 'أرشفة إضافة',
   'shift.open': 'فتح وردية', 'shift.close': 'إغلاق وردية', 'shift.pay_in': 'إدخال نقد للدرج', 'shift.pay_out': 'سحب نقد من الدرج',
   'ticket.delete': 'حذف تذكرة محفوظة', 'employee.create': 'موظف جديد', 'employee.update': 'تعديل موظف', 'settings.update': 'تعديل الإعدادات',
   'expense.create': 'مصروف', 'expense.delete': 'حذف مصروف',
 };
-const AUDIT_WARN = new Set(['receipt.refund', 'receipt.cancel', 'discount.restricted', 'inventory.loss', 'inventory.adjust', 'shift.pay_out', 'ticket.delete', 'item.update', 'expense.delete']);
+const AUDIT_WARN = new Set(['receipt.refund', 'receipt.cancel', 'inventory.receive_fix', 'hr.adjustment_delete', 'hr.attendance_fix', 'discount.restricted', 'inventory.loss', 'inventory.adjust', 'shift.pay_out', 'ticket.delete', 'item.update', 'expense.delete']);
 
 function auditDetails(x) {
   const d = x.data ?? {};
@@ -7295,6 +7987,8 @@ const modals = {
       ${field('الاسم', `<input name="name" id="em-name" required maxlength="40" value="${esc(e.name)}" autofocus>`)}
       <div class="grid-2">${field('الدور', `<select name="role" id="em-role">${Object.entries(ROLES).map(([k, l]) => `<option value="${k}" ${e.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
         ${field('الهاتف', `<input name="phone" id="em-phone" dir="ltr" value="${esc(e.phone ?? '')}">`)}</div>
+      <div class="grid-2">${field('الراتب الشهري (د.ع)', `<input name="salary" id="em-salary" inputmode="numeric" value="${esc(e.salary ?? '')}" placeholder="اختياري">`, 'يظهر للمالك وللموظف نفسه فقط')}
+        ${field('الإجازة السنوية المدفوعة (أيام)', `<input name="annualLeave" id="em-leave" inputmode="numeric" value="${esc(e.annualLeave ?? 14)}">`)}</div>
       ${field(e.id ? 'رمز جديد (اتركه فارغاً للإبقاء)' : 'رمز الدخول', `<input name="pin" id="em-pin" inputmode="numeric" pattern="[0-9٠-٩۰-۹]{4,6}" maxlength="6" type="password" ${e.id ? '' : 'required'} autocomplete="new-password">`, '4–6 أرقام، فريد لكل موظف')}
       ${e.id ? `<label class="check"><input type="checkbox" name="active" ${e.active ? 'checked' : ''}> فعال</label>` : ''}
       <p class="muted small">المالك: كل شيء · المدير: كل شيء عدا الموظفين والإعدادات · الكاشير: البيع والوردية والعملاء · الباريستا: شاشة التحضير فقط.</p>
@@ -7326,6 +8020,26 @@ const modals = {
         ${field('تكلفة الوحدة (د.ع)', '<input name="cost" id="mat-cost" inputmode="decimal" placeholder="مثلاً: 2.5" autocomplete="off">')}
         ${field('حد التنبيه', '<input name="lowStock" id="mat-low" inputmode="numeric" placeholder="0" autocomplete="off">', 'تنبيه عند الوصول له')}</div>
       <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>إضافة المادة</button></form>` });
+  },
+
+  'rcv-review'(s) {
+    const rows = s.modal.rows;
+    return modalFrame({ title: 'مراجعة الاستلام', sub: 'آخر 45 يوماً · صحّح أي سطر دخل خطأً دون حذفه من المخزون', cls: 'wide', body: rows === null ? '<p class="muted">جارٍ التحميل…</p>'
+      : `<div class="table-wrap"><table><thead><tr><th>المادة</th><th class="num">الكمية</th><th class="num">سعر الوحدة</th><th>التاريخ</th><th></th></tr></thead><tbody>
+        ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b><div class="muted small">${esc(r.note ?? '')}${r.byName ? ` · ${esc(r.byName)}` : ''}</div>
+          ${r.fixes.length ? `<div class="small" style="color:var(--warn)">صُحّح ${r.fixes.length === 1 ? 'مرة' : `${r.fixes.length} مرات`}: كان ${r.originalQty.toLocaleString('en-US')} ${esc(r.unit)}${r.originalUnitCostMilli !== null ? ` بسعر ${formatMilli(r.originalUnitCostMilli)}` : ''} — ${esc(r.fixes.at(-1).note)}</div>` : ''}</td>
+          <td class="num">${r.qty.toLocaleString('en-US')} ${esc(r.unit)}</td><td class="num">${r.unitCostMilli !== null ? `${formatMilli(r.unitCostMilli)} د.ع` : '—'}</td>
+          <td class="small">${dateTime(r.at, tz())}</td><td><button class="btn sm" data-action="rcv-fix" data-id="${r.id}">تصحيح</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">لا استلام في آخر 45 يوماً</td></tr>'}
+      </tbody></table></div>` });
+  },
+  'rcv-fix'(s) {
+    const r = s.modal.row;
+    return modalFrame({ title: `تصحيح استلام: ${r.name}`, sub: `المسجّل الآن ${r.qty.toLocaleString('en-US')} ${r.unit}${r.unitCostMilli !== null ? ` بسعر ${formatMilli(r.unitCostMilli)} د.ع` : ''}`, body: `<form class="stack" data-form="rcv-fix-save" id="rcv-fix-form">
+      <div class="grid-2">${field(`الكمية الصحيحة (${esc(r.unit)})`, `<input class="amount-input" name="qty" id="rf-qty" inputmode="numeric" required value="${r.qty}">`)}
+        ${field('سعر الوحدة الصحيح (د.ع)', `<input name="cost" id="rf-cost" inputmode="decimal" value="${r.unitCostMilli !== null ? formatMilli(r.unitCostMilli) : ''}" placeholder="اتركه للإبقاء">`)}</div>
+      ${field('سبب التصحيح', '<input name="note" id="rf-note" required minlength="2" maxlength="120" placeholder="أُدخلت الكمية بصفر زائد">')}
+      <p class="muted small">يُسجَّل التصحيح حركةً مستقلة مرتبطة بالاستلام الأصلي (الأصل لا يُحذف)، ويُعدَّل الرصيد ومتوسط التكلفة بالفرق فقط. لا يمكن إنقاص كمية صُرفت فعلاً.</p>
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ التصحيح</button></form>` });
   },
 
   'branch-new'(s) {
@@ -7432,6 +8146,7 @@ async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
+    hr: () => loadHr(),
     branches: async () => {
       if (!a.branchPreset) a.branchPreset = 'today';
       const [from, to] = presetRange(a.branchPreset);
@@ -7667,6 +8382,22 @@ on({
     A().items = null;
     await loadSection('inventory');
   }),
+  'rcv-review': async () => {
+    openModal({ type: 'rcv-review', rows: null });
+    try { state.modal.rows = await get('/api/admin/inventory/receipts'); } catch (e) { state.modal = null; fail(e); }
+    render();
+  },
+  'rcv-fix': (el) => {
+    const row = state.modal.rows.find((x) => x.id === el.dataset.id);
+    openModal({ type: 'rcv-fix', row, rows: state.modal.rows, clientId: uid() });
+  },
+  'rcv-fix-save': (_el, _e, d) => busy(async () => {
+    const m = state.modal;
+    const r = await post(`/api/admin/inventory/receipts/${m.row.id}/fix`, { clientId: m.clientId, qty: num(d.qty, 'الكمية'), cost: d.cost || undefined, note: d.note });
+    toast(r.applied ? `صُحّح الاستلام (${r.delta > 0 ? '+' : ''}${r.delta.toLocaleString('en-US')})` : 'سبق تسجيل هذا التصحيح', 'ok');
+    openModal({ type: 'rcv-review', rows: await get('/api/admin/inventory/receipts') });
+    await loadSection('inventory');
+  }),
   'inv-filter': (el) => { A().invFilter = el.dataset.f; render(); },
   'rcv-open': async () => {
     await ensureStockItems();
@@ -7740,7 +8471,8 @@ on({
   'employee-edit': (el) => openModal({ type: 'employee-form', doc: A().employees.find((x) => x.id === el.dataset.id) }),
   'employee-save': (_el, _e, d) => busy(async () => {
     const doc = state.modal.doc;
-    await post('/api/admin/employees', { id: doc?.id, name: d.name, role: d.role, phone: d.phone || null, pin: d.pin || undefined, active: doc ? d.active : true });
+    await post('/api/admin/employees', { id: doc?.id, name: d.name, role: d.role, phone: d.phone || null, pin: d.pin || undefined, active: doc ? d.active : true,
+      salary: d.salary === '' ? undefined : num(d.salary, 'الراتب'), annualLeave: d.annualLeave === '' ? undefined : num(d.annualLeave, 'الإجازة') });
     state.modal = null; toast('حُفظ الموظف', 'ok'); await loadSection('employees');
   }),
 
@@ -7905,6 +8637,7 @@ const admin = __m_public_js_views_admin_js;
 const account = __m_public_js_views_account_js;
 const platform = __m_public_js_views_platform_js;
 const cancel = __m_public_js_views_cancel_js;
+const hr = __m_public_js_views_hr_js;
 // التشغيل، التوجيه، شاشتا الإعداد والدخول، والهيكل العام.
 
 
@@ -7920,7 +8653,8 @@ const cancel = __m_public_js_views_cancel_js;
 
 
 
-const modules = [pos, receipts, ops, admin, account, platform, cancel];
+
+const modules = [pos, receipts, ops, admin, account, platform, cancel, hr];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
@@ -7931,10 +8665,12 @@ const NAV = [
   ['shift', 'الوردية', 'clock', 'shift.manage'],
   ['customers', 'العملاء', 'users', 'customers.manage'],
   ['admin', 'الإدارة', 'chart', 'admin.reports'],
+  ['me', 'سجلي', 'user', null], // لكل موظف: حضوره وحوافزه وإجازاته
 ];
+const allowedNav = (p) => !p || can(p);
 
 function defaultRoute() {
-  return NAV.find(([, , , p]) => can(p))?.[0] ?? 'kds';
+  return NAV.find(([r, , , p]) => r !== 'me' && can(p))?.[0] ?? 'kds';
 }
 
 function parseHash() {
@@ -7948,7 +8684,7 @@ async function navigate() {
   if (!state.employee) { state.authPage = route; state.modal = null; return render(); }
   const name = route || defaultRoute();
   const allowed = NAV.find(([r]) => r === name);
-  if (allowed && !can(allowed[3]) && !(name === 'admin' && can('admin.catalog'))) {
+  if (allowed && !allowedNav(allowed[3]) && !(name === 'admin' && (can('admin.catalog') || can('hr.manage')))) {
     location.hash = `#/${defaultRoute()}`;
     return undefined;
   }
@@ -7996,6 +8732,7 @@ function topbarView(s) {
     <div class="tb-end">
       ${globalThis.MORECASH_BACKEND ? '<span class="demo-tag" title="البيانات في هذا المتصفح فقط">تجريبي</span>' : ''}
       <span class="tb-net ${online ? '' : 'off'}" role="status"><i></i>${online ? 'متصل' : 'غير متصل'}</span>
+      ${hr.clockButton(s)}
       ${canFullscreen() ? `<button class="tb-btn" data-action="fullscreen" title="${isFullscreen() ? 'تصغير' : 'ملء الشاشة'}" aria-label="${isFullscreen() ? 'تصغير' : 'ملء الشاشة'}">${icon(isFullscreen() ? 'shrink' : 'expand', 'sm')}</button>` : ''}
       <span class="tb-me"><span class="avatar">${esc(initials(s.employee.name))}</span><span class="tb-name"><b>${esc(s.employee.name)}</b><small>${ROLE_NAMES[s.employee.role] ?? ''}</small></span></span>
       <button class="tb-btn" data-action="lock" title="قفل الشاشة" aria-label="قفل الشاشة">${icon('lock', 'sm')}<span>قفل</span></button>
@@ -8004,7 +8741,7 @@ function topbarView(s) {
 }
 
 function railView(s) {
-  const links = NAV.filter(([r, , , p]) => can(p) || (r === 'admin' && can('admin.catalog'))).map(([r, label, ic]) => {
+  const links = NAV.filter(([r, , , p]) => allowedNav(p) || (r === 'admin' && (can('admin.catalog') || can('hr.manage')))).map(([r, label, ic]) => {
     const low = s.catalog?.lowStock?.length ?? 0;
     const badge = r === 'pos' && s.ticketsCount ? `<span class="badge">${s.ticketsCount}</span>`
       : r === 'admin' && low && can('admin.inventory') ? `<span class="badge bad" title="مواد تحت حد التنبيه">${low}</span>` : '';
@@ -8043,6 +8780,7 @@ async function loadSession(employee) {
   state.view = {};
   if (state.online !== false) rememberSession(state.shop, employee);
   if (can('pos.sell') || can('kds.use')) await pos.loadBootstrap().catch(fail);
+  if (state.online !== false) await hr.loadMe();
   await navigate();
   flushSales();
 }

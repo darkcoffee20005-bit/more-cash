@@ -8,6 +8,7 @@ import { createCatalog } from './catalog.js';
 import { createInventory } from './inventory.js';
 import { createReports } from './reports.js';
 import { createExpenses } from './expenses.js';
+import { createHr } from './hr.js';
 import { createSales } from './sales.js';
 import { createShifts } from './shifts.js';
 
@@ -16,6 +17,7 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
   ctx.inventory = createInventory(ctx);
   ctx.shifts = createShifts(ctx);
   ctx.expenses = createExpenses(ctx);
+  ctx.hr = createHr(ctx);
   const auth = createAuth(ctx);
   const settings = createSettings(ctx);
   const catalog = createCatalog(ctx);
@@ -66,6 +68,17 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['GET', '/api/admin/reports', (actor, req) => reports.report(actor, req.query)],
     ['GET', '/api/admin/reports/daily', (actor, req) => reports.daily(actor, req.query)],
     ['GET', '/api/admin/expenses', (actor, req) => ctx.expenses.list(actor, req.query)],
+    // الموارد البشرية
+    ['POST', '/api/hr/clock', (actor, req) => ctx.hr.clock(actor, req.body)],
+    ['POST', '/api/hr/leaves', (actor, req) => ctx.hr.requestLeave(actor, req.body)],
+    ['POST', '/api/hr/leaves/:id/decide', (actor, req, p) => ctx.hr.decideLeave(actor, p.id, req.body)],
+    ['GET', '/api/hr/overview', (actor, req) => ctx.hr.overview(actor, req.query)],
+    ['GET', '/api/hr/record/:id', (actor, req, p) => ctx.hr.record(actor, p.id, req.query)],
+    ['POST', '/api/hr/adjustments', (actor, req) => ctx.hr.addAdjustment(actor, req.body)],
+    ['DELETE', '/api/hr/adjustments/:id', (actor, req, p) => ctx.hr.removeAdjustment(actor, p.id)],
+    ['POST', '/api/hr/attendance/:id/fix', (actor, req, p) => ctx.hr.fixAttendance(actor, p.id, req.body)],
+    ['POST', '/api/hr/incentives', (actor, req) => ctx.hr.distributeIncentives(actor, req.body)],
+    ['POST', '/api/hr/award', (actor, req) => ctx.hr.setAward(actor, req.body)],
     ['POST', '/api/admin/expenses', (actor, req) => ctx.expenses.create(actor, req.body)],
     ['DELETE', '/api/admin/expenses/:id', (actor, req, p) => ctx.expenses.remove(actor, p.id)],
     // سجل العمليات الحساسة: للمالك فقط
@@ -100,6 +113,8 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['GET', '/api/admin/inventory', (actor) => ctx.inventory.list(actor)],
     ['POST', '/api/admin/inventory/adjust', (actor, req) => ctx.inventory.adjust(actor, req.body)],
     ['POST', '/api/admin/inventory/low-stock', (actor, req) => ctx.inventory.setLowStock(actor, req.body)],
+    ['GET', '/api/admin/inventory/receipts', (actor, req) => ctx.inventory.receipts(actor, req.query)],
+    ['POST', '/api/admin/inventory/receipts/:id/fix', (actor, req, p) => ctx.inventory.fixReceipt(actor, p.id, req.body)],
     ['GET', '/api/admin/inventory/:id/history', (actor, req, p) => ctx.inventory.history(actor, p.id)],
     ['POST', '/api/admin/inventory/reconcile', (actor) => ctx.inventory.reconcile(actor)],
     ['GET', '/api/admin/inventory/stock-items', async (actor) => { requirePerm(actor, 'admin.inventory'); return ctx.inventory.stockItems(); }],

@@ -76,6 +76,29 @@ export function createReports(ctx) {
     };
   }
 
+  /**
+   * أفضل أيام العمل: متوسط صافي المبيعات وعدد الإيصالات لكل يوم من أيام الأسبوع في آخر 8 أسابيع.
+   * المتوسط على عدد مرات ذلك اليوم في الفترة (حتى لو لم يُبع فيه شيء)، فلا يتضخم يوم عمل فيه مرة واحدة.
+   */
+  async function weekdays(settings, weeks = 8) {
+    const tz = settings.tzOffsetMin;
+    const today = localDate(now(), tz);
+    const from = localDate(now().getTime() - (weeks * 7 - 1) * 86400000, tz);
+    const r = dayRange(from, today, tz);
+    const rep = buildReport(await receiptsIn(r.from, r.to), { tzOffsetMin: tz });
+    const byDay = new Map(rep.byDay.map((d) => [d.key, d]));
+    const out = Array.from({ length: 7 }, (_, i) => ({ weekday: i, net: 0, salesCount: 0, days: 0 }));
+    for (let i = 0; i < weeks * 7; i++) {
+      const key = localDate(Date.parse(`${from}T12:00:00Z`) + i * 86400000, 0);
+      const wd = new Date(`${key}T12:00:00Z`).getUTCDay();
+      const d = byDay.get(key);
+      out[wd].days += 1;
+      if (d) { out[wd].net += d.net; out[wd].salesCount += d.salesCount; }
+    }
+    for (const w of out) { w.avgNet = w.days ? Math.round(w.net / w.days) : 0; w.avgSales = w.days ? Math.round((w.salesCount / w.days) * 10) / 10 : 0; }
+    return { from, to: today, weeks, days: out };
+  }
+
   async function dashboard(actor) {
     requirePerm(actor, 'admin.reports');
     const settings = await getSettings(db);
@@ -91,6 +114,7 @@ export function createReports(ctx) {
     const weekRep = buildReport(weekR, opts);
     const tracked = await db.collection('variants').find({ active: true, trackStock: true }).project({ stock: 1, lowStock: 1 }).toArray();
     return {
+      weekdays: await weekdays(settings),
       today, todaySummary: todayRep.summary, yesterdaySummary: buildReport(yesterdayR, opts).summary,
       byHour: todayRep.byHour, topItems: todayRep.byItem.slice(0, 6), byPayment: todayRep.byPayment,
       week: fillDays(weekRep.byDay, weekAgo, 7),
