@@ -43,7 +43,7 @@ async function matchPassword(pass, hash) {
   return false;
 }
 
-export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null, approval = false } = {}) {
+export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null, approval = false, adminReset = null } = {}) {
   const adminSet = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const subs = createSubscriptions({ db, now, newId, admins: adminSet, enabled: approval });
   const apps = new Map(); // tenantId → {app, ready}
@@ -219,7 +219,27 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
    * @param {{method, path, query?, body?, token?, deviceToken?, ip?}} req
    * @returns {Promise<{status, body, setToken?, setDevice?}>}
    */
+  /** إعادة تعيين كلمة مرور المزوّد عند نسيانها: متغير PLATFORM_RESET_PASSWORD بصيغة «البريد:كلمة مؤقتة».
+   *  للبريد في PLATFORM_ADMINS فقط، تُطبَّق مرة واحدة لكل قيمة (بصمتها في platform_resets)، وتلزم تغيير كلمة المرور بعد الدخول. */
+  let resetDone = null;
+  async function applyAdminReset() {
+    if (typeof adminReset !== 'string' || !adminReset.includes(':')) return;
+    const i = adminReset.indexOf(':');
+    const mail = adminReset.slice(0, i).trim().toLowerCase();
+    const temp = normPass(adminReset.slice(i + 1));
+    if (!adminSet.has(mail) || temp.length < 8) { log.warn?.('PLATFORM_RESET_PASSWORD ignored'); return; }
+    const mark = await sha256(`reset:${adminReset}`);
+    if (await db.collection('platform_resets').findOne({ _id: mark })) return;
+    const r = await db.collection('accounts').updateOne({ email: mail }, { $set: {
+      passwordHash: await hashPassword(temp, passwordIterations ? { iterations: passwordIterations } : undefined),
+      mustChangePassword: true, failedLogins: 0, lockedUntil: null, passwordResetAt: now(), passwordResetBy: 'env',
+    } });
+    await db.collection('platform_resets').insertOne({ _id: mark, email: mail, at: now(), matched: r.matchedCount });
+    log.warn?.(`platform password reset applied for ${mail} (matched ${r.matchedCount})`);
+  }
+
   async function handle(req) {
+    await (resetDone ??= applyAdminReset().catch((e) => { log.error?.('admin reset failed', e?.message); }));
     const ip = req.ip ?? 'local';
     const key = `${req.method} ${req.path}`;
     try {

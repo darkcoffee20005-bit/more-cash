@@ -305,3 +305,18 @@ test('الدخول يتسامح مع أخطاء كتابة الهاتف فقط: 
     assert.equal((await login(pw, `x${i}`)).body.error, 'BAD_CREDENTIALS', pw);
   }
 });
+
+test('PLATFORM_RESET_PASSWORD: يعيد كلمة مرور المزوّد مرة واحدة ويلزم تغييرها', async () => {
+  const db0 = await setup({ admins: ['boss@cafe.iq'] });
+  await db0.ok('a', 'POST', '/api/account/signup', { ...SHOP_A, email: 'boss@cafe.iq' });
+  await db0.ok('z', 'POST', '/api/account/signup', { ...SHOP_B });
+  const again = createPlatform({ db: db0.db, passwordIterations: 1000, admins: ['boss@cafe.iq'], adminReset: 'boss@cafe.iq:temp-pass-77', log: { error() {}, warn() {}, info() {} } });
+  const login = (password, ip) => again.handle({ method: 'POST', path: '/api/account/login', body: { email: 'boss@cafe.iq', password }, ip });
+  const r = await login('temp-pass-77', 'b');
+  assert.equal(r.status, 200);
+  assert.equal(r.body.mustChangePassword, true);
+  assert.equal((await login(SHOP_A.password, 'c')).status, 401);
+  // غير المزوّد لا يتأثر
+  const other = createPlatform({ db: db0.db, passwordIterations: 1000, admins: ['boss@cafe.iq'], adminReset: 'maryam@rafidain.iq:temp-pass-77', log: { error() {}, warn() {}, info() {} } });
+  assert.equal((await other.handle({ method: 'POST', path: '/api/account/login', body: { email: 'maryam@rafidain.iq', password: SHOP_B.password }, ip: 'd' })).status, 200);
+});
