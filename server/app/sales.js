@@ -536,14 +536,28 @@ export function createSales(ctx) {
       updatedAt: now(), updatedBy: actor.name,
     };
     if (doc.lines.length === 0) throw bad('EMPTY_TICKET');
+    // طاولة من الخريطة: اسم التذكرة اسم الطاولة، ولا تذكرتان مفتوحتان على طاولة واحدة
+    if (input.tableId) {
+      const table = ((await getSettings(db)).floor?.tables ?? []).find((t) => t.id === input.tableId && t.kind === 'table');
+      if (!table) throw bad('UNKNOWN_TABLE');
+      const taken = await C('tickets').findOne({ tableId: table.id });
+      if (taken && taken._id !== input.id) throw conflict('TABLE_TAKEN', table.name);
+      Object.assign(doc, { tableId: table.id, name: table.name });
+    }
+    // فهرس فريد جزئي على tableId يمنع حجز طاولة واحدة من جهازين في نفس اللحظة
+    const takenErr = (e) => (isDup(e) ? conflict('TABLE_TAKEN', doc.name) : e);
     if (input.id) {
       // تحقق النسخة: جهازان يعدّلان نفس التذكرة لا يكتب أحدهما فوق الآخر
-      const r = await C('tickets').updateOne({ _id: checkId(input.id), version: int(input.version, { field: 'version' }) }, { $set: doc, $inc: { version: 1 } });
+      let r;
+      try {
+        r = await C('tickets').updateOne({ _id: checkId(input.id), version: int(input.version, { field: 'version' }) },
+          { $set: doc, $inc: { version: 1 }, ...(doc.tableId ? {} : { $unset: { tableId: '' } }) });
+      } catch (e) { throw takenErr(e); }
       if (!r.matchedCount) throw conflict('TICKET_CHANGED');
       return out(await C('tickets').findOne({ _id: input.id }));
     }
     const created = { _id: newId(), ...doc, version: 1, createdAt: now(), employeeId: actor.id, employeeName: actor.name };
-    await C('tickets').insertOne(created);
+    try { await C('tickets').insertOne(created); } catch (e) { throw takenErr(e); }
     return out(created);
   }
 

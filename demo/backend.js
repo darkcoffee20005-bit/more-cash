@@ -166,8 +166,16 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
     if (cake && cake.stock > 2) await call('POST', '/api/admin/inventory/adjust', { clientId: crypto.randomUUID(), variantId: cake.variantId, type: 'count', qty: 2, note: 'جرد' });
     const latte = catalog.items.find((i) => i.name === 'لاتيه');
     const tea = catalog.items.find((i) => i.name === 'شاي عراقي');
-    await call('POST', '/api/tickets', { name: 'طاولة 3', lines: [{ variantId: latte.variants[0].id, qty: 2, modifierOptionIds: [mods.get(latte.modifierIds[0]).options[0].id] }], displayTotal: 10000 });
-    await call('POST', '/api/tickets', { name: 'طاولة 5', lines: [{ variantId: tea.variants[0].id, qty: 4 }], displayTotal: 4000 });
+    // خريطة المقهى التجريبي: صفّان من الطاولات، طاولات دائرية قرب النافذة، والبار والمدخل
+    const tbl = (n, x, y, shape = 'rect', seats = 4) => ({ id: `t${n}`, kind: 'table', name: `طاولة ${n}`, shape, x, y, w: shape === 'round' ? 100 : 130, h: shape === 'round' ? 100 : 90, seats });
+    await call('PUT', '/api/admin/floor', { tables: [
+      tbl(1, 40, 40), tbl(2, 220, 40), tbl(3, 400, 40), tbl(4, 580, 40, 'rect', 6),
+      tbl(5, 40, 200), tbl(6, 220, 200), tbl(7, 400, 200, 'round', 2), tbl(8, 560, 200, 'round', 2),
+      { id: 'bar', kind: 'zone', name: 'البار', shape: 'rect', x: 780, y: 40, w: 180, h: 420 },
+      { id: 'door', kind: 'zone', name: 'المدخل', shape: 'rect', x: 40, y: 500, w: 220, h: 70 },
+    ] });
+    await call('POST', '/api/tickets', { name: 'طاولة 3', tableId: 't3', lines: [{ variantId: latte.variants[0].id, qty: 2, modifierOptionIds: [mods.get(latte.modifierIds[0]).options[0].id] }], displayTotal: 10000 });
+    await call('POST', '/api/tickets', { name: 'طاولة 5', tableId: 't5', lines: [{ variantId: tea.variants[0].id, qty: 4 }], displayTotal: 4000 });
   }
   offset = 0;
   // تبدأ النسخة التجريبية من الصفحة الرئيسية: الجهاز غير مرتبط بأي مقهى

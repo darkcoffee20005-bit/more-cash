@@ -69,6 +69,22 @@ export function createAuth(ctx) {
     return { token, employee: publicEmployee(emp) };
   }
 
+  /**
+   * شاشة الحضور المشتركة على جهاز الكاشير: الموظف يختار اسمه ويكتب رمزه. لا تُنشأ جلسة ولا تتغير جلسة الجهاز.
+   * نفس قفل المحاولات الخاطئة لشاشة الرمز.
+   */
+  async function verifyPin(employeeId, rawPin, ip = 'local') {
+    checkLock(ip);
+    const pin = normalizePin(rawPin);
+    const emp = await db.collection('employees').findOne({ _id: checkId(employeeId, 'employeeId'), active: true });
+    if (!emp || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin) || emp.pinLookup !== await pinLookup(await secret(), pin)) {
+      recordFailure(ip);
+      throw new AppError(401, 'WRONG_PIN');
+    }
+    failures.delete(ip);
+    return { id: emp._id, name: emp.name, role: emp.role };
+  }
+
   /** يعيد الموظف صاحب الجلسة أو null */
   async function resolve(token) {
     if (typeof token !== 'string' || token.length !== 64) return null;
@@ -129,7 +145,7 @@ export function createAuth(ctx) {
     }
   }
 
-  return { isSetUp, setup, login, resolve, logout, listEmployees, saveEmployee };
+  return { isSetUp, setup, login, resolve, logout, listEmployees, saveEmployee, verifyPin };
 }
 
 export function publicEmployee(emp) {

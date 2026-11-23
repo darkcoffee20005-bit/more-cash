@@ -52,6 +52,7 @@ export async function ensureIndexes(db) {
     ix('variants', t({ sku: 1 }), { unique: true, name: 'uniq_sku', partialFilterExpression: { sku: { $type: 'string' } } }),
     ix('employees', t({ pinLookup: 1 }), { unique: true, name: 'uniq_active_pin', partialFilterExpression: { active: true } }),
     ix('tickets', t({ updatedAt: -1 }), { name: 'by_updated' }),
+    ix('tickets', t({ tableId: 1 }), { unique: true, name: 'uniq_table', partialFilterExpression: { tableId: { $exists: true } } }),
     ix('sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
     ix('audit', t({ at: -1 }), { name: 'by_date' }),
     ix('expenses', t({ day: -1 }), { name: 'by_day' }),

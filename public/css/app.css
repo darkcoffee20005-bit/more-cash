@@ -697,3 +697,43 @@ img.thumb { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; fl
 .tb-btn.warn { background: #f8ecd6; color: #9a5b0c; border-color: transparent; text-decoration: none; }
 /* روابط داخل أسطر الملخص (المصروفات): بلون الهوية لا بالأزرق الافتراضي */
 .r-line a { color: var(--olive-b, #687b1b); font-weight: 600; text-decoration: none; border-bottom: 1px dashed currentColor; }
+
+/* خريطة الطاولات: لوحة 1000×600 بالنسب، تتسع لعرض الشاشة */
+.floor { width: 100%; }
+.floor-canvas { position: relative; width: 100%; aspect-ratio: 1000 / 600; container-type: inline-size; border-radius: var(--r-lg); border: 1px solid var(--line);
+  background: var(--surface-2); background-image: radial-gradient(circle, color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1.2px); background-size: 2% 3.333%; overflow: hidden; touch-action: none; }
+.floor-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; }
+.ft { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; text-align: center;
+  border-radius: 12px; border: 2px solid #9fb6ad; background: #ffffff; color: var(--ink); font-size: .85rem; line-height: 1.2; overflow: hidden; box-shadow: 0 2px 6px rgb(18 58 58 / 10%); }
+.ft.round { border-radius: 50%; }
+.ft b { font-family: var(--font-display); font-weight: 700; font-size: clamp(10px, 1.9cqw, 17px); white-space: nowrap; }
+.ft small { color: var(--muted); font-size: clamp(9px, 1.4cqw, 13px); white-space: nowrap; }
+.ft.zone { background: repeating-linear-gradient(45deg, #e8eeeb, #e8eeeb 8px, #f1f5f3 8px, #f1f5f3 16px); border-style: dashed; color: var(--muted); box-shadow: none; }
+.ft.busy { background: #fbeedd; border-color: #d69a45; }
+.ft.busy small { color: #8a5a12; font-weight: 600; }
+.ft.cur { outline: 3px solid var(--olive-b, #687b1b); outline-offset: 2px; }
+button.ft { cursor: pointer; font: inherit; }
+button.ft:not(:disabled):hover { border-color: var(--olive-b, #687b1b); box-shadow: 0 4px 12px rgb(104 123 27 / 25%); }
+button.ft:disabled { cursor: not-allowed; opacity: .75; }
+.floor.pick button.ft:not(.busy):not(:disabled) { background: #eef6e0; border-color: #9fb034; }
+.floor.edit .ft { cursor: grab; user-select: none; touch-action: none; }
+.floor.edit .ft.sel { border-color: var(--olive-b, #687b1b); box-shadow: 0 0 0 3px rgb(159 176 52 / 35%); z-index: 2; }
+.ft-resize { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; border-radius: 4px; background: var(--olive-b, #687b1b); cursor: nwse-resize; touch-action: none; }
+.floor-key { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 2px solid #9fb034; background: #eef6e0; vertical-align: middle; }
+.floor-key.busy { border-color: #d69a45; background: #fbeedd; }
+.floor-editor { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 14px; align-items: start; }
+@media (max-width: 1440px) { .floor-editor { grid-template-columns: 1fr; } .floor-panel { max-width: 560px; } }
+
+/* شاشة الحضور والانصراف المشتركة */
+.kiosk { min-height: 100dvh; background: var(--bg); display: flex; flex-direction: column; }
+.kiosk-head { display: flex; align-items: center; gap: 16px; padding: 20px 24px; background: var(--brand-900, #0a1a15); color: #e8f1ef; }
+.kiosk-head h1 { margin: 0; color: #fff; }
+.kiosk-head .muted { color: #a9c3bc; }
+.kiosk-head .btn { margin-inline-start: auto; }
+.kiosk-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; padding: 20px 24px; align-items: start; }
+.kiosk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.kiosk-emp { display: flex; align-items: center; gap: 14px; padding: 16px; min-height: 92px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface); text-align: start; box-shadow: var(--shadow-1); font: inherit; cursor: pointer; }
+.kiosk-emp.in { border-color: #9fb034; background: #f6f9ec; }
+.kiosk-emp .avatar { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: #0f3d31; color: #fff; font-weight: 700; font-size: 1.1rem; flex: none; }
+.kiosk-pad { width: 340px; position: sticky; top: 20px; }
+@media (max-width: 760px) { .kiosk-body { grid-template-columns: 1fr; } .kiosk-pad { width: auto; position: static; order: -1; } }

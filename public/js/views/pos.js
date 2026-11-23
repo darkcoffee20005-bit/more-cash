@@ -7,6 +7,7 @@ import { busy, can, closeModal, fail, field, modalFrame, on, onRendered, openMod
 import { printReceipt } from './receipts.js';
 import { imageSrc, syncImages } from '../images.js';
 import { itemEmoji } from '../emoji.js';
+import { floorLegend, floorMap, floorTables, hasFloor } from '../floor.js';
 import { discardFailed, failedSales, pendingSales, queueSale, rememberBootstrap, retryFailed, savedBootstrap } from '../offline.js';
 
 // ---------------------------------------------------------------- البيانات
@@ -405,11 +406,24 @@ export const modals = {
         <td class="num">${t.lines.reduce((a, l) => a + l.qty, 0)}</td><td class="muted small">${esc(t.updatedBy ?? '')}</td><td class="num">${money(t.displayTotal)}</td>
         <td>${can('pos.void_saved') ? `<button class="icon-btn" data-action="ticket-delete" data-id="${t.id}" aria-label="حذف التذكرة">${icon('trash', 'sm')}</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
       : `<div class="empty">${icon('ticket')}<p>لا توجد تذاكر محفوظة</p></div>`;
-    return modalFrame({ title: 'التذاكر المفتوحة', body: rows, cls: 'wide' });
+    // الخريطة: الطاولة المشغولة تُفتح تذكرتها بلمسة
+    const map = hasFloor(s) && list?.length ? `${floorMap(floorTables(s), { mode: 'open', occupied: new Map(list.filter((t) => t.tableId).map((t) => [t.tableId, t])) })}${floorLegend()}` : '';
+    return modalFrame({ title: 'التذاكر المفتوحة', body: `<div class="stack">${map}${rows}</div>`, cls: 'wide' });
   },
 
   'save-ticket'(s) {
     const cart = s.pos.cart;
+    if (hasFloor(s)) {
+      // اختيار الطاولة من الخريطة؛ المشغولة معطّلة، أو حفظ باسم (سفري، اسم عميل)
+      const list = s.modal.list;
+      const occupied = new Map((list ?? []).filter((t) => t.tableId && t.id !== cart.ticket?.id).map((t) => [t.tableId, t]));
+      return modalFrame({ title: 'حفظ التذكرة على طاولة', cls: 'wide', body: `<div class="stack">
+        ${list === undefined ? '<p class="muted">جارٍ تحميل الطاولات…</p>' : `${floorMap(floorTables(s), { mode: 'pick', occupied, current: cart.ticket?.tableId ?? null })}${floorLegend()}`}
+        <form class="row wrap" data-form="ticket-save" id="ticket-form" style="align-items:flex-end">
+          ${field('أو احفظ باسم', `<input name="name" id="ticket-name" maxlength="40" value="${esc(cart.ticket?.tableId ? '' : cart.ticket?.name ?? '')}" placeholder="سفري، أو اسم العميل">`)}
+          ${field('ملاحظة', `<input name="note" id="ticket-note" maxlength="120" value="${esc(cart.ticket?.note ?? '')}">`)}
+          <button class="btn" type="submit" ${s.busy ? 'disabled' : ''}>حفظ بالاسم</button></form></div>` });
+    }
     return modalFrame({ title: 'حفظ التذكرة', body: `<form class="stack" data-form="ticket-save" id="ticket-form">
       ${field('اسم التذكرة', `<input name="name" id="ticket-name" required maxlength="40" value="${esc(cart.ticket?.name ?? '')}" placeholder="طاولة 3، أو اسم العميل" autofocus>`)}
       <div class="row wrap">${['طاولة 1', 'طاولة 2', 'طاولة 3', 'طاولة 4', 'سفري'].map((n) => `<button type="button" class="chip" data-action="ticket-name" data-name="${n}">${n}</button>`).join('')}</div>
@@ -643,11 +657,20 @@ on({
     try { state.modal.list = await get('/api/tickets'); render(); } catch (e) { fail(e); }
   },
   'pos-save': () => {
-    if (state.pos.cart.ticket) return saveTicket({ name: state.pos.cart.ticket.name, note: state.pos.cart.ticket.note });
-    return openModal({ type: 'save-ticket' });
+    const tk = state.pos.cart.ticket;
+    if (tk) return saveTicket({ name: tk.name, note: tk.note, tableId: tk.tableId ?? null });
+    openModal({ type: 'save-ticket' });
+    if (hasFloor()) get('/api/tickets').then((list) => { if (state.modal?.type === 'save-ticket') { state.modal.list = list; render(); } }).catch(fail);
+  },
+  'floor-pick': (el) => {
+    const t = floorTables().find((x) => x.id === el.dataset.id);
+    if (t) saveTicket({ name: t.name, tableId: t.id, note: document.getElementById('ticket-note')?.value || null });
   },
   'ticket-name': (el) => { document.getElementById('ticket-name').value = el.dataset.name; },
-  'ticket-save': (_el, _e, data) => saveTicket(data),
+  'ticket-save': (_el, _e, data) => {
+    if (!String(data.name ?? '').trim()) { toast('اكتب اسماً للتذكرة أو اختر طاولة', 'bad'); return; }
+    saveTicket(data);
+  },
   'ticket-open': (el) => {
     const t = state.modal.list.find((x) => x.id === el.dataset.id);
     const lines = [];
@@ -659,7 +682,7 @@ on({
       lines.push(cartLineFrom({ item, variant, optionIds: l.modifierOptionIds, qty: l.qty, note: l.note, discountIds: l.discountIds }));
     }
     state.pos.cart = { lines, discountIds: t.discountIds, customer: null, pointsRedeemed: 0, diningOption: t.diningOption ?? state.settings.diningOptions[0].id,
-      ticket: { id: t.id, version: t.version, name: t.name, note: t.note } };
+      ticket: { id: t.id, version: t.version, name: t.name, note: t.note, tableId: t.tableId ?? null } };
     if (t.customerId) get(`/api/customers/${t.customerId}`).then((c) => { state.pos.cart.customer = { id: c.id, name: c.name, points: c.points }; render(); }).catch(() => {});
     if (missing) toast(`${missing} صنف لم يعد متوفراً وأُزيل من التذكرة`, 'bad');
     closeModal();
@@ -751,7 +774,7 @@ async function saveTicket(data) {
   await busy(async () => {
     const cart = state.pos.cart;
     const body = {
-      id: cart.ticket?.id, version: cart.ticket?.version, name: data.name, note: data.note || null,
+      id: cart.ticket?.id, version: cart.ticket?.version, name: data.name, note: data.note || null, tableId: data.tableId || null,
       lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), discountIds: l.discountIds, note: l.note || null })),
       discountIds: cart.discountIds, customerId: cart.customer?.id ?? null, diningOption: cart.diningOption, displayTotal: cartTotals().total,
     };

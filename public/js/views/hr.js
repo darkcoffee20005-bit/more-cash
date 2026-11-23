@@ -25,10 +25,8 @@ export async function loadMe() {
 export function clockButton(s) {
   const c = s.me?.clockedIn;
   if (s.me === undefined || s.online === false) return '';
-  if (c?.forgot) return `<a class="tb-btn warn" href="#/me" title="حضور مفتوح منذ ${dateTime(c.inAt, tz())}">${icon('clock', 'sm')}<span>نسيت الانصراف؟</span></a>`;
-  return c
-    ? `<button class="tb-btn on" data-action="hr-clock" data-act="out" title="مسجّل حضور منذ ${time(c.inAt, tz())}">${icon('clock', 'sm')}<span>انصراف · ${hours(c.minutes)}</span></button>`
-    : `<button class="tb-btn" data-action="hr-clock" data-act="in">${icon('clock', 'sm')}<span>تسجيل حضور</span></button>`;
+  // الحضور والانصراف لكل الموظفين من شاشة واحدة على جهاز الكاشير (اسم + رمز)
+  return `<button class="tb-btn ${c?.forgot ? 'warn' : ''}" data-action="kiosk-open" title="${c?.forgot ? 'عندك حضور مفتوح من يوم سابق' : 'شاشة الحضور والانصراف'}">${icon('clock', 'sm')}<span>الحضور والانصراف</span></button>`;
 }
 
 // ---------------------------------------------------------------- سجل الموظف (يُستخدم لـ «سجلي» ولسجل أي موظف عند الإدارة)

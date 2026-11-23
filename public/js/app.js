@@ -11,10 +11,11 @@ import * as account from './views/account.js';
 import * as platform from './views/platform.js';
 import * as cancel from './views/cancel.js';
 import * as hr from './views/hr.js';
+import * as kiosk from './views/kiosk.js';
 import { mark } from './brand.js';
 import { flushSales, initOffline, rememberSession, savedSession } from './offline.js';
 
-const modules = [pos, receipts, ops, admin, account, platform, cancel, hr];
+const modules = [pos, receipts, ops, admin, account, platform, cancel, hr, kiosk];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
@@ -64,6 +65,7 @@ export const views = {
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
     if (parseHash().route === 'platform') return platform.platformView(s);
     if (s.shop?.disabled) return account.disabledView(s);
+    if (s.kiosk && s.shop) return kiosk.kioskView(s);
     if (!s.employee) return account.gateView(s);
     const body = (routes[s.route] ?? routes.pos)(s);
     return `<div class="shell">${topbarView(s)}${railView(s)}<main class="main" id="main">${body}</main></div>`;

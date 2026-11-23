@@ -88,6 +88,39 @@ export function createHr(ctx) {
     return { attendance: viewAtt(await ATT().findOne({ _id: open._id })), duplicate: false };
   }
 
+  // ---------------------------------------------------------------- شاشة الحضور المشتركة (جهاز الكاشير)
+  /** أسماء الموظفين وحالتهم فقط (بلا رواتب ولا بيانات شخصية) لشاشة الحضور قبل الدخول */
+  async function kioskList() {
+    const emps = (await EMP().find({ active: true }).toArray()).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    const open = new Map((await ATT().find({ open: true }).toArray()).map((a) => [a.employeeId, a]));
+    return emps.map((e) => {
+      const a = open.get(e._id);
+      return { id: e._id, name: e.name, role: e.role, clockedIn: a ? { inAt: a.inAt, minutes: minutesOf(a), forgot: minutesOf(a) > FORGOT_MIN } : null };
+    });
+  }
+
+  /**
+   * الموظف (بعد التحقق من رمزه) يسجّل حضوره أو انصرافه حسب حالته. حضور منسي (أكثر من 16 ساعة) يُغلق تلقائياً
+   * بلا ساعات ويُعلَّم «مُصحَّح» ليراجعه المدير، ثم يُسجَّل حضور جديد. إعادة إرسال نفس العملية لا تكررها.
+   */
+  async function kioskClock(emp, input = {}) {
+    const clientId = checkId(input.clientId, 'clientId');
+    const done = (await ATT().findOne({ clientId })) ?? (await ATT().findOne({ outClientId: clientId }));
+    if (done) return { action: done.clientId === clientId ? 'in' : 'out', attendance: viewAtt(done), duplicate: true, name: emp.name };
+    let open = await ATT().findOne({ employeeId: emp.id, open: true });
+    let autoClosed = false;
+    if (open && minutesOf(open) > FORGOT_MIN) {
+      await ATT().updateOne({ _id: open._id, open: true }, { $set: { outAt: new Date(open.inAt), open: false,
+        fixed: { byName: 'شاشة الحضور', at: now(), note: 'انصراف منسي: أُغلق تلقائياً بلا ساعات، صحّحه إن لزم', before: { inAt: open.inAt, outAt: null } } } });
+      await audit({ ...ctx, actor: emp }, 'hr.attendance_fix', { name: emp.name, note: 'انصراف منسي أُغلق تلقائياً' });
+      open = null;
+      autoClosed = true;
+    }
+    const action = open ? 'out' : 'in';
+    const r = await clock(emp, { clientId, action });
+    return { action, attendance: r.attendance, duplicate: r.duplicate, name: emp.name, autoClosed };
+  }
+
   // ---------------------------------------------------------------- الإجازات
   async function requestLeave(actor, input = {}) {
     if (!actor) throw new AppError(401, 'NOT_AUTHENTICATED');
@@ -596,5 +629,5 @@ export function createHr(ctx) {
   }
 
   return { clock, requestLeave, decideLeave, addAdjustment, removeAdjustment, fixAttendance, overview, record, distributeIncentives, setAward,
-    getPolicy, savePolicy, saveProfile, lateFines, giveAdvance, cancelAdvance, payroll, payPayroll, cancelPayroll };
+    getPolicy, savePolicy, saveProfile, kioskList, kioskClock, lateFines, giveAdvance, cancelAdvance, payroll, payPayroll, cancelPayroll };
 }

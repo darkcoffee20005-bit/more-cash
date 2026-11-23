@@ -191,6 +191,7 @@ function pin(s) {
         : k === 'back' ? `<button class="muted-key" data-action="pin-back" aria-label="حذف رقم">${icon('back')}</button>`
           : `<button data-action="pin-key" data-k="${k}">${k}</button>`)).join('')}</div>
       <button class="btn primary lg block" data-action="pin-submit" ${p.length < 4 || s.busy ? 'disabled' : ''}>دخول</button>
+      <button class="btn block" data-action="kiosk-open">${icon('clock', 'sm')} الحضور والانصراف</button>
     </div></main></div>`;
 }
 

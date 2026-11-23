@@ -9,6 +9,7 @@ import { printHtml } from './receipts.js';
 import { rememberSession } from '../offline.js';
 import { imageSrc, putImage, resizeImage, syncImages } from '../images.js';
 import { EMOJIS, guessEmoji } from '../emoji.js';
+import { FLOOR_H, FLOOR_W, floorMap, installFloorEditor } from '../floor.js';
 import { hrPage, loadHr } from './hr.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 
@@ -26,6 +27,7 @@ const SECTIONS = [
   ['categories', 'التصنيفات', 'layers', 'admin.catalog'],
   ['modifiers', 'الإضافات', 'plus', 'admin.catalog'],
   ['discounts', 'الخصومات', 'tag', 'admin.catalog'],
+  ['floor', 'خريطة الطاولات', 'layers', 'admin.catalog'],
   ['inventory', 'المخزون', 'box', 'admin.inventory'],
   ['hr', 'الموارد البشرية', 'users', 'hr.manage'],
   ['employees', 'الموظفون', 'users', 'admin.employees'],
@@ -90,6 +92,26 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  floor(s, a) {
+    const ed = a.floor;
+    const head = `<div class="page-head"><h1>خريطة الطاولات</h1><span class="spacer"></span>
+      <button class="btn" data-action="floor-add" data-kind="table" data-shape="rect">${icon('plus', 'sm')} طاولة مربعة</button>
+      <button class="btn" data-action="floor-add" data-kind="table" data-shape="round">${icon('plus', 'sm')} طاولة دائرية</button>
+      <button class="btn" data-action="floor-add" data-kind="zone" data-shape="rect">${icon('plus', 'sm')} منطقة (بار، مدخل…)</button>
+      <button class="btn primary" data-action="floor-save" ${ed?.dirty && !s.busy ? '' : 'disabled'}>${icon('check', 'sm')} حفظ الخريطة</button></div>`;
+    if (!ed) return `${head}<p class="muted">جارٍ التحميل…</p>`;
+    const t = ed.tables.find((x) => x.id === ed.selected);
+    const panel = t ? `<section class="card pad stack floor-panel"><h2>${t.kind === 'table' ? 'الطاولة' : 'المنطقة'}</h2>
+        ${field('الاسم', `<input id="fl-name" value="${esc(t.name)}" maxlength="20" data-change="floor-field" data-k="name">`)}
+        ${t.kind === 'table' ? field('عدد المقاعد', `<input id="fl-seats" value="${t.seats}" inputmode="numeric" maxlength="2" data-change="floor-field" data-k="seats">`) : ''}
+        <div class="seg"><button type="button" class="${t.shape === 'rect' ? 'on' : ''}" data-action="floor-shape" data-k="rect">مربعة</button><button type="button" class="${t.shape === 'round' ? 'on' : ''}" data-action="floor-shape" data-k="round">دائرية</button></div>
+        <div class="row wrap"><button class="btn sm" data-action="floor-dup">نسخة</button><button class="btn sm ghost danger" data-action="floor-del">${icon('trash', 'sm')} حذف</button></div>
+        <p class="muted small" style="margin:0">اسحب لتحريكها، واسحب الزاوية لتغيير حجمها. الأسهم تحرّكها خطوة.</p></section>`
+      : `<section class="card pad stack floor-panel"><h2>كيف ترتّب المقهى</h2><p class="muted small" style="margin:0">أضف طاولاتك ثم اسحب كل طاولة لمكانها كما في المقهى. اضغط على طاولة لتعديل اسمها وعدد مقاعدها. المناطق (البار، المدخل، الكاونتر) للتوضيح فقط ولا تُختار للتذاكر.</p>
+        <p class="small" style="margin:0">${ed.tables.filter((x) => x.kind === 'table').length} طاولة · ${ed.tables.reduce((n, x) => n + (x.seats || 0), 0)} مقعد</p></section>`;
+    return `${head}<div class="floor-editor">${floorMap(ed.tables, { mode: 'edit', selected: ed.selected })}${panel}</div>
+      ${ed.dirty ? '<p class="small" style="color:var(--warn)">تغييرات لم تُحفظ بعد.</p>' : ''}`;
+  },
   hr: () => hrPage(),
   branches(s, a) {
     const list = a.branches;
@@ -722,11 +744,18 @@ function presetRange(k) {
   return { today: [today, today], yesterday: [d(1), d(1)], week: [d(6), today], month: [first, today], lastmonth: [lastMonthStart, lastMonthEnd] }[k];
 }
 
+installFloorEditor(() => (state.route === 'admin' && state.params?.sub === 'floor' ? A().floor : null));
+
 async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
     hr: () => loadHr(),
+    floor: async () => {
+      if (a.floor?.dirty) return; // لا تُفقد تعديلات لم تُحفظ عند الرجوع للقسم
+      const st = await get('/api/admin/settings').catch(() => state.settings);
+      a.floor = { tables: structuredClone(st?.floor?.tables ?? []), selected: null, dirty: false };
+    },
     branches: async () => {
       if (!a.branchPreset) a.branchPreset = 'today';
       const [from, to] = presetRange(a.branchPreset);
@@ -801,6 +830,68 @@ on({
     history.replaceState(null, '', '#/');
     toast(`هذا الجهاز الآن في ${r.shop.name}. أدخل رمزك`, 'ok');
     render();
+  }),
+  'floor-add': (el) => {
+    const ed = A().floor;
+    if (!ed) return;
+    const kind = el.dataset.kind;
+    const shape = el.dataset.shape;
+    const [w, h] = kind === 'zone' ? [300, 80] : shape === 'round' ? [100, 100] : [120, 90];
+    const n = ed.tables.filter((x) => x.kind === 'table').length + 1;
+    let name = kind === 'zone' ? 'البار' : `طاولة ${n}`;
+    for (let k = n; kind === 'table' && ed.tables.some((x) => x.name === name); k++) name = `طاولة ${k + 1}`;
+    // أول مكان فارغ على شبكة اللوحة
+    const free = (x, y) => !ed.tables.some((o) => x < o.x + o.w + 10 && o.x < x + w + 10 && y < o.y + o.h + 10 && o.y < y + h + 10);
+    let spot = [20, 20];
+    search: for (let y = 20; y + h <= FLOOR_H; y += 20) for (let x = 20; x + w <= FLOOR_W; x += 20) if (free(x, y)) { spot = [x, y]; break search; }
+    const t = { id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, kind, shape, name, x: spot[0], y: spot[1], w, h, seats: kind === 'table' ? 4 : 0 };
+    ed.tables.push(t);
+    Object.assign(ed, { selected: t.id, dirty: true });
+    render();
+  },
+  'floor-field': (el) => {
+    const ed = A().floor;
+    const t = ed?.tables.find((x) => x.id === ed.selected);
+    if (!t) return;
+    if (el.dataset.k === 'seats') t.seats = Math.max(0, Math.min(40, parseAmount(el.value) ?? 0));
+    else t.name = el.value.trim().slice(0, 20) || t.name;
+    ed.dirty = true;
+    render();
+  },
+  'floor-shape': (el) => {
+    const ed = A().floor;
+    const t = ed?.tables.find((x) => x.id === ed.selected);
+    if (!t) return;
+    t.shape = el.dataset.k;
+    if (t.shape === 'round') t.h = t.w = Math.min(Math.max(t.w, t.h), FLOOR_H - t.y, FLOOR_W - t.x);
+    ed.dirty = true;
+    render();
+  },
+  'floor-dup': () => {
+    const ed = A().floor;
+    const t = ed?.tables.find((x) => x.id === ed.selected);
+    if (!t) return;
+    let k = ed.tables.length + 1;
+    let name = t.kind === 'table' ? `طاولة ${k}` : t.name;
+    while (t.kind === 'table' && ed.tables.some((x) => x.name === name)) name = `طاولة ${++k}`;
+    const c = { ...t, id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, x: Math.min(t.x + 30, FLOOR_W - t.w), y: Math.min(t.y + 30, FLOOR_H - t.h) };
+    ed.tables.push(c);
+    Object.assign(ed, { selected: c.id, dirty: true });
+    render();
+  },
+  'floor-del': () => {
+    const ed = A().floor;
+    if (!ed?.selected) return;
+    ed.tables = ed.tables.filter((x) => x.id !== ed.selected);
+    Object.assign(ed, { selected: null, dirty: true });
+    render();
+  },
+  'floor-save': () => busy(async () => {
+    const ed = A().floor;
+    const floor = await put('/api/admin/floor', { tables: ed.tables });
+    if (state.settings) state.settings.floor = floor;
+    Object.assign(ed, { dirty: false });
+    toast('حُفظت خريطة الطاولات', 'ok');
   }),
   'exp-preset': (el) => { A().expPreset = el.dataset.k; loadSection('expenses').catch(fail); },
   'exp-new': () => openModal({ type: 'expense', clientId: uid(), category: 'supplies', fromDrawer: false }),

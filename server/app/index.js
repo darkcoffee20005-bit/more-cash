@@ -36,6 +36,9 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['GET', '/api/state', async (actor) => ({ setUp: await auth.isSetUp(), employee: actor ? publicEmployee({ _id: actor.id, ...actor }) : null }), { public: true }],
     ['POST', '/api/setup', async (_a, req) => auth.setup(req.body), { public: true }],
     ['POST', '/api/auth/pin', async (_a, req) => auth.login(req.body, req.ip), { public: true, login: true }],
+    // شاشة الحضور المشتركة: تعمل على الجهاز المرتبط بالمقهى قبل دخول أي موظف (الرمز هو التحقق)
+    ['GET', '/api/hr/kiosk', async () => ctx.hr.kioskList(), { public: true }],
+    ['POST', '/api/hr/kiosk/clock', async (_a, req) => ctx.hr.kioskClock(await auth.verifyPin(req.body?.employeeId, req.body?.pin, req.ip), req.body), { public: true }],
     ['POST', '/api/auth/logout', async (_a, req) => { await auth.logout(req.token); return { ok: true }; }, { public: true, logout: true }],
 
     ['GET', '/api/pos/bootstrap', async (actor) => ({
@@ -79,6 +82,7 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['DELETE', '/api/hr/adjustments/:id', (actor, req, p) => ctx.hr.removeAdjustment(actor, p.id)],
     ['POST', '/api/hr/attendance/:id/fix', (actor, req, p) => ctx.hr.fixAttendance(actor, p.id, req.body)],
     ['POST', '/api/hr/incentives', (actor, req) => ctx.hr.distributeIncentives(actor, req.body)],
+    ['PUT', '/api/admin/floor', (actor, req) => catalog.saveFloor(actor, req.body)],
     ['POST', '/api/hr/award', (actor, req) => ctx.hr.setAward(actor, req.body)],
     ['GET', '/api/hr/policy', (actor) => ctx.hr.getPolicy(actor)],
     ['POST', '/api/hr/policy', (actor, req) => ctx.hr.savePolicy(actor, req.body)],

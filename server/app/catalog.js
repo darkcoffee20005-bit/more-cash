@@ -21,6 +21,35 @@ export function createCatalog(ctx) {
     try { return await fn(); } catch (e) { if (isDup(e)) throw conflict(code); throw e; }
   }
 
+  // ---------------------------------------------------------------- خريطة الطاولات
+  // لوحة افتراضية 1000×600 وحدة؛ كل عنصر طاولة (تُختار للتذكرة) أو منطقة (بار، مدخل…) للتوضيح فقط
+  async function saveFloor(actor, input = {}) {
+    requirePerm(actor, 'admin.catalog');
+    if (!Array.isArray(input.tables) || input.tables.length > 100) throw bad('INVALID_LIST', 'tables');
+    const ids = new Set();
+    const names = new Set();
+    const tables = input.tables.map((t) => {
+      if (!t || typeof t !== 'object') throw bad('INVALID_LIST', 'tables');
+      const kind = oneOf(t.kind ?? 'table', ['table', 'zone'], 'kind');
+      const w = int(t.w, { field: 'w', min: 30, max: 600 });
+      const h = int(t.h, { field: 'h', min: 30, max: 600 });
+      const el = {
+        id: checkId(t.id, 'tables.id'), kind, name: str(t.name, { field: 'name', min: 1, max: 20 }),
+        shape: oneOf(t.shape ?? 'rect', ['rect', 'round'], 'shape'),
+        x: int(t.x, { field: 'x', min: 0, max: 1000 - w }), y: int(t.y, { field: 'y', min: 0, max: 600 - h }), w, h,
+        seats: kind === 'table' ? int(t.seats ?? 0, { field: 'seats', min: 0, max: 40 }) : 0,
+      };
+      if (ids.has(el.id)) throw bad('DUPLICATE_ID', 'tables.id');
+      ids.add(el.id);
+      if (kind === 'table') { if (names.has(el.name)) throw conflict('NAME_IN_USE', el.name); names.add(el.name); }
+      return el;
+    });
+    const floor = { tables, updatedAt: now() };
+    await db.collection('settings').updateOne({ _id: 'store' }, { $set: { floor } });
+    await audit({ ...ctx, actor }, 'settings.floor', { tables: tables.filter((t) => t.kind === 'table').length });
+    return floor;
+  }
+
   // ---------------------------------------------------------------- التصنيفات
   async function saveCategory(actor, input = {}) {
     requirePerm(actor, 'admin.catalog');
@@ -289,5 +318,5 @@ export function createCatalog(ctx) {
     return Object.fromEntries(rows.map((r) => [r._id, { v: r.v, src: `data:${r.mediaType};base64,${r.data}` }]));
   }
 
-  return { saveCategory, listCategories, saveModifier, listModifiers, saveDiscount, listDiscounts, saveItem, getItem, listItems, archive, posCatalog, setImage, removeImage, images };
+  return { saveCategory, listCategories, saveModifier, listModifiers, saveDiscount, listDiscounts, saveItem, getItem, listItems, archive, posCatalog, setImage, removeImage, images, saveFloor };
 }

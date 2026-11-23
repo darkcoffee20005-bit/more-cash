@@ -701,6 +701,46 @@ img.thumb { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; fl
 /* روابط داخل أسطر الملخص (المصروفات): بلون الهوية لا بالأزرق الافتراضي */
 .r-line a { color: var(--olive-b, #687b1b); font-weight: 600; text-decoration: none; border-bottom: 1px dashed currentColor; }
 
+/* خريطة الطاولات: لوحة 1000×600 بالنسب، تتسع لعرض الشاشة */
+.floor { width: 100%; }
+.floor-canvas { position: relative; width: 100%; aspect-ratio: 1000 / 600; container-type: inline-size; border-radius: var(--r-lg); border: 1px solid var(--line);
+  background: var(--surface-2); background-image: radial-gradient(circle, color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1.2px); background-size: 2% 3.333%; overflow: hidden; touch-action: none; }
+.floor-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; }
+.ft { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; text-align: center;
+  border-radius: 12px; border: 2px solid #9fb6ad; background: #ffffff; color: var(--ink); font-size: .85rem; line-height: 1.2; overflow: hidden; box-shadow: 0 2px 6px rgb(18 58 58 / 10%); }
+.ft.round { border-radius: 50%; }
+.ft b { font-family: var(--font-display); font-weight: 700; font-size: clamp(10px, 1.9cqw, 17px); white-space: nowrap; }
+.ft small { color: var(--muted); font-size: clamp(9px, 1.4cqw, 13px); white-space: nowrap; }
+.ft.zone { background: repeating-linear-gradient(45deg, #e8eeeb, #e8eeeb 8px, #f1f5f3 8px, #f1f5f3 16px); border-style: dashed; color: var(--muted); box-shadow: none; }
+.ft.busy { background: #fbeedd; border-color: #d69a45; }
+.ft.busy small { color: #8a5a12; font-weight: 600; }
+.ft.cur { outline: 3px solid var(--olive-b, #687b1b); outline-offset: 2px; }
+button.ft { cursor: pointer; font: inherit; }
+button.ft:not(:disabled):hover { border-color: var(--olive-b, #687b1b); box-shadow: 0 4px 12px rgb(104 123 27 / 25%); }
+button.ft:disabled { cursor: not-allowed; opacity: .75; }
+.floor.pick button.ft:not(.busy):not(:disabled) { background: #eef6e0; border-color: #9fb034; }
+.floor.edit .ft { cursor: grab; user-select: none; touch-action: none; }
+.floor.edit .ft.sel { border-color: var(--olive-b, #687b1b); box-shadow: 0 0 0 3px rgb(159 176 52 / 35%); z-index: 2; }
+.ft-resize { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; border-radius: 4px; background: var(--olive-b, #687b1b); cursor: nwse-resize; touch-action: none; }
+.floor-key { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 2px solid #9fb034; background: #eef6e0; vertical-align: middle; }
+.floor-key.busy { border-color: #d69a45; background: #fbeedd; }
+.floor-editor { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 14px; align-items: start; }
+@media (max-width: 1440px) { .floor-editor { grid-template-columns: 1fr; } .floor-panel { max-width: 560px; } }
+
+/* شاشة الحضور والانصراف المشتركة */
+.kiosk { min-height: 100dvh; background: var(--bg); display: flex; flex-direction: column; }
+.kiosk-head { display: flex; align-items: center; gap: 16px; padding: 20px 24px; background: var(--brand-900, #0a1a15); color: #e8f1ef; }
+.kiosk-head h1 { margin: 0; color: #fff; }
+.kiosk-head .muted { color: #a9c3bc; }
+.kiosk-head .btn { margin-inline-start: auto; }
+.kiosk-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; padding: 20px 24px; align-items: start; }
+.kiosk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.kiosk-emp { display: flex; align-items: center; gap: 14px; padding: 16px; min-height: 92px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface); text-align: start; box-shadow: var(--shadow-1); font: inherit; cursor: pointer; }
+.kiosk-emp.in { border-color: #9fb034; background: #f6f9ec; }
+.kiosk-emp .avatar { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: #0f3d31; color: #fff; font-weight: 700; font-size: 1.1rem; flex: none; }
+.kiosk-pad { width: 340px; position: sticky; top: 20px; }
+@media (max-width: 760px) { .kiosk-body { grid-template-columns: 1fr; } .kiosk-pad { width: auto; position: static; order: -1; } }
+
 </style></head><body><div id="app"></div><div id="print-area" aria-hidden="true"></div><script type="module">
 // ---- server/db/memory.js
 const __m_server_db_memory_js = await (async () => {
@@ -1159,6 +1199,7 @@ async function ensureIndexes(db) {
     ix('variants', t({ sku: 1 }), { unique: true, name: 'uniq_sku', partialFilterExpression: { sku: { $type: 'string' } } }),
     ix('employees', t({ pinLookup: 1 }), { unique: true, name: 'uniq_active_pin', partialFilterExpression: { active: true } }),
     ix('tickets', t({ updatedAt: -1 }), { name: 'by_updated' }),
+    ix('tickets', t({ tableId: 1 }), { unique: true, name: 'uniq_table', partialFilterExpression: { tableId: { $exists: true } } }),
     ix('sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
     ix('audit', t({ at: -1 }), { name: 'by_date' }),
     ix('expenses', t({ day: -1 }), { name: 'by_day' }),
@@ -1666,6 +1707,22 @@ function createAuth(ctx) {
     return { token, employee: publicEmployee(emp) };
   }
 
+  /**
+   * شاشة الحضور المشتركة على جهاز الكاشير: الموظف يختار اسمه ويكتب رمزه. لا تُنشأ جلسة ولا تتغير جلسة الجهاز.
+   * نفس قفل المحاولات الخاطئة لشاشة الرمز.
+   */
+  async function verifyPin(employeeId, rawPin, ip = 'local') {
+    checkLock(ip);
+    const pin = normalizePin(rawPin);
+    const emp = await db.collection('employees').findOne({ _id: checkId(employeeId, 'employeeId'), active: true });
+    if (!emp || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin) || emp.pinLookup !== await pinLookup(await secret(), pin)) {
+      recordFailure(ip);
+      throw new AppError(401, 'WRONG_PIN');
+    }
+    failures.delete(ip);
+    return { id: emp._id, name: emp.name, role: emp.role };
+  }
+
   /** يعيد الموظف صاحب الجلسة أو null */
   async function resolve(token) {
     if (typeof token !== 'string' || token.length !== 64) return null;
@@ -1726,7 +1783,7 @@ function createAuth(ctx) {
     }
   }
 
-  return { isSetUp, setup, login, resolve, logout, listEmployees, saveEmployee };
+  return { isSetUp, setup, login, resolve, logout, listEmployees, saveEmployee, verifyPin };
 }
 
 function publicEmployee(emp) {
@@ -2109,6 +2166,35 @@ function createCatalog(ctx) {
     try { return await fn(); } catch (e) { if (isDup(e)) throw conflict(code); throw e; }
   }
 
+  // ---------------------------------------------------------------- خريطة الطاولات
+  // لوحة افتراضية 1000×600 وحدة؛ كل عنصر طاولة (تُختار للتذكرة) أو منطقة (بار، مدخل…) للتوضيح فقط
+  async function saveFloor(actor, input = {}) {
+    requirePerm(actor, 'admin.catalog');
+    if (!Array.isArray(input.tables) || input.tables.length > 100) throw bad('INVALID_LIST', 'tables');
+    const ids = new Set();
+    const names = new Set();
+    const tables = input.tables.map((t) => {
+      if (!t || typeof t !== 'object') throw bad('INVALID_LIST', 'tables');
+      const kind = oneOf(t.kind ?? 'table', ['table', 'zone'], 'kind');
+      const w = int(t.w, { field: 'w', min: 30, max: 600 });
+      const h = int(t.h, { field: 'h', min: 30, max: 600 });
+      const el = {
+        id: checkId(t.id, 'tables.id'), kind, name: str(t.name, { field: 'name', min: 1, max: 20 }),
+        shape: oneOf(t.shape ?? 'rect', ['rect', 'round'], 'shape'),
+        x: int(t.x, { field: 'x', min: 0, max: 1000 - w }), y: int(t.y, { field: 'y', min: 0, max: 600 - h }), w, h,
+        seats: kind === 'table' ? int(t.seats ?? 0, { field: 'seats', min: 0, max: 40 }) : 0,
+      };
+      if (ids.has(el.id)) throw bad('DUPLICATE_ID', 'tables.id');
+      ids.add(el.id);
+      if (kind === 'table') { if (names.has(el.name)) throw conflict('NAME_IN_USE', el.name); names.add(el.name); }
+      return el;
+    });
+    const floor = { tables, updatedAt: now() };
+    await db.collection('settings').updateOne({ _id: 'store' }, { $set: { floor } });
+    await audit({ ...ctx, actor }, 'settings.floor', { tables: tables.filter((t) => t.kind === 'table').length });
+    return floor;
+  }
+
   // ---------------------------------------------------------------- التصنيفات
   async function saveCategory(actor, input = {}) {
     requirePerm(actor, 'admin.catalog');
@@ -2377,7 +2463,7 @@ function createCatalog(ctx) {
     return Object.fromEntries(rows.map((r) => [r._id, { v: r.v, src: `data:${r.mediaType};base64,${r.data}` }]));
   }
 
-  return { saveCategory, listCategories, saveModifier, listModifiers, saveDiscount, listDiscounts, saveItem, getItem, listItems, archive, posCatalog, setImage, removeImage, images };
+  return { saveCategory, listCategories, saveModifier, listModifiers, saveDiscount, listDiscounts, saveItem, getItem, listItems, archive, posCatalog, setImage, removeImage, images, saveFloor };
 }
 
 return { createCatalog };
@@ -3191,6 +3277,39 @@ function createHr(ctx) {
     return { attendance: viewAtt(await ATT().findOne({ _id: open._id })), duplicate: false };
   }
 
+  // ---------------------------------------------------------------- شاشة الحضور المشتركة (جهاز الكاشير)
+  /** أسماء الموظفين وحالتهم فقط (بلا رواتب ولا بيانات شخصية) لشاشة الحضور قبل الدخول */
+  async function kioskList() {
+    const emps = (await EMP().find({ active: true }).toArray()).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    const open = new Map((await ATT().find({ open: true }).toArray()).map((a) => [a.employeeId, a]));
+    return emps.map((e) => {
+      const a = open.get(e._id);
+      return { id: e._id, name: e.name, role: e.role, clockedIn: a ? { inAt: a.inAt, minutes: minutesOf(a), forgot: minutesOf(a) > FORGOT_MIN } : null };
+    });
+  }
+
+  /**
+   * الموظف (بعد التحقق من رمزه) يسجّل حضوره أو انصرافه حسب حالته. حضور منسي (أكثر من 16 ساعة) يُغلق تلقائياً
+   * بلا ساعات ويُعلَّم «مُصحَّح» ليراجعه المدير، ثم يُسجَّل حضور جديد. إعادة إرسال نفس العملية لا تكررها.
+   */
+  async function kioskClock(emp, input = {}) {
+    const clientId = checkId(input.clientId, 'clientId');
+    const done = (await ATT().findOne({ clientId })) ?? (await ATT().findOne({ outClientId: clientId }));
+    if (done) return { action: done.clientId === clientId ? 'in' : 'out', attendance: viewAtt(done), duplicate: true, name: emp.name };
+    let open = await ATT().findOne({ employeeId: emp.id, open: true });
+    let autoClosed = false;
+    if (open && minutesOf(open) > FORGOT_MIN) {
+      await ATT().updateOne({ _id: open._id, open: true }, { $set: { outAt: new Date(open.inAt), open: false,
+        fixed: { byName: 'شاشة الحضور', at: now(), note: 'انصراف منسي: أُغلق تلقائياً بلا ساعات، صحّحه إن لزم', before: { inAt: open.inAt, outAt: null } } } });
+      await audit({ ...ctx, actor: emp }, 'hr.attendance_fix', { name: emp.name, note: 'انصراف منسي أُغلق تلقائياً' });
+      open = null;
+      autoClosed = true;
+    }
+    const action = open ? 'out' : 'in';
+    const r = await clock(emp, { clientId, action });
+    return { action, attendance: r.attendance, duplicate: r.duplicate, name: emp.name, autoClosed };
+  }
+
   // ---------------------------------------------------------------- الإجازات
   async function requestLeave(actor, input = {}) {
     if (!actor) throw new AppError(401, 'NOT_AUTHENTICATED');
@@ -3699,7 +3818,7 @@ function createHr(ctx) {
   }
 
   return { clock, requestLeave, decideLeave, addAdjustment, removeAdjustment, fixAttendance, overview, record, distributeIncentives, setAward,
-    getPolicy, savePolicy, saveProfile, lateFines, giveAdvance, cancelAdvance, payroll, payPayroll, cancelPayroll };
+    getPolicy, savePolicy, saveProfile, kioskList, kioskClock, lateFines, giveAdvance, cancelAdvance, payroll, payPayroll, cancelPayroll };
 }
 
 return { HR_POLICY, splitByWeight, createHr };
@@ -4249,14 +4368,28 @@ function createSales(ctx) {
       updatedAt: now(), updatedBy: actor.name,
     };
     if (doc.lines.length === 0) throw bad('EMPTY_TICKET');
+    // طاولة من الخريطة: اسم التذكرة اسم الطاولة، ولا تذكرتان مفتوحتان على طاولة واحدة
+    if (input.tableId) {
+      const table = ((await getSettings(db)).floor?.tables ?? []).find((t) => t.id === input.tableId && t.kind === 'table');
+      if (!table) throw bad('UNKNOWN_TABLE');
+      const taken = await C('tickets').findOne({ tableId: table.id });
+      if (taken && taken._id !== input.id) throw conflict('TABLE_TAKEN', table.name);
+      Object.assign(doc, { tableId: table.id, name: table.name });
+    }
+    // فهرس فريد جزئي على tableId يمنع حجز طاولة واحدة من جهازين في نفس اللحظة
+    const takenErr = (e) => (isDup(e) ? conflict('TABLE_TAKEN', doc.name) : e);
     if (input.id) {
       // تحقق النسخة: جهازان يعدّلان نفس التذكرة لا يكتب أحدهما فوق الآخر
-      const r = await C('tickets').updateOne({ _id: checkId(input.id), version: int(input.version, { field: 'version' }) }, { $set: doc, $inc: { version: 1 } });
+      let r;
+      try {
+        r = await C('tickets').updateOne({ _id: checkId(input.id), version: int(input.version, { field: 'version' }) },
+          { $set: doc, $inc: { version: 1 }, ...(doc.tableId ? {} : { $unset: { tableId: '' } }) });
+      } catch (e) { throw takenErr(e); }
       if (!r.matchedCount) throw conflict('TICKET_CHANGED');
       return out(await C('tickets').findOne({ _id: input.id }));
     }
     const created = { _id: newId(), ...doc, version: 1, createdAt: now(), employeeId: actor.id, employeeName: actor.name };
-    await C('tickets').insertOne(created);
+    try { await C('tickets').insertOne(created); } catch (e) { throw takenErr(e); }
     return out(created);
   }
 
@@ -4522,6 +4655,9 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['GET', '/api/state', async (actor) => ({ setUp: await auth.isSetUp(), employee: actor ? publicEmployee({ _id: actor.id, ...actor }) : null }), { public: true }],
     ['POST', '/api/setup', async (_a, req) => auth.setup(req.body), { public: true }],
     ['POST', '/api/auth/pin', async (_a, req) => auth.login(req.body, req.ip), { public: true, login: true }],
+    // شاشة الحضور المشتركة: تعمل على الجهاز المرتبط بالمقهى قبل دخول أي موظف (الرمز هو التحقق)
+    ['GET', '/api/hr/kiosk', async () => ctx.hr.kioskList(), { public: true }],
+    ['POST', '/api/hr/kiosk/clock', async (_a, req) => ctx.hr.kioskClock(await auth.verifyPin(req.body?.employeeId, req.body?.pin, req.ip), req.body), { public: true }],
     ['POST', '/api/auth/logout', async (_a, req) => { await auth.logout(req.token); return { ok: true }; }, { public: true, logout: true }],
 
     ['GET', '/api/pos/bootstrap', async (actor) => ({
@@ -4565,6 +4701,7 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['DELETE', '/api/hr/adjustments/:id', (actor, req, p) => ctx.hr.removeAdjustment(actor, p.id)],
     ['POST', '/api/hr/attendance/:id/fix', (actor, req, p) => ctx.hr.fixAttendance(actor, p.id, req.body)],
     ['POST', '/api/hr/incentives', (actor, req) => ctx.hr.distributeIncentives(actor, req.body)],
+    ['PUT', '/api/admin/floor', (actor, req) => catalog.saveFloor(actor, req.body)],
     ['POST', '/api/hr/award', (actor, req) => ctx.hr.setAward(actor, req.body)],
     ['GET', '/api/hr/policy', (actor) => ctx.hr.getPolicy(actor)],
     ['POST', '/api/hr/policy', (actor, req) => ctx.hr.savePolicy(actor, req.body)],
@@ -5483,8 +5620,16 @@ async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
     if (cake && cake.stock > 2) await call('POST', '/api/admin/inventory/adjust', { clientId: crypto.randomUUID(), variantId: cake.variantId, type: 'count', qty: 2, note: 'جرد' });
     const latte = catalog.items.find((i) => i.name === 'لاتيه');
     const tea = catalog.items.find((i) => i.name === 'شاي عراقي');
-    await call('POST', '/api/tickets', { name: 'طاولة 3', lines: [{ variantId: latte.variants[0].id, qty: 2, modifierOptionIds: [mods.get(latte.modifierIds[0]).options[0].id] }], displayTotal: 10000 });
-    await call('POST', '/api/tickets', { name: 'طاولة 5', lines: [{ variantId: tea.variants[0].id, qty: 4 }], displayTotal: 4000 });
+    // خريطة المقهى التجريبي: صفّان من الطاولات، طاولات دائرية قرب النافذة، والبار والمدخل
+    const tbl = (n, x, y, shape = 'rect', seats = 4) => ({ id: `t${n}`, kind: 'table', name: `طاولة ${n}`, shape, x, y, w: shape === 'round' ? 100 : 130, h: shape === 'round' ? 100 : 90, seats });
+    await call('PUT', '/api/admin/floor', { tables: [
+      tbl(1, 40, 40), tbl(2, 220, 40), tbl(3, 400, 40), tbl(4, 580, 40, 'rect', 6),
+      tbl(5, 40, 200), tbl(6, 220, 200), tbl(7, 400, 200, 'round', 2), tbl(8, 560, 200, 'round', 2),
+      { id: 'bar', kind: 'zone', name: 'البار', shape: 'rect', x: 780, y: 40, w: 180, h: 420 },
+      { id: 'door', kind: 'zone', name: 'المدخل', shape: 'rect', x: 40, y: 500, w: 220, h: 70 },
+    ] });
+    await call('POST', '/api/tickets', { name: 'طاولة 3', tableId: 't3', lines: [{ variantId: latte.variants[0].id, qty: 2, modifierOptionIds: [mods.get(latte.modifierIds[0]).options[0].id] }], displayTotal: 10000 });
+    await call('POST', '/api/tickets', { name: 'طاولة 5', tableId: 't5', lines: [{ variantId: tea.variants[0].id, qty: 4 }], displayTotal: 4000 });
   }
   offset = 0;
   // تبدأ النسخة التجريبية من الصفحة الرئيسية: الجهاز غير مرتبط بأي مقهى
@@ -5717,6 +5862,9 @@ const ERRORS = {
   LEAVE_BALANCE: 'رصيد الإجازة السنوية لا يكفي لهذه المدة.',
   LEAVE_ALREADY_DECIDED: 'سبق البت في هذا الطلب.',
   NO_HOURS: 'لا ساعات عمل مسجّلة في هذا الشهر لتوزيع الحوافز عليها.',
+  TABLE_TAKEN: 'هذه الطاولة عليها تذكرة مفتوحة. افتح تذكرتها أو اختر طاولة أخرى.',
+  UNKNOWN_TABLE: 'الطاولة لم تعد موجودة في الخريطة.',
+  WRONG_PIN_KIOSK: 'الرمز غير صحيح.',
   PRICE_REQUIRED: 'للدفع من الدرج أدخل مبلغ كل سطر.',
   PAYROLL_LOCKED: 'صُرف راتب هذا الشهر لهذا الموظف، فالقسيمة مقفلة. ألغِ الصرف أولاً إن أردت التعديل.',
   ADVANCE_LIMIT: 'مجموع السحوبات أكبر من راتب الموظف.',
@@ -6343,6 +6491,123 @@ const itemEmoji = (item, categoryName) => item?.emoji || guessEmoji(item?.name, 
 return { EMOJIS, guessEmoji, itemEmoji };
 })();
 
+// ---- public/js/floor.js
+const __m_public_js_floor_js = await (async () => {
+const { esc, money } = __m_shared_format_js;
+const { render, state } = __m_public_js_ui_js;
+// خريطة الطاولات: لوحة افتراضية 1000×600 وحدة تُرسم بالنسب المئوية فتتسع لأي شاشة.
+// تُستخدم في محرر الإدارة (سحب وتغيير حجم)، وعند حفظ التذكرة (اختيار طاولة)، وفي قائمة التذاكر (فتح تذكرة الطاولة).
+
+
+
+const FLOOR_W = 1000;
+const FLOOR_H = 600;
+const SNAP = 10;
+
+const floorTables = (s = state) => s.settings?.floor?.tables ?? [];
+const hasFloor = (s = state) => floorTables(s).some((t) => t.kind === 'table');
+
+/**
+ * mode: 'pick' (اختيار طاولة فارغة) | 'open' (فتح تذكرة طاولة مشغولة) | 'edit' (المحرر)
+ * occupied: Map tableId → التذكرة المفتوحة عليها
+ */
+function floorMap(tables, { mode, occupied = new Map(), selected = null, current = null } = {}) {
+  const els = tables.map((t) => {
+    const tk = t.kind === 'table' ? occupied.get(t.id) : null;
+    const isCurrent = current && t.id === current;
+    const cls = ['ft', t.kind, t.shape, tk ? 'busy' : '', selected === t.id ? 'sel' : '', isCurrent ? 'cur' : ''].join(' ');
+    const style = `left:${t.x / 10}%;top:${(t.y / FLOOR_H) * 100}%;width:${t.w / 10}%;height:${(t.h / FLOOR_H) * 100}%`;
+    const label = `<b>${esc(t.name)}</b>${t.kind === 'table' ? `<small>${tk ? money(tk.displayTotal) : t.seats ? `${t.seats} مقاعد` : 'فارغة'}</small>` : ''}`;
+    if (mode === 'edit') {
+      return `<div class="${cls}" style="${style}" data-floor-edit="${esc(t.id)}" role="button" tabindex="0" aria-label="${esc(t.name)}">${label}
+        ${selected === t.id ? '<span class="ft-resize" data-floor-resize aria-hidden="true"></span>' : ''}</div>`;
+    }
+    if (t.kind !== 'table') return `<div class="${cls}" style="${style}" aria-hidden="true">${label}</div>`;
+    // الاختيار: الطاولة الفارغة (أو طاولة التذكرة الحالية) تُختار؛ الفتح: المشغولة تُفتح
+    const enabled = mode === 'pick' ? !tk || isCurrent : !!tk;
+    const action = mode === 'pick' ? 'floor-pick' : 'ticket-open';
+    const dataId = mode === 'pick' ? t.id : tk?.id ?? '';
+    return `<button type="button" class="${cls}" style="${style}" ${enabled ? `data-action="${action}" data-id="${esc(dataId)}"` : 'disabled'}
+      aria-label="${esc(t.name)}${tk ? ` — مشغولة ${money(tk.displayTotal)}` : ' — فارغة'}">${label}</button>`;
+  }).join('');
+  return `<div class="floor ${mode}"><div class="floor-canvas" data-floor-canvas>${els || '<p class="muted floor-empty">لا طاولات بعد</p>'}</div></div>`;
+}
+
+function floorLegend() {
+  return '<div class="row wrap small muted" style="gap:14px"><span class="floor-key free"></span> فارغة <span class="floor-key busy"></span> عليها تذكرة مفتوحة</div>';
+}
+
+// ---------------------------------------------------------------- سحب وتغيير حجم في المحرر
+// الشاشة تُعاد رسمها كل ثانية (الساعة) فيُستبدل العنصر أثناء السحب: المستمعون على window، والعنصر يُقرأ من جديد مع كل حركة
+const snap = (v) => Math.round(v / SNAP) * SNAP;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function installFloorEditor(getEditor) {
+  if (typeof document === 'undefined') return;
+  document.addEventListener('pointerdown', (e) => {
+    const ed = getEditor();
+    if (!ed) return;
+    const resize = e.target.closest?.('[data-floor-resize]');
+    const box = e.target.closest?.('[data-floor-edit]');
+    if (!box) return;
+    const t = ed.tables.find((x) => x.id === box.dataset.floorEdit);
+    if (!t) return;
+    e.preventDefault();
+    if (ed.selected !== t.id) { ed.selected = t.id; render(); }
+    const canvas = document.querySelector('[data-floor-canvas]');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const unitX = FLOOR_W / rect.width;
+    const unitY = FLOOR_H / rect.height;
+    const start = { x: e.clientX, y: e.clientY, t: { ...t } };
+    let moved = false;
+    const move = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      const dx = (ev.clientX - start.x) * unitX;
+      const dy = (ev.clientY - start.y) * unitY;
+      if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+      if (resize) {
+        // المقبض في الزاوية اليمنى السفلى (الموضع بـ left فيبقى طرفه الأيسر ثابتاً)، ولا يتجاوز اللوحة
+        t.w = clamp(snap(start.t.w + dx), 30, FLOOR_W - t.x);
+        t.h = clamp(snap(start.t.h + dy), 30, FLOOR_H - t.y);
+      } else {
+        t.x = clamp(snap(start.t.x + dx), 0, FLOOR_W - t.w);
+        t.y = clamp(snap(start.t.y + dy), 0, FLOOR_H - t.h);
+      }
+      const el = document.querySelector(`[data-floor-edit="${CSS.escape(t.id)}"]`);
+      if (el) Object.assign(el.style, { left: `${t.x / 10}%`, top: `${(t.y / FLOOR_H) * 100}%`, width: `${t.w / 10}%`, height: `${(t.h / FLOOR_H) * 100}%` });
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (moved) { ed.dirty = true; render(); }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  });
+  // الأسهم تحرّك العنصر المختار (لوحة مفاتيح أو آيباد بكيبورد)
+  document.addEventListener('keydown', (e) => {
+    const ed = getEditor();
+    const box = e.target.closest?.('[data-floor-edit]');
+    if (!ed || !box || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    const t = ed.tables.find((x) => x.id === box.dataset.floorEdit);
+    if (!t) return;
+    e.preventDefault();
+    const d = { ArrowLeft: [-SNAP, 0], ArrowRight: [SNAP, 0], ArrowUp: [0, -SNAP], ArrowDown: [0, SNAP] }[e.key];
+    t.x = clamp(t.x + d[0], 0, FLOOR_W - t.w);
+    t.y = clamp(t.y + d[1], 0, FLOOR_H - t.h);
+    ed.dirty = true;
+    render();
+    document.querySelector(`[data-floor-edit="${CSS.escape(t.id)}"]`)?.focus();
+  });
+}
+
+return { FLOOR_W, FLOOR_H, floorTables, hasFloor, floorMap, floorLegend, installFloorEditor };
+})();
+
 // ---- public/js/views/pos.js
 const __m_public_js_views_pos_js = await (async () => {
 const { calculateTicket, unitPrice } = __m_shared_calc_js;
@@ -6353,8 +6618,10 @@ const { busy, can, closeModal, fail, field, modalFrame, on, onRendered, openModa
 const { printReceipt } = __m_public_js_views_receipts_js;
 const { imageSrc, syncImages } = __m_public_js_images_js;
 const { itemEmoji } = __m_public_js_emoji_js;
+const { floorLegend, floorMap, floorTables, hasFloor } = __m_public_js_floor_js;
 const { discardFailed, failedSales, pendingSales, queueSale, rememberBootstrap, retryFailed, savedBootstrap } = __m_public_js_offline_js;
 // شاشة البيع: الأصناف ← التذكرة ← الدفع. الحساب للعرض بنفس كود الخادم (shared/calc.js).
+
 
 
 
@@ -6761,11 +7028,24 @@ const modals = {
         <td class="num">${t.lines.reduce((a, l) => a + l.qty, 0)}</td><td class="muted small">${esc(t.updatedBy ?? '')}</td><td class="num">${money(t.displayTotal)}</td>
         <td>${can('pos.void_saved') ? `<button class="icon-btn" data-action="ticket-delete" data-id="${t.id}" aria-label="حذف التذكرة">${icon('trash', 'sm')}</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
       : `<div class="empty">${icon('ticket')}<p>لا توجد تذاكر محفوظة</p></div>`;
-    return modalFrame({ title: 'التذاكر المفتوحة', body: rows, cls: 'wide' });
+    // الخريطة: الطاولة المشغولة تُفتح تذكرتها بلمسة
+    const map = hasFloor(s) && list?.length ? `${floorMap(floorTables(s), { mode: 'open', occupied: new Map(list.filter((t) => t.tableId).map((t) => [t.tableId, t])) })}${floorLegend()}` : '';
+    return modalFrame({ title: 'التذاكر المفتوحة', body: `<div class="stack">${map}${rows}</div>`, cls: 'wide' });
   },
 
   'save-ticket'(s) {
     const cart = s.pos.cart;
+    if (hasFloor(s)) {
+      // اختيار الطاولة من الخريطة؛ المشغولة معطّلة، أو حفظ باسم (سفري، اسم عميل)
+      const list = s.modal.list;
+      const occupied = new Map((list ?? []).filter((t) => t.tableId && t.id !== cart.ticket?.id).map((t) => [t.tableId, t]));
+      return modalFrame({ title: 'حفظ التذكرة على طاولة', cls: 'wide', body: `<div class="stack">
+        ${list === undefined ? '<p class="muted">جارٍ تحميل الطاولات…</p>' : `${floorMap(floorTables(s), { mode: 'pick', occupied, current: cart.ticket?.tableId ?? null })}${floorLegend()}`}
+        <form class="row wrap" data-form="ticket-save" id="ticket-form" style="align-items:flex-end">
+          ${field('أو احفظ باسم', `<input name="name" id="ticket-name" maxlength="40" value="${esc(cart.ticket?.tableId ? '' : cart.ticket?.name ?? '')}" placeholder="سفري، أو اسم العميل">`)}
+          ${field('ملاحظة', `<input name="note" id="ticket-note" maxlength="120" value="${esc(cart.ticket?.note ?? '')}">`)}
+          <button class="btn" type="submit" ${s.busy ? 'disabled' : ''}>حفظ بالاسم</button></form></div>` });
+    }
     return modalFrame({ title: 'حفظ التذكرة', body: `<form class="stack" data-form="ticket-save" id="ticket-form">
       ${field('اسم التذكرة', `<input name="name" id="ticket-name" required maxlength="40" value="${esc(cart.ticket?.name ?? '')}" placeholder="طاولة 3، أو اسم العميل" autofocus>`)}
       <div class="row wrap">${['طاولة 1', 'طاولة 2', 'طاولة 3', 'طاولة 4', 'سفري'].map((n) => `<button type="button" class="chip" data-action="ticket-name" data-name="${n}">${n}</button>`).join('')}</div>
@@ -6999,11 +7279,20 @@ on({
     try { state.modal.list = await get('/api/tickets'); render(); } catch (e) { fail(e); }
   },
   'pos-save': () => {
-    if (state.pos.cart.ticket) return saveTicket({ name: state.pos.cart.ticket.name, note: state.pos.cart.ticket.note });
-    return openModal({ type: 'save-ticket' });
+    const tk = state.pos.cart.ticket;
+    if (tk) return saveTicket({ name: tk.name, note: tk.note, tableId: tk.tableId ?? null });
+    openModal({ type: 'save-ticket' });
+    if (hasFloor()) get('/api/tickets').then((list) => { if (state.modal?.type === 'save-ticket') { state.modal.list = list; render(); } }).catch(fail);
+  },
+  'floor-pick': (el) => {
+    const t = floorTables().find((x) => x.id === el.dataset.id);
+    if (t) saveTicket({ name: t.name, tableId: t.id, note: document.getElementById('ticket-note')?.value || null });
   },
   'ticket-name': (el) => { document.getElementById('ticket-name').value = el.dataset.name; },
-  'ticket-save': (_el, _e, data) => saveTicket(data),
+  'ticket-save': (_el, _e, data) => {
+    if (!String(data.name ?? '').trim()) { toast('اكتب اسماً للتذكرة أو اختر طاولة', 'bad'); return; }
+    saveTicket(data);
+  },
   'ticket-open': (el) => {
     const t = state.modal.list.find((x) => x.id === el.dataset.id);
     const lines = [];
@@ -7015,7 +7304,7 @@ on({
       lines.push(cartLineFrom({ item, variant, optionIds: l.modifierOptionIds, qty: l.qty, note: l.note, discountIds: l.discountIds }));
     }
     state.pos.cart = { lines, discountIds: t.discountIds, customer: null, pointsRedeemed: 0, diningOption: t.diningOption ?? state.settings.diningOptions[0].id,
-      ticket: { id: t.id, version: t.version, name: t.name, note: t.note } };
+      ticket: { id: t.id, version: t.version, name: t.name, note: t.note, tableId: t.tableId ?? null } };
     if (t.customerId) get(`/api/customers/${t.customerId}`).then((c) => { state.pos.cart.customer = { id: c.id, name: c.name, points: c.points }; render(); }).catch(() => {});
     if (missing) toast(`${missing} صنف لم يعد متوفراً وأُزيل من التذكرة`, 'bad');
     closeModal();
@@ -7107,7 +7396,7 @@ async function saveTicket(data) {
   await busy(async () => {
     const cart = state.pos.cart;
     const body = {
-      id: cart.ticket?.id, version: cart.ticket?.version, name: data.name, note: data.note || null,
+      id: cart.ticket?.id, version: cart.ticket?.version, name: data.name, note: data.note || null, tableId: data.tableId || null,
       lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), discountIds: l.discountIds, note: l.note || null })),
       discountIds: cart.discountIds, customerId: cart.customer?.id ?? null, diningOption: cart.diningOption, displayTotal: cartTotals().total,
     };
@@ -7607,6 +7896,7 @@ function pin(s) {
         : k === 'back' ? `<button class="muted-key" data-action="pin-back" aria-label="حذف رقم">${icon('back')}</button>`
           : `<button data-action="pin-key" data-k="${k}">${k}</button>`)).join('')}</div>
       <button class="btn primary lg block" data-action="pin-submit" ${p.length < 4 || s.busy ? 'disabled' : ''}>دخول</button>
+      <button class="btn block" data-action="kiosk-open">${icon('clock', 'sm')} الحضور والانصراف</button>
     </div></main></div>`;
 }
 
@@ -7732,10 +8022,8 @@ async function loadMe() {
 function clockButton(s) {
   const c = s.me?.clockedIn;
   if (s.me === undefined || s.online === false) return '';
-  if (c?.forgot) return `<a class="tb-btn warn" href="#/me" title="حضور مفتوح منذ ${dateTime(c.inAt, tz())}">${icon('clock', 'sm')}<span>نسيت الانصراف؟</span></a>`;
-  return c
-    ? `<button class="tb-btn on" data-action="hr-clock" data-act="out" title="مسجّل حضور منذ ${time(c.inAt, tz())}">${icon('clock', 'sm')}<span>انصراف · ${hours(c.minutes)}</span></button>`
-    : `<button class="tb-btn" data-action="hr-clock" data-act="in">${icon('clock', 'sm')}<span>تسجيل حضور</span></button>`;
+  // الحضور والانصراف لكل الموظفين من شاشة واحدة على جهاز الكاشير (اسم + رمز)
+  return `<button class="tb-btn ${c?.forgot ? 'warn' : ''}" data-action="kiosk-open" title="${c?.forgot ? 'عندك حضور مفتوح من يوم سابق' : 'شاشة الحضور والانصراف'}">${icon('clock', 'sm')}<span>الحضور والانصراف</span></button>`;
 }
 
 // ---------------------------------------------------------------- سجل الموظف (يُستخدم لـ «سجلي» ولسجل أي موظف عند الإدارة)
@@ -8271,9 +8559,11 @@ const { printHtml } = __m_public_js_views_receipts_js;
 const { rememberSession } = __m_public_js_offline_js;
 const { imageSrc, putImage, resizeImage, syncImages } = __m_public_js_images_js;
 const { EMOJIS, guessEmoji } = __m_public_js_emoji_js;
+const { FLOOR_H, FLOOR_W, floorMap, installFloorEditor } = __m_public_js_floor_js;
 const { hrPage, loadHr } = __m_public_js_views_hr_js;
 const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
 // لوحة الإدارة (Back Office): المتابعة، التقارير، الأصناف، التصنيفات، الإضافات، الخصومات، المخزون، الموظفون، الورديات، الإعدادات.
+
 
 
 
@@ -8301,6 +8591,7 @@ const SECTIONS = [
   ['categories', 'التصنيفات', 'layers', 'admin.catalog'],
   ['modifiers', 'الإضافات', 'plus', 'admin.catalog'],
   ['discounts', 'الخصومات', 'tag', 'admin.catalog'],
+  ['floor', 'خريطة الطاولات', 'layers', 'admin.catalog'],
   ['inventory', 'المخزون', 'box', 'admin.inventory'],
   ['hr', 'الموارد البشرية', 'users', 'hr.manage'],
   ['employees', 'الموظفون', 'users', 'admin.employees'],
@@ -8365,6 +8656,26 @@ function delta(now, before) {
 
 // ---------------------------------------------------------------- الصفحات
 const PAGES = {
+  floor(s, a) {
+    const ed = a.floor;
+    const head = `<div class="page-head"><h1>خريطة الطاولات</h1><span class="spacer"></span>
+      <button class="btn" data-action="floor-add" data-kind="table" data-shape="rect">${icon('plus', 'sm')} طاولة مربعة</button>
+      <button class="btn" data-action="floor-add" data-kind="table" data-shape="round">${icon('plus', 'sm')} طاولة دائرية</button>
+      <button class="btn" data-action="floor-add" data-kind="zone" data-shape="rect">${icon('plus', 'sm')} منطقة (بار، مدخل…)</button>
+      <button class="btn primary" data-action="floor-save" ${ed?.dirty && !s.busy ? '' : 'disabled'}>${icon('check', 'sm')} حفظ الخريطة</button></div>`;
+    if (!ed) return `${head}<p class="muted">جارٍ التحميل…</p>`;
+    const t = ed.tables.find((x) => x.id === ed.selected);
+    const panel = t ? `<section class="card pad stack floor-panel"><h2>${t.kind === 'table' ? 'الطاولة' : 'المنطقة'}</h2>
+        ${field('الاسم', `<input id="fl-name" value="${esc(t.name)}" maxlength="20" data-change="floor-field" data-k="name">`)}
+        ${t.kind === 'table' ? field('عدد المقاعد', `<input id="fl-seats" value="${t.seats}" inputmode="numeric" maxlength="2" data-change="floor-field" data-k="seats">`) : ''}
+        <div class="seg"><button type="button" class="${t.shape === 'rect' ? 'on' : ''}" data-action="floor-shape" data-k="rect">مربعة</button><button type="button" class="${t.shape === 'round' ? 'on' : ''}" data-action="floor-shape" data-k="round">دائرية</button></div>
+        <div class="row wrap"><button class="btn sm" data-action="floor-dup">نسخة</button><button class="btn sm ghost danger" data-action="floor-del">${icon('trash', 'sm')} حذف</button></div>
+        <p class="muted small" style="margin:0">اسحب لتحريكها، واسحب الزاوية لتغيير حجمها. الأسهم تحرّكها خطوة.</p></section>`
+      : `<section class="card pad stack floor-panel"><h2>كيف ترتّب المقهى</h2><p class="muted small" style="margin:0">أضف طاولاتك ثم اسحب كل طاولة لمكانها كما في المقهى. اضغط على طاولة لتعديل اسمها وعدد مقاعدها. المناطق (البار، المدخل، الكاونتر) للتوضيح فقط ولا تُختار للتذاكر.</p>
+        <p class="small" style="margin:0">${ed.tables.filter((x) => x.kind === 'table').length} طاولة · ${ed.tables.reduce((n, x) => n + (x.seats || 0), 0)} مقعد</p></section>`;
+    return `${head}<div class="floor-editor">${floorMap(ed.tables, { mode: 'edit', selected: ed.selected })}${panel}</div>
+      ${ed.dirty ? '<p class="small" style="color:var(--warn)">تغييرات لم تُحفظ بعد.</p>' : ''}`;
+  },
   hr: () => hrPage(),
   branches(s, a) {
     const list = a.branches;
@@ -8997,11 +9308,18 @@ function presetRange(k) {
   return { today: [today, today], yesterday: [d(1), d(1)], week: [d(6), today], month: [first, today], lastmonth: [lastMonthStart, lastMonthEnd] }[k];
 }
 
+installFloorEditor(() => (state.route === 'admin' && state.params?.sub === 'floor' ? A().floor : null));
+
 async function loadSection(sub) {
   const a = A();
   const loaders = {
     dashboard: async () => { a.dashboard = await get('/api/admin/dashboard'); },
     hr: () => loadHr(),
+    floor: async () => {
+      if (a.floor?.dirty) return; // لا تُفقد تعديلات لم تُحفظ عند الرجوع للقسم
+      const st = await get('/api/admin/settings').catch(() => state.settings);
+      a.floor = { tables: structuredClone(st?.floor?.tables ?? []), selected: null, dirty: false };
+    },
     branches: async () => {
       if (!a.branchPreset) a.branchPreset = 'today';
       const [from, to] = presetRange(a.branchPreset);
@@ -9076,6 +9394,68 @@ on({
     history.replaceState(null, '', '#/');
     toast(`هذا الجهاز الآن في ${r.shop.name}. أدخل رمزك`, 'ok');
     render();
+  }),
+  'floor-add': (el) => {
+    const ed = A().floor;
+    if (!ed) return;
+    const kind = el.dataset.kind;
+    const shape = el.dataset.shape;
+    const [w, h] = kind === 'zone' ? [300, 80] : shape === 'round' ? [100, 100] : [120, 90];
+    const n = ed.tables.filter((x) => x.kind === 'table').length + 1;
+    let name = kind === 'zone' ? 'البار' : `طاولة ${n}`;
+    for (let k = n; kind === 'table' && ed.tables.some((x) => x.name === name); k++) name = `طاولة ${k + 1}`;
+    // أول مكان فارغ على شبكة اللوحة
+    const free = (x, y) => !ed.tables.some((o) => x < o.x + o.w + 10 && o.x < x + w + 10 && y < o.y + o.h + 10 && o.y < y + h + 10);
+    let spot = [20, 20];
+    search: for (let y = 20; y + h <= FLOOR_H; y += 20) for (let x = 20; x + w <= FLOOR_W; x += 20) if (free(x, y)) { spot = [x, y]; break search; }
+    const t = { id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, kind, shape, name, x: spot[0], y: spot[1], w, h, seats: kind === 'table' ? 4 : 0 };
+    ed.tables.push(t);
+    Object.assign(ed, { selected: t.id, dirty: true });
+    render();
+  },
+  'floor-field': (el) => {
+    const ed = A().floor;
+    const t = ed?.tables.find((x) => x.id === ed.selected);
+    if (!t) return;
+    if (el.dataset.k === 'seats') t.seats = Math.max(0, Math.min(40, parseAmount(el.value) ?? 0));
+    else t.name = el.value.trim().slice(0, 20) || t.name;
+    ed.dirty = true;
+    render();
+  },
+  'floor-shape': (el) => {
+    const ed = A().floor;
+    const t = ed?.tables.find((x) => x.id === ed.selected);
+    if (!t) return;
+    t.shape = el.dataset.k;
+    if (t.shape === 'round') t.h = t.w = Math.min(Math.max(t.w, t.h), FLOOR_H - t.y, FLOOR_W - t.x);
+    ed.dirty = true;
+    render();
+  },
+  'floor-dup': () => {
+    const ed = A().floor;
+    const t = ed?.tables.find((x) => x.id === ed.selected);
+    if (!t) return;
+    let k = ed.tables.length + 1;
+    let name = t.kind === 'table' ? `طاولة ${k}` : t.name;
+    while (t.kind === 'table' && ed.tables.some((x) => x.name === name)) name = `طاولة ${++k}`;
+    const c = { ...t, id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, x: Math.min(t.x + 30, FLOOR_W - t.w), y: Math.min(t.y + 30, FLOOR_H - t.h) };
+    ed.tables.push(c);
+    Object.assign(ed, { selected: c.id, dirty: true });
+    render();
+  },
+  'floor-del': () => {
+    const ed = A().floor;
+    if (!ed?.selected) return;
+    ed.tables = ed.tables.filter((x) => x.id !== ed.selected);
+    Object.assign(ed, { selected: null, dirty: true });
+    render();
+  },
+  'floor-save': () => busy(async () => {
+    const ed = A().floor;
+    const floor = await put('/api/admin/floor', { tables: ed.tables });
+    if (state.settings) state.settings.floor = floor;
+    Object.assign(ed, { dirty: false });
+    toast('حُفظت خريطة الطاولات', 'ok');
   }),
   'exp-preset': (el) => { A().expPreset = el.dataset.k; loadSection('expenses').catch(fail); },
   'exp-new': () => openModal({ type: 'expense', clientId: uid(), category: 'supplies', fromDrawer: false }),
@@ -9514,6 +9894,87 @@ on({
 return { enterPlatform, platformView, modals };
 })();
 
+// ---- public/js/views/kiosk.js
+const __m_public_js_views_kiosk_js = await (async () => {
+const { esc, time } = __m_shared_format_js;
+const { get, post, uid } = __m_public_js_api_js;
+const { icon } = __m_public_js_icons_js;
+const { busy, fail, on, render, state, toast } = __m_public_js_ui_js;
+// شاشة الحضور والانصراف المشتركة على جهاز الكاشير: أسماء الموظفين، يضغط الموظف على اسمه ويكتب رمزه،
+// فيُسجَّل حضوره أو انصرافه حسب حالته. لا تغيّر جلسة الكاشير، وتعمل أيضاً من شاشة الرمز قبل أي دخول.
+
+
+
+
+
+const tz = () => state.settings?.tzOffsetMin ?? 180;
+const hours = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
+const ROLES = { owner: 'المالك', manager: 'مدير', cashier: 'كاشير', barista: 'باريستا' };
+const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('');
+
+async function load() {
+  try { state.kiosk.list = await get('/api/hr/kiosk'); } catch (e) { fail(e); state.kiosk.list = []; }
+  render();
+}
+
+function kioskView(s) {
+  const k = s.kiosk;
+  const list = k.list;
+  const pick = list?.find((e) => e.id === k.pick);
+  const cards = list === null ? '<p class="muted">جارٍ التحميل…</p>' : list.map((e) => {
+    const c = e.clockedIn;
+    const status = c ? (c.forgot ? '<span class="pill bad">حضور مفتوح من أمس</span>' : `<span class="pill ok">حاضر منذ ${time(c.inAt, tz())} · ${hours(c.minutes)}</span>`) : '<span class="pill">لم يسجّل حضوراً</span>';
+    return `<button class="kiosk-emp ${c && !c.forgot ? 'in' : ''}" data-action="kiosk-pick" data-id="${esc(e.id)}"><span class="avatar">${esc(initials(e.name))}</span>
+      <span class="stack" style="gap:4px;align-items:flex-start"><b>${esc(e.name)}</b><small class="muted">${ROLES[e.role] ?? ''}</small>${status}</span></button>`;
+  }).join('');
+  const pad = pick ? (() => {
+    const p = k.pin;
+    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'back'];
+    const out = pick.clockedIn && !pick.clockedIn.forgot;
+    return `<div class="kiosk-pad card pad stack" role="dialog" aria-label="رمز ${esc(pick.name)}">
+      <div class="row"><div style="flex:1"><h2 style="margin:0">${esc(pick.name)}</h2><p class="muted small" style="margin:0">اكتب رمزك ل${out ? 'تسجيل الانصراف' : 'تسجيل الحضور'}</p></div>
+        <button class="icon-btn" data-action="kiosk-unpick" aria-label="رجوع">${icon('x')}</button></div>
+      <div class="pin-dots ${k.shake ? 'shake' : ''}" aria-label="عدد الأرقام المدخلة ${p.length}">${Array.from({ length: Math.max(4, p.length) }, (_, i) => `<span class="${i < p.length ? 'on' : ''}"></span>`).join('')}</div>
+      <div class="keypad">${keys.map((x) => (x === 'clear' ? '<button class="muted-key" data-action="kiosk-clear">مسح</button>'
+        : x === 'back' ? `<button class="muted-key" data-action="kiosk-back" aria-label="حذف رقم">${icon('back')}</button>`
+          : `<button data-action="kiosk-key" data-k="${x}">${x}</button>`)).join('')}</div>
+      <button class="btn ${out ? 'danger solid' : 'primary'} lg block" data-action="kiosk-submit" ${p.length < 4 || s.busy ? 'disabled' : ''}>${icon('clock', 'sm')} ${out ? 'تسجيل انصراف' : 'تسجيل حضور'}</button>
+    </div>`;
+  })() : '';
+  return `<div class="kiosk">
+    <header class="kiosk-head"><div><h1>الحضور والانصراف</h1><p class="muted" style="margin:0">${esc(s.shop?.name ?? '')} · اضغط على اسمك واكتب رمزك</p></div>
+      <button class="btn" data-action="kiosk-close">${icon('back', 'sm')} رجوع</button></header>
+    <div class="kiosk-body"><div class="kiosk-grid">${cards}</div>${pad}</div></div>`;
+}
+
+on({
+  'kiosk-open': () => { state.kiosk = { list: null, pick: null, pin: '' }; state.modal = null; render(); load(); },
+  'kiosk-close': () => { state.kiosk = null; render(); },
+  'kiosk-pick': (el) => { Object.assign(state.kiosk, { pick: el.dataset.id, pin: '', clientId: uid() }); render(); },
+  'kiosk-unpick': () => { Object.assign(state.kiosk, { pick: null, pin: '' }); render(); },
+  'kiosk-key': (el) => { const k = state.kiosk; if (k.pin.length < 6) k.pin += el.dataset.k; render(); },
+  'kiosk-back': () => { state.kiosk.pin = state.kiosk.pin.slice(0, -1); render(); },
+  'kiosk-clear': () => { state.kiosk.pin = ''; render(); },
+  'kiosk-submit': () => busy(async () => {
+    const k = state.kiosk;
+    try {
+      const r = await post('/api/hr/kiosk/clock', { clientId: k.clientId, employeeId: k.pick, pin: k.pin });
+      toast(r.action === 'in' ? `أهلاً ${r.name} — سُجّل حضورك ${time(r.attendance.inAt, tz())}` : `مع السلامة ${r.name} — سُجّل انصرافك · ${hours(r.attendance.minutes)} ساعة`, 'ok');
+      if (r.autoClosed) toast('كان عندك حضور مفتوح من يوم سابق: أُغلق وسيراجعه المدير', 'bad');
+      Object.assign(k, { pick: null, pin: '' });
+      await load();
+    } catch (e) {
+      // رمز خاطئ: هزّة ومسح، وتبقى الشاشة على نفس الموظف بعملية جديدة
+      Object.assign(k, { pin: '', shake: true, clientId: uid() });
+      setTimeout(() => { if (state.kiosk) { state.kiosk.shake = false; render(); } }, 400);
+      throw e;
+    }
+  }),
+});
+
+return { kioskView };
+})();
+
 // ---- public/js/app.js
 const __m_public_js_app_js = await (async () => {
 const { esc, time } = __m_shared_format_js;
@@ -9530,6 +9991,7 @@ const account = __m_public_js_views_account_js;
 const platform = __m_public_js_views_platform_js;
 const cancel = __m_public_js_views_cancel_js;
 const hr = __m_public_js_views_hr_js;
+const kiosk = __m_public_js_views_kiosk_js;
 // التشغيل، التوجيه، شاشتا الإعداد والدخول، والهيكل العام.
 
 
@@ -9546,7 +10008,8 @@ const hr = __m_public_js_views_hr_js;
 
 
 
-const modules = [pos, receipts, ops, admin, account, platform, cancel, hr];
+
+const modules = [pos, receipts, ops, admin, account, platform, cancel, hr, kiosk];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
@@ -9596,6 +10059,7 @@ const views = {
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
     if (parseHash().route === 'platform') return platform.platformView(s);
     if (s.shop?.disabled) return account.disabledView(s);
+    if (s.kiosk && s.shop) return kiosk.kioskView(s);
     if (!s.employee) return account.gateView(s);
     const body = (routes[s.route] ?? routes.pos)(s);
     return `<div class="shell">${topbarView(s)}${railView(s)}<main class="main" id="main">${body}</main></div>`;

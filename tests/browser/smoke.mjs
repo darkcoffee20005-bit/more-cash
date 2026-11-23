@@ -30,10 +30,14 @@ try {
   // 503 متوقع مرة واحدة: تصوير فاتورة بلا ANTHROPIC_API_KEY (يُتحقق من رسالته أدناه)
   let expected503 = 0;
   page.on('response', (r) => { if (r.status() === 503 && r.url().endsWith('/api/admin/inventory/scan')) expected503 += 1; });
+  // 401 متوقع: رمز خاطئ مقصود في شاشة الحضور
+  let expected401 = 0;
+  page.on('response', (r) => { if (r.status() === 401 && r.url().endsWith('/api/hr/kiosk/clock')) expected401 += 1; });
   page.on('console', (m) => {
     if (m.type() !== 'error' || /fonts\.g|ERR_FAILED/.test(m.text())) return;
     if (offlineWindow && /ERR_INTERNET_DISCONNECTED/.test(m.text())) return;
     if (/status of 503/.test(m.text()) && expected503 > 0) { expected503 -= 1; return; }
+    if (/status of 401/.test(m.text()) && expected401 > 0) { expected401 -= 1; return; }
     errors.push(`console: ${m.text()}`);
   });
   page.on('requestfailed', (r) => { if (offlineWindow && /ERR_INTERNET_DISCONNECTED/.test(r.failure()?.errorText ?? '')) return; if (!/fonts\.(googleapis|gstatic)/.test(r.url())) errors.push(`requestfailed: ${r.url()} (${r.failure()?.errorText} @ ${page.url()} after ${lastStep})`); });
@@ -147,10 +151,50 @@ try {
   await page.waitForSelector('.kpis');
   await shot('11-dashboard');
   if (!(await page.isVisible('h2:has-text("أفضل أيام العمل")'))) errors.push('best weekdays chart missing');
-  // الموارد البشرية: حضور من الشريط العلوي، سجلي وطلب إجازة، ثم لوحة الإدارة (غرامة وموظف الشهر)
-  await page.click('.topbar [data-action="hr-clock"][data-act="in"]');
+  // خريطة الطاولات: المالك يضيف طاولتين ويحرّك واحدة بالسحب ويحفظ، ثم الكاشير يحفظ تذكرة على طاولة ويفتحها من الخريطة
+  await page.goto(`http://127.0.0.1:${PORT}/#/admin/floor`);
+  await page.waitForSelector('h1:has-text("خريطة الطاولات")');
+  await page.click('[data-action="floor-add"][data-shape="rect"]');
+  await page.click('[data-action="floor-add"][data-shape="round"]');
+  await page.click('[data-action="floor-add"][data-kind="zone"]');
+  const fbox = await page.locator('[data-floor-edit] >> nth=0').boundingBox();
+  await page.mouse.move(fbox.x + fbox.width / 2, fbox.y + fbox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(fbox.x + fbox.width / 2 + 160, fbox.y + fbox.height / 2 + 120, { steps: 8 });
+  await page.mouse.up();
+  const fafter = await page.locator('[data-floor-edit] >> nth=0').boundingBox();
+  if (Math.abs(fafter.x - fbox.x - 160) > 20 || Math.abs(fafter.y - fbox.y - 120) > 20) errors.push(`floor drag: ${JSON.stringify({ fbox, fafter })}`);
+  await shot('11a-floor-editor');
+  await page.click('[data-action="floor-save"]');
+  await page.waitForSelector('.toast.ok:has-text("خريطة الطاولات")');
+  await page.goto(`http://127.0.0.1:${PORT}/#/pos`);
+  await page.waitForSelector('.tile');
+  await page.click('.tile:has-text("ماء")');
+  await page.click('[data-action="pos-save"]');
+  await page.waitForSelector('.modal button.ft[data-action="floor-pick"]');
+  await shot('11b-floor-pick');
+  await page.click('.modal button.ft:has-text("طاولة 1")');
+  await page.waitForSelector('.toast.ok:has-text("طاولة 1")');
+  await page.click('[data-action="pos-tickets"]');
+  await page.waitForSelector('.modal button.ft.busy[data-action="ticket-open"]');
+  await page.click('.modal button.ft.busy[data-action="ticket-open"]');
+  await page.waitForSelector('.ticket .line');
+  await page.click('[data-action="pos-save"]');
+  await page.waitForSelector('.toast.ok:has-text("طاولة 1")');
+  // الحضور والانصراف: شاشة مشتركة، اسم + رمز (لا تغيّر جلسة الكاشير)، ثم سجلي وطلب إجازة، ثم لوحة الإدارة
+  await page.click('.topbar [data-action="kiosk-open"]');
+  await page.waitForSelector('.kiosk-emp');
+  await page.click('.kiosk-emp >> nth=0');
+  for (const k of '9999') await page.click(`.kiosk-pad [data-k="${k}"]`);
+  await page.click('[data-action="kiosk-submit"]');
+  await page.waitForSelector('.pin-dots.shake, .toast.bad').catch(() => errors.push('kiosk wrong pin not rejected'));
+  for (const k of '1357') await page.click(`.kiosk-pad [data-k="${k}"]`);
+  await page.click('[data-action="kiosk-submit"]');
   await page.waitForSelector('.toast.ok:has-text("سُجّل حضورك")');
-  await page.waitForSelector('.topbar [data-action="hr-clock"][data-act="out"]');
+  await page.waitForSelector('.kiosk-emp.in');
+  await shot('11c-kiosk');
+  await page.click('[data-action="kiosk-close"]');
+  await page.waitForSelector('.topbar');
   await page.goto(`http://127.0.0.1:${PORT}/#/me`);
   await page.waitForSelector('h1:has-text("سجلي")');
   await page.waitForSelector('td .pill.ok:has-text("الآن")');
