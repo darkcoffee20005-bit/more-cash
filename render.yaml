@@ -4,7 +4,7 @@ services:
   - type: web
     name: more-cash
     runtime: node
-    plan: free
+    plan: starter              # مدفوعة صغيرة: لا تنام أبداً (المجانية تنام بعد 15 دقيقة بلا زيارة)
     region: singapore          # الأقرب لقاعدة البيانات (Atlas هونغ كونغ)
     branch: main
     buildCommand: npm ci --omit=dev && node scripts/build_demo.mjs public/demo.html
