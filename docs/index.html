@@ -741,6 +741,25 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 .kiosk-pad { width: 340px; position: sticky; top: 20px; }
 @media (max-width: 760px) { .kiosk-body { grid-template-columns: 1fr; } .kiosk-pad { width: auto; position: static; order: -1; } }
 
+/* صفحة الاشتراك (حساب بانتظار الموافقة أو تجديد) وشريط تنبيه الاشتراك */
+.sub-page { min-height: 100dvh; background: var(--bg); display: flex; flex-direction: column; overflow: auto; }
+.sub-head { display: flex; align-items: center; gap: 14px; padding: 18px 24px; background: var(--brand-900, #0a1a15); color: #e8f1ef; }
+.sub-head h1 { margin: 0; color: #fff; font-size: 1.4rem; }
+.sub-head p { color: #a9c3bc; }
+.sub-head svg { width: 44px; height: 44px; }
+.sub-body { width: min(1100px, 100%); margin: 0 auto; padding: 20px 16px 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.sub-price { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--olive-b, #687b1b); margin: 0; }
+.sub-method { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface-2); }
+.sub-number { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; letter-spacing: .03em; text-align: end; }
+.sub-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 16px; font-weight: 600; font-size: .9rem; }
+.sub-banner.warn { background: #f8ecd6; color: #7a4b08; }
+.sub-banner.bad { background: #f7e1de; color: #8f2b20; }
+.sub-banner .btn { margin-inline-start: auto; }
+/* شريط الاشتراك فوق الصفحة: الصفحة تأخذ الباقي (شاشة البيع بلا تمرير) */
+.main.has-banner { display: flex; flex-direction: column; }
+.main.has-banner > :last-child { flex: 1; min-height: 0; }
+.card a[href^="https://wa.me"] { color: var(--olive-b, #687b1b); font-weight: 600; }
+
 </style></head><body><div id="app"></div><div id="print-area" aria-hidden="true"></div><script type="module">
 // ---- server/db/memory.js
 const __m_server_db_memory_js = await (async () => {
@@ -1161,6 +1180,9 @@ async function ensureIndexes(db) {
     ix('devices', { accountId: 1 }, { name: 'by_account' }),
     ix('platform_sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
     ix('platform_errors', { at: 1 }, { expireAfterSeconds: 14 * 86400, name: 'ttl' }),
+    ix('sub_requests', { status: 1, createdAt: -1 }, { name: 'by_status' }),
+    ix('sub_requests', { accountId: 1, createdAt: -1 }, { name: 'by_account' }),
+    ix('platform_audit', { at: -1 }, { name: 'by_date' }),
 
     // ---- بيانات كل مقهى
     ix('receipts', t({ number: 1 }), { unique: true, name: 'uniq_number' }),
@@ -4912,7 +4934,7 @@ const { hashPassword, randomToken, sha256, verifyPassword } = __m_server_app_sec
 const SESSION_HOURS = 4;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp, failIp, onTenantChange = () => {}, log = console }) {
+function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID(), admins = [], passwordIterations, checkIp, failIp, onTenantChange = () => {}, log = console, subs = null }) {
   const allowed = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const sessions = () => db.collection('platform_sessions');
   const hashOpts = passwordIterations ? { iterations: passwordIterations } : undefined;
@@ -4940,7 +4962,8 @@ function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp
 
   async function shops({ search = '' } = {}) {
     const tenants = await db.collection('tenants').find({}).sort({ createdAt: -1 }).limit(2000).toArray();
-    const accounts = await db.collection('accounts').find({}).project({ email: 1, name: 1, tenantId: 1, branches: 1, lastLoginAt: 1 }).limit(5000).toArray();
+    const accounts = await db.collection('accounts').find({}).project({ email: 1, name: 1, tenantId: 1, branches: 1, lastLoginAt: 1, sub: 1, createdAt: 1 }).limit(5000).toArray();
+    const pendingReq = new Set((await db.collection('sub_requests').find({ status: 'pending' }).project({ tenantId: 1 }).toArray()).map((r) => r.tenantId));
     // الفروع: كل فرع مقهى مستقل يعود لنفس حساب المالك
     const byTenant = new Map();
     for (const a of accounts) for (const t of [a.tenantId, ...(a.branches ?? [])]) byTenant.set(t, a);
@@ -4959,12 +4982,16 @@ function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp
         id: t._id, name: t.name, ownerName: acc?.name ?? null, email: acc?.email ?? null, createdAt: t.createdAt,
         lastLoginAt: acc?.lastLoginAt ?? null, lastSaleAt: last[0]?.createdAt ?? null, sales30, devices,
         disabled: !!t.disabled, disabledReason: t.disabledReason ?? null, branchOf: t.branchOf ?? null,
+        subscription: subs ? subs.stateOf(acc) : null, pendingRequest: pendingReq.has(t._id),
       });
     }
     const weekAgo = now().getTime() - 7 * 86400_000;
     return {
       rows,
-      totals: { shops: rows.length, active7: rows.filter((r) => r.lastSaleAt && new Date(r.lastSaleAt).getTime() >= weekAgo).length, disabled: rows.filter((r) => r.disabled).length },
+      totals: { shops: rows.length, active7: rows.filter((r) => r.lastSaleAt && new Date(r.lastSaleAt).getTime() >= weekAgo).length, disabled: rows.filter((r) => r.disabled).length,
+        pending: rows.filter((r) => r.subscription?.status === 'pending' && !r.branchOf).length, expired: rows.filter((r) => r.subscription?.status === 'expired' && !r.branchOf).length,
+        paying: rows.filter((r) => r.subscription?.status === 'active' && !r.subscription.unlimited && !r.branchOf).length, trial: rows.filter((r) => r.subscription?.status === 'trial' && !r.branchOf).length,
+        requests: pendingReq.size, approval: !!subs?.enabled },
     };
   }
 
@@ -4994,6 +5021,25 @@ function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp
     return { email: acc.email, tempPassword: temp };
   }
 
+  /** نسخة احتياطية كاملة لمقهى (وفروعه) بصيغة JSON، بلا أسرار: لا كلمات مرور ولا رموز ولا جلسات */
+  const BACKUP = ['settings', 'employees', 'categories', 'items', 'variants', 'modifiers', 'discounts', 'customers', 'receipts', 'shifts', 'tickets', 'stock_moves',
+    'expenses', 'attendance', 'hr_adjustments', 'leaves', 'hr_awards', 'hr_advances', 'payrolls', 'audit', 'point_moves', 'item_images', 'counters'];
+  async function backup(tenantId, admin) {
+    const id = checkId(tenantId);
+    const t = await db.collection('tenants').findOne({ _id: id });
+    if (!t) throw new AppError(404, 'NOT_FOUND');
+    const data = {};
+    for (const name of BACKUP) {
+      const rows = await db.collection(name).find({ tenantId: id }).toArray();
+      data[name] = rows.map((r) => {
+        const { pinLookup, secret, ...rest } = r; // أسرار الدخول لا تخرج في النسخة
+        return rest;
+      });
+    }
+    if (subs) await subs.audit(admin, 'backup.download', { tenantId: id, shopName: t.name });
+    return { format: 'morecash-backup', version: 1, exportedAt: now(), tenant: { id: t._id, name: t.name, createdAt: t.createdAt }, data };
+  }
+
   async function handle(req) {
     const key = `${req.method} ${req.path}`;
     if (key === 'POST /api/platform/login') {
@@ -5013,11 +5059,31 @@ function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp
       const recent = await db.collection('platform_errors').find({}).sort({ at: -1 }).limit(30).toArray();
       return { status: 200, body: { count24h: await db.collection('platform_errors').countDocuments({ at: { $gte: since } }), recent: recent.map(({ _id, ...x }) => x) } };
     }
+    // الاشتراكات: الطلبات، الموافقة/الرفض، التمديد من صف العميل، بيانات التحويل والتفاصيل، والسجل
+    if (subs) {
+      if (key === 'GET /api/platform/requests') return { status: 200, body: await subs.listRequests(req.query ?? {}) };
+      if (key === 'GET /api/platform/config') return { status: 200, body: await subs.config() };
+      if (key === 'PUT /api/platform/config') return { status: 200, body: await subs.saveConfig(admin, req.body) };
+      if (key === 'GET /api/platform/audit') return { status: 200, body: await subs.auditLog(req.query ?? {}) };
+      const rq = /^\/api\/platform\/requests\/([A-Za-z0-9_-]{1,64})\/(image|approve|reject)$/.exec(req.path);
+      if (rq && rq[2] === 'image' && req.method === 'GET') return { status: 200, body: await subs.requestImage(rq[1]) };
+      if (rq && req.method === 'POST') return { status: 200, body: await subs.decide(admin, rq[1], req.body, rq[2] === 'approve') };
+      const sb = /^\/api\/platform\/shops\/([A-Za-z0-9_-]{1,64})\/subscription$/.exec(req.path);
+      if (sb && req.method === 'POST') return { status: 200, body: await subs.setForTenant(admin, sb[1], req.body) };
+    }
+    const bk = /^\/api\/platform\/shops\/([A-Za-z0-9_-]{1,64})\/backup$/.exec(req.path);
+    if (bk && req.method === 'GET') return { status: 200, body: await backup(bk[1], admin) };
     const m = /^\/api\/platform\/shops\/([A-Za-z0-9_-]{1,64})\/(disable|enable|reset-password)$/.exec(req.path);
     if (m && req.method === 'POST') {
-      if (m[2] === 'reset-password') return { status: 200, body: await resetPassword(m[1], admin) };
+      if (m[2] === 'reset-password') {
+        const r = await resetPassword(m[1], admin);
+        if (subs) await subs.audit(admin, 'account.reset_password', { tenantId: m[1] });
+        return { status: 200, body: r };
+      }
       if (m[2] === 'disable' && !String(req.body?.reason ?? '').trim()) throw bad('REQUIRED', 'reason');
-      return { status: 200, body: await setDisabled(m[1], m[2] === 'disable', req.body?.reason, admin) };
+      const r = await setDisabled(m[1], m[2] === 'disable', req.body?.reason, admin);
+      if (subs) await subs.audit(admin, m[2] === 'disable' ? 'shop.disable' : 'shop.enable', { tenantId: m[1], note: req.body?.reason ?? null });
+      return { status: 200, body: r };
     }
     throw new AppError(404, 'NOT_FOUND');
   }
@@ -5176,6 +5242,222 @@ async function copyCatalog(from, to) {
 return { branchIds, createBranches };
 })();
 
+// ---- server/app/subscriptions.js
+const __m_server_app_subscriptions_js = await (async () => {
+const { AppError, bad, id: checkId, str } = __m_server_app_core_js;
+// الاشتراكات اليدوية (تحويل أو نقد) وموافقة المزوّد على كل حساب.
+//
+// الحساب الجديد «بانتظار الموافقة» ولا يعمل فيه شيء إلا صفحة الاشتراك: يقرأ التفاصيل وبيانات التحويل (يتحكم بها المزوّد)،
+// ويرسل طلباً (تحويل برقم ووصل، أو نقد). المزوّد يوافق بمدة (أشهر أو أيام، مدفوع أو مجاني) فينفتح البرنامج حتى تاريخ الانتهاء.
+// بعد الانتهاء: القراءة (التقارير) مسموحة والكتابة (البيع…) موقوفة حتى التجديد. الفروع تتبع اشتراك حساب المالك.
+
+
+const MAX_IMAGE = 600_000; // base64 لوصل التحويل (يصغّره المتصفح قبل الرفع)
+const DEFAULT_CONFIG = {
+  price: '',
+  details: 'اشتراك شهري في مور كاش: البيع، المخزون، الموظفون والرواتب، والتقارير، مع الدعم.',
+  methods: [],
+  whatsapp: null,
+};
+
+/** إضافة أشهر تقويمية (31 كانون الثاني + شهر = آخر شباط) */
+function addMonths(date, months) {
+  const d = new Date(date);
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, last));
+  return d;
+}
+
+function createSubscriptions({ db, now, newId, admins = new Set(), enabled = false, onChange = () => {} }) {
+  const REQ = () => db.collection('sub_requests');
+  const AUDIT = () => db.collection('platform_audit');
+  const CONFIG = () => db.collection('platform_config');
+
+  /** حالة اشتراك الحساب: active | trial | expired | pending */
+  function stateOf(acc) {
+    if (!enabled || !acc || admins.has(acc.email)) return { status: 'active', until: null, free: false, daysLeft: null, unlimited: true };
+    const s = acc.sub ?? {};
+    const until = s.until ? new Date(s.until) : null;
+    if (!until) return { status: 'pending', until: null, free: false, daysLeft: null };
+    const ms = until.getTime() - now().getTime();
+    if (ms <= 0) return { status: 'expired', until, free: !!s.free, daysLeft: 0 };
+    return { status: s.free ? 'trial' : 'active', until, free: !!s.free, daysLeft: Math.ceil(ms / 86400_000) };
+  }
+  const isOpen = (st) => st.status === 'active' || st.status === 'trial';
+
+  // حالة الحساب تُخزَّن 20 ثانية لكل جهاز لتقليل القراءات؛ تُمسح فوراً عند أي تغيير من المزوّد
+  const cache = new Map();
+  async function stateForAccount(accountId) {
+    const c = cache.get(accountId);
+    const t = now().getTime();
+    if (c && t - c.at >= 0 && t - c.at < 20_000) return c.state;
+    const acc = await db.collection('accounts').findOne({ _id: accountId }, { projection: { email: 1, sub: 1 } });
+    const state = stateOf(acc);
+    cache.set(accountId, { state, at: t });
+    if (cache.size > 5000) cache.clear();
+    return state;
+  }
+  const forget = (accountId) => { cache.delete(accountId); onChange(accountId); };
+
+  /**
+   * بوابة كل طلب لمقهى: بانتظار الموافقة = لا شيء غير صفحة الاشتراك؛ منتهٍ = قراءة ودخول الموظف فقط.
+   * يُستدعى بعد التأكد من ربط الجهاز.
+   */
+  async function gate(device, req) {
+    if (!enabled) return;
+    const st = await stateForAccount(device.accountId);
+    if (isOpen(st)) return;
+    const key = `${req.method} ${req.path}`;
+    if (req.path.startsWith('/api/subscription')) return;
+    if (key === 'POST /api/auth/logout') return;
+    if (st.status === 'expired' && (req.method === 'GET' || key === 'POST /api/auth/pin')) return;
+    throw new AppError(402, st.status === 'expired' ? 'SUBSCRIPTION_EXPIRED' : 'SUBSCRIPTION_PENDING');
+  }
+
+  async function config() {
+    const c = await CONFIG().findOne({ _id: 'main' });
+    return { ...DEFAULT_CONFIG, ...(c ?? {}), _id: undefined };
+  }
+
+  const publicRequest = (r) => ({ id: r._id, method: r.method, reference: r.reference ?? null, note: r.note ?? null, phone: r.phone ?? null, hasImage: !!r.image,
+    status: r.status, createdAt: r.createdAt, decidedAt: r.decidedAt ?? null, decisionNote: r.decisionNote ?? null, months: r.months ?? null, days: r.days ?? null, free: !!r.free, manual: !!r.manual });
+
+  // ---------------------------------------------------------------- جهة العميل
+  async function clientInfo(device) {
+    const acc = await db.collection('accounts').findOne({ _id: device.accountId });
+    const st = stateOf(acc);
+    const requests = (await REQ().find({ accountId: device.accountId }).sort({ createdAt: -1 }).limit(5).toArray()).map(publicRequest);
+    return { ...st, enabled, config: await config(), requests };
+  }
+
+  async function submitRequest(device, body = {}, shop) {
+    if (!enabled) throw new AppError(404, 'NOT_FOUND');
+    const acc = await db.collection('accounts').findOne({ _id: device.accountId });
+    if (!acc) throw new AppError(401, 'NO_SHOP');
+    const method = body.method === 'cash' ? 'cash' : body.method === 'transfer' ? 'transfer' : null;
+    if (!method) throw bad('INVALID_CHOICE', 'method');
+    const phone = str(body.phone, { field: 'phone', min: 7, max: 20 });
+    if (!/^[0-9+\- ]{7,20}$/.test(phone)) throw bad('INVALID_PHONE');
+    const reference = str(body.reference, { field: 'reference', max: 60, optional: true });
+    const note = str(body.note, { field: 'note', max: 300, optional: true });
+    let image = null;
+    let mediaType = null;
+    if (body.image) {
+      if (typeof body.image !== 'string' || body.image.length > MAX_IMAGE || !/^[A-Za-z0-9+/=]+$/.test(body.image)) throw bad('IMAGE_TOO_LARGE');
+      mediaType = ['image/jpeg', 'image/png', 'image/webp'].includes(body.mediaType) ? body.mediaType : 'image/jpeg';
+      image = body.image;
+    }
+    if (method === 'transfer' && !reference && !image) throw bad('REQUIRED', 'reference');
+    const doc = {
+      accountId: acc._id, tenantId: acc.tenantId, email: acc.email, ownerName: acc.name, shopName: shop?.name ?? null,
+      method, phone: phone.replace(/[\s-]/g, ''), reference, note, image, mediaType, status: 'pending', createdAt: now(),
+    };
+    // طلب معلّق واحد لكل حساب: الإرسال من جديد يحدّثه بدل تكرار الطلبات عند المزوّد
+    const prev = await REQ().findOne({ accountId: acc._id, status: 'pending' });
+    if (prev) await REQ().updateOne({ _id: prev._id }, { $set: { ...doc, createdAt: prev.createdAt, updatedAt: now() } });
+    else await REQ().insertOne({ _id: newId(), ...doc });
+    return clientInfo(device);
+  }
+
+  // ---------------------------------------------------------------- جهة المزوّد
+  async function audit(admin, action, data = {}) {
+    await AUDIT().insertOne({ _id: newId(), at: now(), admin: admin.email, action, ...data });
+  }
+
+  /** تفعيل أو تمديد اشتراك حساب: من نهاية الاشتراك الحالي إن لم ينتهِ، وإلا من اليوم */
+  async function extend(acc, { months = 0, days = 0, free = false }) {
+    const m = Number.isSafeInteger(months) ? months : 0;
+    const d = Number.isSafeInteger(days) ? days : 0;
+    if (m < 0 || m > 24 || d < 0 || d > 366 || (!m && !d)) throw bad('INVALID_RANGE', 'duration');
+    const current = acc.sub?.until ? new Date(acc.sub.until) : null;
+    const base = current && current > now() ? current : now();
+    const until = new Date(addMonths(base, m).getTime() + d * 86400_000);
+    await db.collection('accounts').updateOne({ _id: acc._id }, { $set: { sub: { until, free: !!free, since: acc.sub?.since ?? now(), updatedAt: now() } } });
+    forget(acc._id);
+    return until;
+  }
+
+  async function accountOfTenant(tenantId) {
+    const id = checkId(tenantId);
+    return (await db.collection('accounts').findOne({ tenantId: id })) ?? (await db.collection('accounts').findOne({ branches: id }));
+  }
+
+  async function listRequests({ status = 'pending' } = {}) {
+    const q = status === 'all' ? {} : { status: status === 'decided' ? { $ne: 'pending' } : 'pending' };
+    const rows = await REQ().find(q).sort({ createdAt: -1 }).limit(200).project({ image: 0 }).toArray();
+    return rows.map((r) => ({ ...publicRequest(r), hasImage: !!r.mediaType, tenantId: r.tenantId, email: r.email, ownerName: r.ownerName, shopName: r.shopName, decidedBy: r.decidedBy ?? null }));
+  }
+
+  async function requestImage(id) {
+    const r = await REQ().findOne({ _id: checkId(id) });
+    if (!r?.image) throw new AppError(404, 'NOT_FOUND');
+    return { image: r.image, mediaType: r.mediaType ?? 'image/jpeg' };
+  }
+
+  async function decide(admin, id, body = {}, approve) {
+    const r = await REQ().findOne({ _id: checkId(id) });
+    if (!r) throw new AppError(404, 'NOT_FOUND');
+    if (r.status !== 'pending') throw new AppError(409, 'ALREADY_DECIDED');
+    const decisionNote = str(body.note, { field: 'note', max: 200, optional: true });
+    const acc = await db.collection('accounts').findOne({ _id: r.accountId });
+    if (!acc) throw new AppError(404, 'NOT_FOUND');
+    let until = null;
+    if (approve) until = await extend(acc, { months: body.months, days: body.days, free: body.free === true });
+    else if (!decisionNote) throw bad('REQUIRED', 'note');
+    await REQ().updateOne({ _id: r._id, status: 'pending' }, { $set: {
+      status: approve ? 'approved' : 'rejected', decidedAt: now(), decidedBy: admin.email, decisionNote,
+      ...(approve ? { months: body.months ?? 0, days: body.days ?? 0, free: body.free === true, until } : {}),
+    } });
+    await audit(admin, approve ? 'request.approve' : 'request.reject', { tenantId: r.tenantId, shopName: r.shopName, method: r.method, until, note: decisionNote });
+    return { ok: true, until };
+  }
+
+  /** من صف العميل مباشرة: تفعيل/تمديد (يُسجَّل طلباً يدوياً للتاريخ)، أو إيقاف الاشتراك الآن */
+  async function setForTenant(admin, tenantId, body = {}) {
+    const acc = await accountOfTenant(tenantId);
+    if (!acc) throw new AppError(404, 'NOT_FOUND');
+    const note = str(body.note, { field: 'note', max: 200, optional: true });
+    if (body.action === 'stop') {
+      await db.collection('accounts').updateOne({ _id: acc._id }, { $set: { 'sub.until': now(), 'sub.updatedAt': now() } });
+      forget(acc._id);
+      await audit(admin, 'subscription.stop', { tenantId: acc.tenantId, note });
+      return { ok: true, until: now() };
+    }
+    const method = ['cash', 'transfer', 'free'].includes(body.method) ? body.method : 'free';
+    const until = await extend(acc, { months: body.months, days: body.days, free: method === 'free' });
+    const shop = await db.collection('tenants').findOne({ _id: acc.tenantId });
+    await REQ().insertOne({ _id: newId(), accountId: acc._id, tenantId: acc.tenantId, email: acc.email, ownerName: acc.name, shopName: shop?.name ?? null,
+      method, phone: null, reference: null, note, status: 'approved', manual: true, createdAt: now(), decidedAt: now(), decidedBy: admin.email,
+      months: body.months ?? 0, days: body.days ?? 0, free: method === 'free', until });
+    await audit(admin, 'subscription.extend', { tenantId: acc.tenantId, shopName: shop?.name ?? null, method, months: body.months ?? 0, days: body.days ?? 0, until, note });
+    return { ok: true, until };
+  }
+
+  async function saveConfig(admin, body = {}) {
+    const methods = Array.isArray(body.methods) ? body.methods.slice(0, 8).map((m) => ({
+      label: str(m?.label, { field: 'methods.label', min: 1, max: 40 }), value: str(m?.value, { field: 'methods.value', min: 1, max: 80 }),
+      holder: str(m?.holder, { field: 'methods.holder', max: 60, optional: true }),
+    })) : [];
+    const whatsapp = body.whatsapp ? str(body.whatsapp, { field: 'whatsapp', max: 20 }).replace(/\D/g, '') : null;
+    const c = { price: str(body.price, { field: 'price', max: 80, optional: true }) ?? '', details: str(body.details, { field: 'details', max: 1200, optional: true }) ?? '', methods, whatsapp, updatedAt: now(), updatedBy: admin.email };
+    await CONFIG().updateOne({ _id: 'main' }, { $set: c }, { upsert: true });
+    await audit(admin, 'config.update', { methods: methods.length });
+    return config();
+  }
+
+  async function auditLog({ limit = 200 } = {}) {
+    return (await AUDIT().find({}).sort({ at: -1 }).limit(Math.min(Number(limit) || 200, 500)).toArray()).map(({ _id, ...x }) => x);
+  }
+
+  return { enabled, stateOf, stateForAccount, gate, clientInfo, submitRequest, config, listRequests, requestImage, decide, setForTenant, saveConfig, auditLog, audit, forget };
+}
+
+return { addMonths, createSubscriptions };
+})();
+
 // ---- server/app/platform.js
 const __m_server_app_platform_js = await (async () => {
 const { createApp } = __m_server_app_index_js;
@@ -5184,12 +5466,14 @@ const { hashPassword, normalizePin, randomToken, sha256, validPin, verifyPasswor
 const { scopeDb } = __m_server_db_scoped_js;
 const { createPlatformAdmin } = __m_server_app_platform_admin_js;
 const { createBranches } = __m_server_app_branches_js;
+const { createSubscriptions } = __m_server_app_subscriptions_js;
 // المنصة: حسابات المقاهي، ربط الجهاز بمقهى، وتوجيه كل طلب إلى تطبيق ذلك المقهى فقط.
 //
 // طبقتا دخول:
 //   1) حساب المقهى (بريد + كلمة مرور) — مرة واحدة على كل جهاز. ينشئ "جلسة جهاز" طويلة (كوكي mc_device).
 //   2) رمز الموظف (PIN) — سريع، لكل وردية/موظف، داخل المقهى المرتبط بالجهاز فقط (كوكي mc_session).
 // لذلك لا يمكن تجربة رموز PIN إلا من جهاز سجّل صاحبه الدخول بكلمة المرور.
+
 
 
 
@@ -5205,7 +5489,10 @@ const IP_MAX = 20;
 const MAX_CACHED_APPS = 300;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null } = {}) {
+/** approval: كل حساب جديد ينتظر موافقة المزوّد واشتراكاً (يُفعَّل في الإنتاج من نقطة الدخول؛ معطّل في النسخة التجريبية والاختبارات) */
+function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null, approval = false } = {}) {
+  const adminSet = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
+  const subs = createSubscriptions({ db, now, newId, admins: adminSet, enabled: approval });
   const apps = new Map(); // tenantId → {app, ready}
   // أخطاء الخادم غير المتوقعة تُحفظ (14 يوماً) لتظهر في لوحة المزوّد قبل أن يبلّغ عنها مقهى
   function recordError(e, where = {}) {
@@ -5308,7 +5595,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     const account = {
       _id: newId(), email: mail, name: ownerName, tenantId, role: 'owner',
       passwordHash: await hashPassword(pass, passwordIterations ? { iterations: passwordIterations } : undefined),
-      failedLogins: 0, lockedUntil: null, createdAt: now(),
+      failedLogins: 0, lockedUntil: null, createdAt: now(), lastLoginAt: now(),
     };
     try {
       await db.collection('accounts').insertOne(account);
@@ -5322,7 +5609,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
       await app.ctx.services.auth.setup({ storeName: shopName, ownerName, pin: body.pin, seed: body.seed !== false });
       const staff = await app.ctx.services.auth.login({ pin: body.pin }, ip);
       const device = await createDevice(account);
-      return { status: 200, body: { shop: { id: tenantId, name: shopName }, employee: staff.employee }, setDevice: device, setToken: staff.token };
+      return { status: 200, body: { shop: { id: tenantId, name: shopName, subscription: subs.stateOf(account) }, employee: staff.employee }, setDevice: device, setToken: staff.token };
     } catch (e) {
       // لا نترك حساباً بلا مقهى
       await db.collection('accounts').deleteOne({ _id: account._id }).catch(() => {});
@@ -5357,7 +5644,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     }
     await db.collection('accounts').updateOne({ _id: acc._id }, { $set: { failedLogins: 0, lockedUntil: null, lastLoginAt: now() } });
     const device = await createDevice(acc);
-    return { status: 200, body: { shop: await shopInfo(acc.tenantId), mustChangePassword: !!acc.mustChangePassword }, setDevice: device, setToken: null };
+    return { status: 200, body: { shop: { ...(await shopInfo(acc.tenantId)), subscription: subs.stateOf(acc) }, mustChangePassword: !!acc.mustChangePassword }, setDevice: device, setToken: null };
   }
 
   async function changePassword(device, actor, body = {}) {
@@ -5400,6 +5687,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
       if (key === 'GET /api/state') {
         const shop = device ? await shopInfo(device.tenantId) : null;
         if (!shop) return { status: 200, body: { shop: null, employee: null }, ...(req.deviceToken ? { setDevice: null } : {}) };
+        shop.subscription = await subs.stateForAccount(device.accountId);
         const r = await (await appFor(device.tenantId)).handle(req);
         return { ...r, body: { shop, employee: r.body?.employee ?? null } };
       }
@@ -5407,6 +5695,11 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
       if (!device) return { status: 401, body: { error: 'NO_SHOP' }, ...(req.deviceToken ? { setDevice: null } : {}) };
       if (await isDisabled(device.tenantId)) return { status: 403, body: { error: 'SHOP_DISABLED' } };
       const app = await appFor(device.tenantId);
+
+      // صفحة الاشتراك: تعمل دائماً على الجهاز المرتبط (كلمة مرور الحساب أُدخلت عند ربطه)
+      if (key === 'GET /api/subscription') return { status: 200, body: await subs.clientInfo(device) };
+      if (key === 'POST /api/subscription/request') return { status: 200, body: await subs.submitRequest(device, req.body, await shopInfo(device.tenantId)) };
+      if (key !== 'POST /api/account/password') await subs.gate(device, req);
 
       if (key === 'POST /api/account/password') {
         const actor = await app.ctx.services.auth.resolve(req.token);
@@ -5438,7 +5731,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
 
   // الإيقاف يسري فوراً على هذه النسخة من الخادم، وخلال 30 ثانية على غيرها
   const branches = createBranches({ db, now, newId, appFor, forgetApp: (id) => apps.delete(id) });
-  const platformAdmin = createPlatformAdmin({ db, now, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log });
+  const platformAdmin = createPlatformAdmin({ db, now, newId, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log, subs });
 
   return { handle, appFor };
 }
@@ -5862,6 +6155,10 @@ const ERRORS = {
   LEAVE_BALANCE: 'رصيد الإجازة السنوية لا يكفي لهذه المدة.',
   LEAVE_ALREADY_DECIDED: 'سبق البت في هذا الطلب.',
   NO_HOURS: 'لا ساعات عمل مسجّلة في هذا الشهر لتوزيع الحوافز عليها.',
+  SUBSCRIPTION_PENDING: 'حسابك بانتظار تفعيل الاشتراك.',
+  SUBSCRIPTION_EXPIRED: 'انتهى الاشتراك: التقارير متاحة والبيع موقوف حتى التجديد.',
+  ALREADY_DECIDED: 'سبق البت في هذا الطلب.',
+  IMAGE_TOO_LARGE: 'الصورة كبيرة. جرّب صورة أصغر.',
   TABLE_TAKEN: 'هذه الطاولة عليها تذكرة مفتوحة. افتح تذكرتها أو اختر طاولة أخرى.',
   UNKNOWN_TABLE: 'الطاولة لم تعد موجودة في الخريطة.',
   WRONG_PIN_KIOSK: 'الرمز غير صحيح.',
@@ -5922,6 +6219,15 @@ function fail(e) {
   // بلا إنترنت: شريط الحالة على شاشة البيع يكفي، لا إشعار خطأ مع كل طلب
   if (e?.code === 'NETWORK' && state.online === false) return;
   if (e?.code === 'NETWORK' && state.pos) { state.online = false; render(); }
+  // حساب بانتظار الموافقة: صفحة الاشتراك تشرح الحالة، فلا إشعارات خطأ من طلبات الخلفية
+  if (e?.code === 'SUBSCRIPTION_PENDING') {
+    if (state.shop) { state.shop.subscription = { ...(state.shop.subscription ?? {}), status: 'pending' }; render(); }
+    return;
+  }
+  // انتهى الاشتراك أثناء العمل: يظهر الشريط فوراً بدل انتظار إعادة التحميل
+  if (e?.code === 'SUBSCRIPTION_EXPIRED' && state.shop && state.shop.subscription?.status !== 'expired') {
+    state.shop.subscription = { ...(state.shop.subscription ?? {}), status: 'expired', daysLeft: 0 };
+  }
   if (e?.code === 'SHOP_DISABLED') {
     // أوقف المزوّد هذا المقهى: شاشة توضيح بدل أخطاء متكررة
     Object.assign(state, { shop: { ...(state.shop ?? {}), disabled: true }, employee: null, modal: null });
@@ -7888,6 +8194,7 @@ function pin(s) {
     </aside>
     <main class="acc-main"><div class="pin-card">
       <div><h1>أدخل رمزك</h1><p class="muted">رمز الموظف من 4 إلى 6 أرقام</p></div>
+      ${s.shop?.subscription?.status === 'expired' ? `<div class="alert-low">${icon('alert')}<div><b>انتهى الاشتراك</b><div class="small">التقارير متاحة والبيع موقوف. <button class="link-btn" data-action="sub-open">تجديد الاشتراك</button></div></div></div>` : ''}
       ${DEMO() ? `<div class="demo-note">رموز التجربة: ${DEMO_PINS.map(([r, c]) => `${r} <b>${c}</b>`).join('، ')}</div>` : ''}
       <div class="pin-dots ${s.view.pinShake ? 'shake' : ''}" aria-label="عدد الأرقام المدخلة ${p.length}">
         ${Array.from({ length: Math.max(4, p.length) }, (_, i) => `<span class="${i < p.length ? 'on' : ''}"></span>`).join('')}
@@ -9776,21 +10083,38 @@ return { routes, modals, enter, currentAdminSection: sub };
 
 // ---- public/js/views/platform.js
 const __m_public_js_views_platform_js = await (async () => {
-const { dateTime, esc } = __m_shared_format_js;
-const { get, post } = __m_public_js_api_js;
+const { dateTime, esc, localDate } = __m_shared_format_js;
+const { get, post, put } = __m_public_js_api_js;
 const { icon } = __m_public_js_icons_js;
 const { busy, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
-// لوحة مزوّد الخدمة (#/platform): كل المقاهي، النشاط، الإيقاف/التفعيل، وكلمة مرور مؤقتة لمن نسيها.
+// لوحة مزوّد الخدمة (#/platform): طلبات الاشتراك (موافقة/رفض)، العملاء واشتراكاتهم ونشاطهم، السجل، بيانات التحويل والتفاصيل،
+// وأخطاء الخادم. التفعيل والتمديد والإيقاف وكلمة المرور المؤقتة والنسخة الاحتياطية من صف كل عميل.
 
 
 
 
 
-const P = () => state.platform ?? (state.platform = { me: undefined, list: null, search: '' });
+const TZ = 180;
+const P = () => state.platform ?? (state.platform = { me: undefined, list: null, search: '', tab: 'requests', filter: 'all' });
 const ago = (d) => {
   if (!d) return '—';
   const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400_000);
   return days <= 0 ? 'اليوم' : days === 1 ? 'أمس' : `قبل ${days} يوم`;
+};
+const day = (d) => (d ? localDate(d, TZ) : '—');
+const METHOD = { transfer: 'تحويل', cash: 'نقداً', free: 'مجاني' };
+const SUB = {
+  pending: ['بانتظار الموافقة', 'warn'], active: ['مشترك', 'ok'], trial: ['تجريبي مجاني', 'olive'], expired: ['منتهي', 'bad'],
+};
+const subPill = (s) => {
+  if (!s) return '';
+  if (s.unlimited) return '<span class="pill">حساب المزوّد</span>';
+  const [label, cls] = SUB[s.status] ?? [s.status, ''];
+  return `<span class="pill ${cls}">${label}</span>${s.until ? `<div class="muted small">${s.status === 'expired' ? 'انتهى' : 'حتى'} ${day(s.until)}${s.daysLeft && s.daysLeft <= 7 ? ` · باقي ${s.daysLeft} يوم` : ''}</div>` : ''}`;
+};
+const ACTIONS = {
+  'request.approve': 'موافقة على طلب', 'request.reject': 'رفض طلب', 'subscription.extend': 'تفعيل/تمديد', 'subscription.stop': 'إيقاف الاشتراك',
+  'config.update': 'تعديل بيانات التحويل', 'shop.disable': 'إيقاف المقهى', 'shop.enable': 'تفعيل المقهى', 'account.reset_password': 'كلمة مرور مؤقتة', 'backup.download': 'نسخة احتياطية',
 };
 
 async function enterPlatform() {
@@ -9798,9 +10122,27 @@ async function enterPlatform() {
   try {
     const me = await get('/api/platform/me');
     p.me = me;
-    if (me.email) [p.list, p.errors] = await Promise.all([get('/api/platform/shops', { search: p.search || undefined }), get('/api/platform/errors')]);
+    if (me.email) {
+      [p.list, p.errors, p.requests, p.config, p.audit] = await Promise.all([
+        get('/api/platform/shops', { search: p.search || undefined }), get('/api/platform/errors'),
+        get('/api/platform/requests', { status: 'all' }).catch(() => []), get('/api/platform/config').catch(() => null), get('/api/platform/audit').catch(() => []),
+      ]);
+    }
   } catch (e) { p.me = { email: null, enabled: false }; fail(e); }
   render();
+}
+
+function requestCard(r) {
+  return `<div class="card pad stack" style="gap:8px">
+    <div class="row wrap"><b style="font-size:1.05rem">${esc(r.shopName ?? '')}</b><span class="muted small">${esc(r.ownerName ?? '')} · <span dir="ltr">${esc(r.email ?? '')}</span></span>
+      <span class="spacer"></span><span class="muted small">${dateTime(r.createdAt, TZ)}</span></div>
+    <div class="row wrap small" style="gap:14px"><span class="pill ${r.method === 'cash' ? 'warn' : 'olive'}">${METHOD[r.method] ?? r.method}</span>
+      ${r.phone ? `<a href="https://wa.me/${esc(r.phone.replace(/^0/, '964'))}" target="_blank" rel="noopener" dir="ltr">${esc(r.phone)}</a>` : ''}
+      ${r.reference ? `<span>رقم الحوالة: <b dir="ltr">${esc(r.reference)}</b></span>` : ''}
+      ${r.hasImage ? `<button class="btn sm" data-action="pf-req-image" data-id="${r.id}">${icon('camera', 'sm')} صورة الوصل</button>` : ''}</div>
+    ${r.note ? `<p class="small" style="margin:0">«${esc(r.note)}»</p>` : ''}
+    <div class="row wrap"><button class="btn primary" data-action="pf-approve" data-id="${r.id}">${icon('check', 'sm')} موافقة وتفعيل</button>
+      <button class="btn danger" data-action="pf-reject" data-id="${r.id}">رفض</button></div></div>`;
 }
 
 function platformView() {
@@ -9816,37 +10158,125 @@ function platformView() {
       <a class="btn ghost" href="#/">العودة للبرنامج</a></form></div>`;
   }
   const l = p.list;
-  return `<div class="page" style="max-width:1200px;height:100%;overflow:auto">
-    <div class="page-head"><h1>المقاهي المشتركة</h1><span class="muted small" dir="ltr">${esc(p.me.email)}</span>
+  const T = l?.totals ?? {};
+  const pendingReqs = (p.requests ?? []).filter((r) => r.status === 'pending');
+  const TABS = [['requests', `طلبات الاشتراك${pendingReqs.length ? ` (${pendingReqs.length})` : ''}`], ['clients', 'العملاء'], ['log', 'السجل'], ['config', 'بيانات التحويل والتفاصيل'], ['errors', `أخطاء الخادم${p.errors?.count24h ? ` (${p.errors.count24h})` : ''}`]];
+  const head = `<div class="page-head"><h1>لوحة المزوّد</h1><span class="muted small" dir="ltr">${esc(p.me.email)}</span>
       <span class="spacer"></span><button class="btn sm" data-action="platform-refresh">${icon('check', 'sm')} تحديث</button>
       <button class="btn sm ghost" data-action="platform-logout">${icon('lock', 'sm')} خروج</button></div>
-    ${l ? `<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-      <div class="kpi lead"><span class="label">كل المقاهي</span><b>${l.totals.shops}</b></div>
-      <div class="kpi"><span class="label">نشطة آخر 7 أيام</span><b>${l.totals.active7}</b></div>
-      <div class="kpi"><span class="label">موقوفة</span><b>${l.totals.disabled}</b></div></div>` : ''}
-    ${p.errors ? `<details class="card pad" ${p.errors.count24h ? 'open' : ''}><summary><b>${p.errors.count24h ? `${icon('alert', 'sm')} ${p.errors.count24h} خطأ في الخادم خلال 24 ساعة` : `${icon('check', 'sm')} لا أخطاء في الخادم خلال 24 ساعة`}</b></summary>
-      ${p.errors.recent.length ? `<div class="table-wrap" style="margin-top:10px"><table><tbody>${p.errors.recent.map((x) => `<tr><td class="small">${dateTime(x.at, 180)}</td><td class="small" dir="ltr">${esc(x.method ?? '')} ${esc(x.path ?? '')}</td><td class="small" dir="ltr">${esc(x.name)}: ${esc(x.message)}</td><td class="small">${esc(P().list?.rows.find((r) => r.id === x.tenantId)?.name ?? '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
-      <p class="muted small">المراقبة الخارجية: يفحص GitHub الموقع كل 15 دقيقة ويرسل لك بريداً عند أي عطل.</p></details>` : ''}
-    <div class="search-box">${icon('search', 'sm')}<input type="search" id="pf-search" placeholder="ابحث باسم المقهى أو البريد" value="${esc(p.search)}" data-input="platform-search" autocomplete="off"></div>
-    <div class="table-wrap"><table><thead><tr><th>المقهى</th><th>المالك</th><th>التسجيل</th><th>آخر بيع</th><th class="num">مبيعات 30 يوم</th><th class="num">أجهزة</th><th>الحالة</th><th></th></tr></thead>
-    <tbody>${!l ? '<tr><td colspan="8" class="muted">جارٍ التحميل…</td></tr>' : l.rows.length ? l.rows.map((r) => `<tr>
-      <td><b>${esc(r.name)}</b></td><td><div>${esc(r.ownerName ?? '')}</div><div class="muted small" dir="ltr">${esc(r.email ?? '')}</div></td>
-      <td class="small">${r.createdAt ? dateTime(r.createdAt, 180) : '—'}</td><td class="small">${ago(r.lastSaleAt)}</td>
-      <td class="num">${r.sales30}</td><td class="num">${r.devices}</td>
-      <td>${r.disabled ? `<span class="pill bad" title="${esc(r.disabledReason ?? '')}">موقوف</span>` : '<span class="pill ok">فعّال</span>'}</td>
-      <td><div class="row" style="justify-content:flex-end;gap:6px">
-        ${r.disabled ? `<button class="btn sm" data-action="platform-enable" data-id="${r.id}">تفعيل</button>` : `<button class="btn sm danger" data-action="platform-disable" data-id="${r.id}">إيقاف</button>`}
-        <button class="btn sm" data-action="platform-reset" data-id="${r.id}">كلمة مرور مؤقتة</button></div></td></tr>`).join('')
-      : '<tr><td colspan="8" class="muted">لا مقاهي</td></tr>'}</tbody></table></div></div>`;
+    ${l ? `<div class="kpis">
+      <div class="kpi lead"><span class="label">طلبات تنتظرك</span><b>${T.requests ?? 0}</b><span class="small">${T.pending ?? 0} حساب بانتظار الموافقة</span></div>
+      <div class="kpi"><span class="label">مشتركون</span><b>${T.paying ?? 0}</b><span class="muted small">${T.trial ?? 0} تجريبي مجاني</span></div>
+      <div class="kpi"><span class="label">منتهية</span><b style="color:${T.expired ? 'var(--bad)' : 'inherit'}">${T.expired ?? 0}</b></div>
+      <div class="kpi"><span class="label">نشطة آخر 7 أيام</span><b>${T.active7 ?? 0}</b><span class="muted small">من ${T.shops ?? 0} مقهى</span></div></div>
+      ${T.approval === false ? '<p class="small" style="color:var(--warn)">الموافقة على الحسابات معطّلة على هذا الخادم (REQUIRE_APPROVAL=false): كل حساب جديد يعمل مباشرة.</p>' : ''}` : ''}
+    <div class="toolbar"><div class="seg wrap-seg">${TABS.map(([k, label]) => `<button class="${p.tab === k ? 'on' : ''}" data-action="pf-tab" data-k="${k}">${label}</button>`).join('')}</div></div>`;
+  const body = {
+    requests: () => `${pendingReqs.length ? pendingReqs.map(requestCard).join('') : '<div class="empty">لا طلبات اشتراك تنتظر موافقتك</div>'}
+      ${(p.requests ?? []).filter((r) => r.status !== 'pending').length ? `<h2 style="margin-top:8px">آخر القرارات</h2><div class="table-wrap"><table><thead><tr><th>المقهى</th><th>الطريقة</th><th>القرار</th><th>المدة</th><th>التاريخ</th><th>ملاحظة</th></tr></thead><tbody>
+        ${(p.requests ?? []).filter((r) => r.status !== 'pending').slice(0, 40).map((r) => `<tr><td><b>${esc(r.shopName ?? '')}</b>${r.manual ? ' <span class="pill">من اللوحة</span>' : ''}</td><td>${METHOD[r.method] ?? r.method}</td>
+          <td>${r.status === 'approved' ? '<span class="pill ok">موافقة</span>' : '<span class="pill bad">رفض</span>'}</td><td class="small">${r.months ? `${r.months} شهر` : ''}${r.days ? ` ${r.days} يوم` : ''}</td>
+          <td class="small">${dateTime(r.decidedAt ?? r.createdAt, TZ)}</td><td class="small">${esc(r.decisionNote ?? r.note ?? '')}</td></tr>`).join('')}</tbody></table></div>` : ''}`,
+    clients: () => {
+      const rows = (l?.rows ?? []).filter((r) => p.filter === 'all' || (p.filter === 'branch' ? r.branchOf : !r.branchOf && r.subscription?.status === p.filter));
+      const F = [['all', 'الكل'], ['pending', 'بانتظار الموافقة'], ['active', 'مشتركون'], ['trial', 'تجريبي'], ['expired', 'منتهية']];
+      return `<div class="row wrap"><div class="search-box" style="flex:1">${icon('search', 'sm')}<input type="search" id="pf-search" placeholder="ابحث باسم المقهى أو البريد" value="${esc(p.search)}" data-input="platform-search" autocomplete="off"></div>
+        <div class="seg">${F.map(([k, label]) => `<button class="${p.filter === k ? 'on' : ''}" data-action="pf-filter" data-k="${k}">${label}</button>`).join('')}</div></div>
+      <div class="table-wrap"><table><thead><tr><th>المقهى</th><th>المالك</th><th>الاشتراك</th><th>التسجيل</th><th>آخر دخول</th><th>آخر بيع</th><th class="num">مبيعات 30 يوم</th><th class="num">أجهزة</th><th></th></tr></thead>
+      <tbody>${!l ? '<tr><td colspan="9" class="muted">جارٍ التحميل…</td></tr>' : rows.length ? rows.map((r) => `<tr>
+        <td><b>${esc(r.name)}</b>${r.branchOf ? ' <span class="pill">فرع</span>' : ''}${r.pendingRequest ? ' <span class="pill warn">طلب جديد</span>' : ''}${r.disabled ? ` <span class="pill bad" title="${esc(r.disabledReason ?? '')}">موقوف</span>` : ''}</td>
+        <td><div>${esc(r.ownerName ?? '')}</div><div class="muted small" dir="ltr">${esc(r.email ?? '')}</div></td>
+        <td>${r.branchOf ? '<span class="muted small">يتبع حساب المالك</span>' : subPill(r.subscription)}</td>
+        <td class="small">${day(r.createdAt)}</td><td class="small">${ago(r.lastLoginAt)}</td><td class="small">${ago(r.lastSaleAt)}</td>
+        <td class="num">${r.sales30}</td><td class="num">${r.devices}</td>
+        <td><div class="row wrap" style="justify-content:flex-end;gap:6px">
+          ${r.branchOf || r.subscription?.unlimited ? '' : `<button class="btn sm primary" data-action="pf-extend" data-id="${r.id}">تفعيل / تمديد</button>`}
+          <button class="btn sm" data-action="pf-more" data-id="${r.id}">المزيد</button></div></td></tr>`).join('')
+        : '<tr><td colspan="9" class="muted">لا نتائج</td></tr>'}</tbody></table></div>`;
+    },
+    log: () => `<div class="table-wrap"><table><thead><tr><th>الوقت</th><th>العملية</th><th>المقهى</th><th>التفاصيل</th></tr></thead><tbody>
+      ${(p.audit ?? []).map((x) => `<tr><td class="small">${dateTime(x.at, TZ)}</td><td>${ACTIONS[x.action] ?? esc(x.action)}</td>
+        <td>${esc(x.shopName ?? l?.rows.find((r) => r.id === x.tenantId)?.name ?? '')}</td>
+        <td class="small">${[x.method ? METHOD[x.method] : '', x.months ? `${x.months} شهر` : '', x.days ? `${x.days} يوم` : '', x.until ? `حتى ${day(x.until)}` : '', x.note ? `«${esc(x.note)}»` : ''].filter(Boolean).join(' · ')}</td></tr>`).join('')
+        || '<tr><td colspan="4" class="muted">لا عمليات بعد</td></tr>'}</tbody></table></div>`,
+    config: () => configForm(p),
+    errors: () => `${p.errors ? `<div class="card pad stack"><b>${p.errors.count24h ? `${icon('alert', 'sm')} ${p.errors.count24h} خطأ في الخادم خلال 24 ساعة` : `${icon('check', 'sm')} لا أخطاء في الخادم خلال 24 ساعة`}</b>
+      ${p.errors.recent.length ? `<div class="table-wrap"><table><tbody>${p.errors.recent.map((x) => `<tr><td class="small">${dateTime(x.at, TZ)}</td><td class="small" dir="ltr">${esc(x.method ?? '')} ${esc(x.path ?? '')}</td><td class="small" dir="ltr">${esc(x.name)}: ${esc(x.message)}</td><td class="small">${esc(l?.rows.find((r) => r.id === x.tenantId)?.name ?? '')}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>` : ''}`,
+  };
+  return `<div class="page" style="max-width:1280px;height:100%;overflow:auto">${head}${(body[p.tab] ?? body.requests)()}</div>`;
 }
 
+function configForm(p) {
+  const c = p.cfgDraft ?? (p.cfgDraft = structuredClone(p.config ?? { price: '', details: '', methods: [], whatsapp: '' }));
+  if (!c.methods.length) c.methods.push({ label: '', value: '', holder: '' });
+  return `<div class="grid-2" style="align-items:start"><section class="card pad stack">
+      <h2>ما يراه العميل في صفحة الاشتراك</h2>
+      ${field('السعر', `<input id="cf-price" value="${esc(c.price ?? '')}" maxlength="80" placeholder="مثلاً: 25,000 د.ع شهرياً" data-input="pf-cfg" data-k="price">`)}
+      ${field('التفاصيل', `<textarea id="cf-details" rows="5" maxlength="1200" data-input="pf-cfg" data-k="details">${esc(c.details ?? '')}</textarea>`, 'ما يشمله الاشتراك، والمدة، وأي شرط')}
+      ${field('واتساب للتواصل', `<input id="cf-wa" value="${esc(c.whatsapp ?? '')}" inputmode="tel" dir="ltr" maxlength="20" placeholder="9647…" data-input="pf-cfg" data-k="whatsapp">`)}
+    </section><section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">طرق الدفع وبيانات التحويل</h2>
+      <button type="button" class="btn sm" data-action="pf-cfg-add">${icon('plus', 'sm')} طريقة</button></div>
+      ${c.methods.map((m, i) => `<div class="card pad stack" style="gap:8px;box-shadow:none"><div class="grid-2">
+        ${field('الطريقة', `<input id="cf-l-${i}" value="${esc(m.label)}" maxlength="40" placeholder="زين كاش، كي كارد، حساب مصرفي" data-input="pf-cfg-m" data-i="${i}" data-k="label">`)}
+        ${field('الرقم', `<input id="cf-v-${i}" value="${esc(m.value)}" maxlength="80" dir="ltr" data-input="pf-cfg-m" data-i="${i}" data-k="value">`)}</div>
+        <div class="row">${field('باسم (اختياري)', `<input id="cf-h-${i}" value="${esc(m.holder ?? '')}" maxlength="60" data-input="pf-cfg-m" data-i="${i}" data-k="holder">`)}
+          <button type="button" class="icon-btn" data-action="pf-cfg-del" data-i="${i}" aria-label="حذف الطريقة">${icon('trash', 'sm')}</button></div></div>`).join('')}
+      <p class="muted small" style="margin:0">لا تُكتب هذه البيانات في الكود: تحفظها هنا وتغيّرها متى شئت، وتظهر فوراً لكل عميل في صفحة الاشتراك.</p>
+      <button class="btn primary lg" data-action="pf-cfg-save" ${state.busy ? 'disabled' : ''}>حفظ</button></section></div>`;
+}
+
+const durationFields = (preset = 1) => `<div class="grid-2">
+    ${field('أشهر', `<select name="months" id="pf-months">${[0, 1, 2, 3, 6, 12].map((n) => `<option value="${n}" ${n === preset ? 'selected' : ''}>${n ? `${n} ${n === 1 ? 'شهر' : n === 2 ? 'شهران' : 'أشهر'}` : 'بلا أشهر'}</option>`).join('')}</select>`)}
+    ${field('أيام إضافية', '<input name="days" id="pf-days" inputmode="numeric" value="0" maxlength="3">', 'مثلاً 14 للتجربة')}</div>`;
+
 const modals = {
+  'pf-approve'(s) {
+    const r = (P().requests ?? []).find((x) => x.id === s.modal.id);
+    return modalFrame({ title: `تفعيل ${r?.shopName ?? ''}`, sub: `${METHOD[r?.method] ?? ''}${r?.reference ? ` · ${esc(r.reference)}` : ''}`, body: `<form class="stack" data-form="pf-approve-submit">
+      <p class="small" style="margin:0">يبدأ من نهاية الاشتراك الحالي إن لم ينتهِ، وإلا من اليوم.</p>
+      ${durationFields(1)}
+      <label class="check"><input type="checkbox" name="free" id="pf-free"> مجاني (تجريبي) بلا دفع</label>
+      ${field('ملاحظة (اختياري)', '<input name="note" id="pf-note" maxlength="200" placeholder="مثلاً: وصل سليم">')}
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>${icon('check', 'sm')} موافقة وتفعيل</button></form>` });
+  },
+  'pf-reject'(s) {
+    return modalFrame({ title: 'رفض الطلب', body: `<form class="stack" data-form="pf-reject-submit">
+      ${field('السبب (يظهر للعميل)', '<input name="note" id="pf-rnote" required maxlength="200" placeholder="مثلاً: لم يصل التحويل، أرسل الوصل مرة ثانية">')}
+      <button class="btn danger solid lg" type="submit" ${s.busy ? 'disabled' : ''}>رفض</button></form>` });
+  },
+  'pf-extend'(s) {
+    const r = P().list?.rows.find((x) => x.id === s.modal.id);
+    return modalFrame({ title: `تفعيل / تمديد ${r?.name ?? ''}`, sub: r?.subscription?.until ? `الاشتراك الحالي حتى ${day(r.subscription.until)}` : 'لا اشتراك بعد', body: `<form class="stack" data-form="pf-extend-submit">
+      <div class="seg">${Object.entries(METHOD).map(([k, label]) => `<button type="button" class="${(s.modal.method ?? 'cash') === k ? 'on' : ''}" data-action="pf-extend-method" data-k="${k}">${label}</button>`).join('')}</div>
+      ${durationFields(s.modal.method === 'free' ? 0 : 1)}
+      ${field('ملاحظة', '<input name="note" id="pf-enote" maxlength="200" placeholder="مثلاً: استلمت 25,000 نقداً">')}
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>${icon('check', 'sm')} تفعيل</button></form>` });
+  },
+  'pf-more'(s) {
+    const r = P().list?.rows.find((x) => x.id === s.modal.id);
+    if (!r) return '';
+    return modalFrame({ title: r.name, sub: `${esc(r.ownerName ?? '')} · <span dir="ltr">${esc(r.email ?? '')}</span>`, body: `<div class="stack">
+      <div class="r-line"><span>الاشتراك</span><span>${r.branchOf ? 'فرع يتبع حساب المالك' : subPill(r.subscription)}</span></div>
+      <div class="r-line"><span>التسجيل</span><span>${dateTime(r.createdAt, TZ)}</span></div>
+      <div class="r-line"><span>آخر دخول بالحساب</span><span>${r.lastLoginAt ? dateTime(r.lastLoginAt, TZ) : '—'}</span></div>
+      <div class="r-line"><span>آخر بيع</span><span>${r.lastSaleAt ? dateTime(r.lastSaleAt, TZ) : '—'}</span></div>
+      <div class="r-line"><span>مبيعات 30 يوم · أجهزة</span><span>${r.sales30} · ${r.devices}</span></div>
+      <div class="row wrap" style="margin-top:8px">
+        <button class="btn" data-action="pf-backup" data-id="${r.id}">${icon('download', 'sm')} نسخة احتياطية</button>
+        <button class="btn" data-action="platform-reset" data-id="${r.id}">كلمة مرور مؤقتة</button>
+        ${!r.branchOf && !r.subscription?.unlimited && ['active', 'trial'].includes(r.subscription?.status) ? `<button class="btn danger" data-action="pf-stop" data-id="${r.id}">إيقاف الاشتراك الآن</button>` : ''}
+        ${r.disabled ? `<button class="btn" data-action="platform-enable" data-id="${r.id}">إلغاء حظر المقهى</button>` : `<button class="btn ghost danger" data-action="platform-disable" data-id="${r.id}">حظر المقهى كلياً</button>`}</div>
+      <p class="muted small" style="margin:0">إيقاف الاشتراك: يقرأ تقاريره ولا يبيع حتى التجديد. الحظر: لا دخول إطلاقاً.</p></div>` });
+  },
+  'pf-image'(s) {
+    return modalFrame({ title: 'صورة الوصل', cls: 'wide', body: s.modal.src ? `<img src="${s.modal.src}" alt="وصل التحويل" style="max-width:100%;border-radius:12px">` : '<p class="muted">جارٍ التحميل…</p>' });
+  },
   'platform-disable'(s) {
     const r = P().list?.rows.find((x) => x.id === s.modal.id);
-    return modalFrame({ title: `إيقاف ${r?.name ?? ''}`, body: `<form class="stack" data-form="platform-disable-submit">
-      <p>لن يستطيع المقهى البيع أو الدخول حتى تعيد تفعيله. البيانات تبقى محفوظة.</p>
-      ${field('السبب (يظهر لك فقط)', '<input name="reason" id="pf-reason" required maxlength="120" placeholder="مثلاً: لم يُدفع اشتراك الشهر">')}
-      <button class="btn danger solid lg" type="submit" ${s.busy ? 'disabled' : ''}>إيقاف المقهى</button></form>` });
+    return modalFrame({ title: `حظر ${r?.name ?? ''}`, body: `<form class="stack" data-form="platform-disable-submit">
+      <p>لن يستطيع المقهى البيع أو الدخول حتى تلغي الحظر. البيانات تبقى محفوظة.</p>
+      ${field('السبب (يظهر لك فقط)', '<input name="reason" id="pf-reason" required maxlength="120" placeholder="مثلاً: إساءة استخدام">')}
+      <button class="btn danger solid lg" type="submit" ${s.busy ? 'disabled' : ''}>حظر المقهى</button></form>` });
   },
   'platform-temp'(s) {
     const m = s.modal;
@@ -9858,6 +10288,13 @@ const modals = {
   },
 };
 
+const duration = (d) => {
+  const months = Number(d.months) || 0;
+  const days = Number(String(d.days ?? '0').replace(/[^\d]/g, '')) || 0;
+  if (!months && !days) throw new Error('اختر مدة: أشهر أو أيام');
+  return { months, days };
+};
+
 on({
   'platform-login': (_el, _e, d) => busy(async () => {
     await post('/api/platform/login', { email: d.email, password: d.password });
@@ -9865,18 +10302,82 @@ on({
   }),
   'platform-logout': () => busy(async () => { await post('/api/platform/logout', {}); state.platform = null; await enterPlatform(); }),
   'platform-refresh': () => enterPlatform(),
+  'pf-tab': (el) => { P().tab = el.dataset.k; render(); },
+  'pf-filter': (el) => { P().filter = el.dataset.k; render(); },
   'platform-search': (el) => {
     const p = P();
     p.search = el.value;
     clearTimeout(p.timer);
     p.timer = setTimeout(() => enterPlatform(), 300);
   },
-  'platform-enable': (el) => busy(async () => { await post(`/api/platform/shops/${el.dataset.id}/enable`, {}); toast('فُعّل المقهى', 'ok'); await enterPlatform(); }),
+  'pf-approve': (el) => openModal({ type: 'pf-approve', id: el.dataset.id }),
+  'pf-approve-submit': (_el, _e, d) => busy(async () => {
+    await post(`/api/platform/requests/${state.modal.id}/approve`, { ...duration(d), free: d.free === 'on', note: d.note || null });
+    state.modal = null;
+    toast('فُعّل الاشتراك', 'ok');
+    await enterPlatform();
+  }),
+  'pf-reject': (el) => openModal({ type: 'pf-reject', id: el.dataset.id }),
+  'pf-reject-submit': (_el, _e, d) => busy(async () => {
+    await post(`/api/platform/requests/${state.modal.id}/reject`, { note: d.note });
+    state.modal = null;
+    toast('رُفض الطلب', 'ok');
+    await enterPlatform();
+  }),
+  'pf-req-image': (el) => busy(async () => {
+    openModal({ type: 'pf-image', src: null });
+    const r = await get(`/api/platform/requests/${el.dataset.id}/image`);
+    if (state.modal?.type === 'pf-image') { state.modal.src = `data:${r.mediaType};base64,${r.image}`; render(); }
+  }),
+  'pf-extend': (el) => openModal({ type: 'pf-extend', id: el.dataset.id, method: 'cash' }),
+  'pf-extend-method': (el) => { state.modal.method = el.dataset.k; render(); },
+  'pf-extend-submit': (_el, _e, d) => busy(async () => {
+    const r = await post(`/api/platform/shops/${state.modal.id}/subscription`, { ...duration(d), method: state.modal.method ?? 'cash', note: d.note || null });
+    state.modal = null;
+    toast(`فُعّل حتى ${day(r.until)}`, 'ok');
+    await enterPlatform();
+  }),
+  'pf-more': (el) => openModal({ type: 'pf-more', id: el.dataset.id }),
+  'pf-stop': (el) => busy(async () => {
+    const p = P();
+    if (p.confirmStop !== el.dataset.id) { p.confirmStop = el.dataset.id; toast('اضغط مرة أخرى لإيقاف الاشتراك الآن'); return; }
+    p.confirmStop = null;
+    await post(`/api/platform/shops/${el.dataset.id}/subscription`, { action: 'stop' });
+    state.modal = null;
+    toast('أُوقف الاشتراك', 'ok');
+    await enterPlatform();
+  }),
+  'pf-backup': (el) => busy(async () => {
+    const data = await get(`/api/platform/shops/${el.dataset.id}/backup`);
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `morecash-${(data.tenant?.name ?? 'shop').replace(/[^\p{L}\p{N}]+/gu, '-')}-${localDate(Date.now(), TZ)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast('نُزّلت النسخة الاحتياطية', 'ok');
+  }),
+  'pf-cfg': (el) => { P().cfgDraft[el.dataset.k] = el.value; },
+  'pf-cfg-m': (el) => { P().cfgDraft.methods[Number(el.dataset.i)][el.dataset.k] = el.value; },
+  'pf-cfg-add': () => { P().cfgDraft.methods.push({ label: '', value: '', holder: '' }); render(); },
+  'pf-cfg-del': (el) => { P().cfgDraft.methods.splice(Number(el.dataset.i), 1); render(); },
+  'pf-cfg-save': () => busy(async () => {
+    const c = P().cfgDraft;
+    const methods = c.methods.filter((m) => m.label.trim() || m.value.trim());
+    if (methods.some((m) => !m.label.trim() || !m.value.trim())) throw new Error('أكمل اسم الطريقة ورقمها، أو احذف السطر');
+    P().config = await put('/api/platform/config', { price: c.price, details: c.details, whatsapp: c.whatsapp || null, methods });
+    P().cfgDraft = null;
+    toast('حُفظت بيانات التحويل', 'ok');
+    render();
+  }),
+  'platform-enable': (el) => busy(async () => { await post(`/api/platform/shops/${el.dataset.id}/enable`, {}); state.modal = null; toast('أُلغي الحظر', 'ok'); await enterPlatform(); }),
   'platform-disable': (el) => openModal({ type: 'platform-disable', id: el.dataset.id }),
   'platform-disable-submit': (_el, _e, d) => busy(async () => {
     await post(`/api/platform/shops/${state.modal.id}/disable`, { reason: d.reason });
     state.modal = null;
-    toast('أُوقف المقهى', 'ok');
+    toast('حُظر المقهى', 'ok');
     await enterPlatform();
   }),
   'platform-reset': (el) => busy(async () => {
@@ -9975,6 +10476,148 @@ on({
 return { kioskView };
 })();
 
+// ---- public/js/views/subscription.js
+const __m_public_js_views_subscription_js = await (async () => {
+const { dateTime, esc, localDate } = __m_shared_format_js;
+const { get, post } = __m_public_js_api_js;
+const { icon } = __m_public_js_icons_js;
+const { mark } = __m_public_js_brand_js;
+const { busy, fail, field, on, render, state, toast } = __m_public_js_ui_js;
+// صفحة الاشتراك للعميل: تفاصيل الاشتراك وبيانات التحويل (يتحكم بها المزوّد)، وطلب اشتراك بالتحويل (رقم ووصل) أو نقداً.
+// تظهر بدل البرنامج للحساب الذي ينتظر الموافقة، ومن شريط التنبيه عند قرب الانتهاء أو بعده.
+
+
+
+
+
+
+const S = () => state.sub ?? (state.sub = { info: null, method: 'transfer', image: null });
+const day = (d) => (d ? localDate(d, 180) : '');
+const STATUS = {
+  pending: ['بانتظار الموافقة', 'warn', 'حسابك جاهز، وينفتح البرنامج كامل بعد ما نستلم الاشتراك ونوافق عليه.'],
+  active: ['مشترك', 'ok', ''], trial: ['تجريبي مجاني', 'olive', ''],
+  expired: ['انتهى الاشتراك', 'bad', 'بياناتك وتقاريرك محفوظة وتقدر تقرأها، والبيع موقوف حتى التجديد.'],
+};
+const REQ = { pending: ['وصل طلبك وينتظر الموافقة', 'warn'], approved: ['تمت الموافقة', 'ok'], rejected: ['رُفض', 'bad'] };
+
+async function loadSubscription() {
+  try { S().info = await get('/api/subscription'); } catch (e) { fail(e); }
+  render();
+}
+
+/** شريط في أعلى البرنامج: قرب الانتهاء (للمالك)، أو بعده للجميع */
+function subscriptionBanner(s) {
+  const st = s.shop?.subscription;
+  if (!st || st.unlimited) return '';
+  if (st.status === 'expired') return `<div class="sub-banner bad">${icon('alert', 'sm')} انتهى الاشتراك في ${day(st.until)}: التقارير متاحة والبيع موقوف. <button class="btn sm" data-action="sub-open">تجديد الاشتراك</button></div>`;
+  if (st.daysLeft !== null && st.daysLeft <= 5 && s.employee?.role === 'owner') return `<div class="sub-banner warn">${icon('clock', 'sm')} ${st.status === 'trial' ? 'التجربة المجانية' : 'الاشتراك'} ينتهي خلال ${st.daysLeft} ${st.daysLeft === 1 ? 'يوم' : 'أيام'} (${day(st.until)}). <button class="btn sm" data-action="sub-open">تجديد</button></div>`;
+  return '';
+}
+
+function subscriptionView(s) {
+  const sub = S();
+  const info = sub.info;
+  const st = info ?? s.shop?.subscription ?? { status: 'pending' };
+  const [label, cls, hint] = STATUS[st.status] ?? STATUS.pending;
+  const cfg = info?.config;
+  const pendingReq = info?.requests?.find((r) => r.status === 'pending');
+  const lastRejected = info?.requests?.[0]?.status === 'rejected' ? info.requests[0] : null;
+  const canClose = st.status !== 'pending';
+  if (!info && !sub.loading) { sub.loading = true; queueMicrotask(() => loadSubscription().finally(() => { sub.loading = false; })); }
+  const methods = cfg?.methods ?? [];
+  return `<div class="sub-page">
+    <header class="sub-head">${mark()}<div style="flex:1"><h1>اشتراك مور كاش</h1><p style="margin:0">${esc(s.shop?.name ?? '')}</p></div>
+      ${canClose ? `<button class="btn" data-action="sub-close">${icon('back', 'sm')} رجوع للبرنامج</button>` : `<button class="btn ghost on-dark" data-action="leave-ask">تسجيل خروج هذا الجهاز</button>`}</header>
+    <div class="sub-body">
+      <section class="card pad stack">
+        <div class="row wrap"><h2 style="margin-inline-end:auto">حالة الحساب</h2><span class="pill ${cls}">${label}</span></div>
+        ${st.until && st.status !== 'pending' ? `<p style="margin:0">${st.status === 'expired' ? 'انتهى في' : 'فعّال حتى'} <b>${day(st.until)}</b>${st.daysLeft ? ` · باقي ${st.daysLeft} يوم` : ''}</p>` : ''}
+        ${hint ? `<p class="muted" style="margin:0">${hint}</p>` : ''}
+        ${pendingReq ? `<div class="alert-low" style="background:#eef6e0;border-color:#c9d86b;color:#3f4d0f">${icon('check')}<div><b>وصل طلبك (${pendingReq.method === 'cash' ? 'دفع نقدي' : 'تحويل'})</b><div class="small">أُرسل ${dateTime(pendingReq.createdAt, 180)}. ننتظر تأكيد الدفع، وبعدها ينفتح البرنامج تلقائياً.</div></div></div>
+          <button class="btn" data-action="sub-refresh">${icon('check', 'sm')} تحديث الحالة</button>` : ''}
+        ${lastRejected && !pendingReq ? `<div class="alert-low">${icon('alert')}<div><b>لم يُقبل الطلب السابق</b><div class="small">${esc(lastRejected.decisionNote ?? '')}</div></div></div>` : ''}
+      </section>
+      <section class="card pad stack">
+        <h2>تفاصيل الاشتراك</h2>
+        ${cfg?.price ? `<p class="sub-price">${esc(cfg.price)}</p>` : ''}
+        ${cfg?.details ? `<p style="white-space:pre-line;margin:0">${esc(cfg.details)}</p>` : '<p class="muted">جارٍ التحميل…</p>'}
+        ${methods.length ? `<h3 style="margin-top:6px">طرق الدفع</h3>${methods.map((m, i) => `<div class="sub-method"><div style="flex:1;min-width:0"><b>${esc(m.label)}</b>${m.holder ? `<div class="muted small">باسم ${esc(m.holder)}</div>` : ''}
+          <div class="sub-number" dir="ltr">${esc(m.value)}</div></div><button class="btn sm" data-action="sub-copy" data-i="${i}">نسخ</button></div>`).join('')}` : ''}
+        ${cfg?.whatsapp ? `<a class="btn" href="https://wa.me/${esc(cfg.whatsapp)}" target="_blank" rel="noopener">تواصل عبر واتساب</a>` : ''}
+      </section>
+      ${st.status === 'active' && (st.daysLeft ?? 99) > 5 && !pendingReq ? '' : `<section class="card pad stack">
+        <h2>${st.status === 'pending' ? 'طلب الاشتراك' : 'طلب تجديد'}</h2>
+        <div class="seg"><button type="button" class="${sub.method === 'transfer' ? 'on' : ''}" data-action="sub-method" data-k="transfer">دفعت بالتحويل</button>
+          <button type="button" class="${sub.method === 'cash' ? 'on' : ''}" data-action="sub-method" data-k="cash">أدفع نقداً</button></div>
+        <form class="stack" data-form="sub-submit" id="sub-form">
+          ${field('رقم هاتفك للتواصل', '<input name="phone" id="sub-phone" required inputmode="tel" dir="ltr" maxlength="20" placeholder="07xxxxxxxxx">')}
+          ${sub.method === 'transfer' ? `${field('رقم الحوالة أو العملية', '<input name="reference" id="sub-ref" maxlength="60" dir="ltr">', 'أو أرفق صورة الوصل')}
+            <div class="row wrap"><label class="btn"><input type="file" accept="image/*" hidden data-change="sub-image" id="sub-image">${icon('camera', 'sm')} ${sub.image ? 'تغيير صورة الوصل' : 'صورة الوصل'}</label>
+              ${sub.image ? `<img src="${sub.image.src}" alt="الوصل" style="height:64px;border-radius:8px">` : ''}</div>`
+            : '<p class="muted small" style="margin:0">نتواصل معك على رقمك لاستلام المبلغ، وبعدها نفعّل الحساب.</p>'}
+          ${field('ملاحظة (اختياري)', '<input name="note" id="sub-note" maxlength="300">')}
+          <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>${pendingReq ? 'تحديث الطلب' : 'إرسال الطلب'}</button></form>
+      </section>`}
+    </div></div>`;
+}
+
+/** صورة الوصل: تُصغَّر لعرض 1400 بكسل كحد أقصى (JPEG) فتبقى مقروءة وصغيرة */
+async function shrink(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const scale = Math.min(1, 1400 / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * scale);
+    c.height = Math.round(img.height * scale);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    for (const q of [0.75, 0.6, 0.45]) {
+      const src = c.toDataURL('image/jpeg', q);
+      const data = src.split(',')[1];
+      if (data.length <= 580_000) return { src, data, mediaType: 'image/jpeg' };
+    }
+    throw new Error('الصورة كبيرة جداً');
+  } finally { URL.revokeObjectURL(url); }
+}
+
+on({
+  'sub-open': () => { state.subPage = true; render(); loadSubscription(); },
+  'sub-close': () => { state.subPage = false; render(); },
+  'sub-refresh': () => busy(async () => {
+    const st = await get('/api/state');
+    state.shop = st.shop;
+    await loadSubscription();
+    if (['active', 'trial'].includes(st.shop?.subscription?.status)) { state.subPage = false; toast('تم تفعيل حسابك — أهلاً بك', 'ok'); }
+    else toast('ما زال الطلب بانتظار الموافقة');
+    render();
+  }),
+  'sub-method': (el) => { S().method = el.dataset.k; render(); },
+  'sub-copy': async (el) => {
+    const m = S().info?.config?.methods?.[Number(el.dataset.i)];
+    if (!m) return;
+    try { await navigator.clipboard.writeText(m.value); toast('نُسخ الرقم', 'ok'); } catch { toast('انسخه يدوياً', 'bad'); }
+  },
+  'sub-image': async (el) => {
+    const file = el.files?.[0];
+    if (!file) return;
+    try { S().image = await shrink(file); render(); } catch (e) { toast(e.message || 'تعذّرت قراءة الصورة', 'bad'); }
+  },
+  'sub-submit': (_el, _e, d) => busy(async () => {
+    const sub = S();
+    const body = { method: sub.method, phone: d.phone, note: d.note || null };
+    if (sub.method === 'transfer') {
+      if (!d.reference && !sub.image) throw new Error('اكتب رقم الحوالة أو أرفق صورة الوصل');
+      Object.assign(body, { reference: d.reference || null, ...(sub.image ? { image: sub.image.data, mediaType: sub.image.mediaType } : {}) });
+    }
+    sub.info = await post('/api/subscription/request', body);
+    sub.image = null;
+    toast('وصل طلبك — نراجعه ونفعّل حسابك', 'ok');
+  }),
+});
+
+return { loadSubscription, subscriptionBanner, subscriptionView };
+})();
+
 // ---- public/js/app.js
 const __m_public_js_app_js = await (async () => {
 const { esc, time } = __m_shared_format_js;
@@ -9992,6 +10635,7 @@ const platform = __m_public_js_views_platform_js;
 const cancel = __m_public_js_views_cancel_js;
 const hr = __m_public_js_views_hr_js;
 const kiosk = __m_public_js_views_kiosk_js;
+const subscription = __m_public_js_views_subscription_js;
 // التشغيل، التوجيه، شاشتا الإعداد والدخول، والهيكل العام.
 
 
@@ -10009,7 +10653,8 @@ const kiosk = __m_public_js_views_kiosk_js;
 
 
 
-const modules = [pos, receipts, ops, admin, account, platform, cancel, hr, kiosk];
+
+const modules = [pos, receipts, ops, admin, account, platform, cancel, hr, kiosk, subscription];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
@@ -10059,10 +10704,12 @@ const views = {
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
     if (parseHash().route === 'platform') return platform.platformView(s);
     if (s.shop?.disabled) return account.disabledView(s);
+    // حساب ينتظر موافقة المزوّد: صفحة الاشتراك فقط؛ وصفحة التجديد عند طلبها
+    if (s.shop && (s.shop.subscription?.status === 'pending' || s.subPage)) return subscription.subscriptionView(s);
     if (s.kiosk && s.shop) return kiosk.kioskView(s);
     if (!s.employee) return account.gateView(s);
     const body = (routes[s.route] ?? routes.pos)(s);
-    return `<div class="shell">${topbarView(s)}${railView(s)}<main class="main" id="main">${body}</main></div>`;
+    return `<div class="shell">${topbarView(s)}${railView(s)}<main class="main ${subscription.subscriptionBanner(s) ? 'has-banner' : ''}" id="main">${subscription.subscriptionBanner(s)}${body}</main></div>`;
   },
   modal(s) {
     const fn = modals[s.modal?.type];

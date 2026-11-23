@@ -39,7 +39,9 @@ async function main() {
 
   const { db, kind, close } = await connectDb({ uri: env.MONGODB_URI, dbName: env.MONGODB_DB ?? 'morecash', memoryFile: env.MONGODB_URI ? null : dataFile });
   const readInvoice = env.ANTHROPIC_API_KEY ? createInvoiceReader({ apiKey: env.ANTHROPIC_API_KEY }) : null;
-  const app = createPlatform({ db, newId: randomUUID, pepper: env.PIN_PEPPER || null, readInvoice, admins: (env.PLATFORM_ADMINS ?? '').split(','), support: env.SUPPORT_WHATSAPP || null });
+  const app = createPlatform({ db, newId: randomUUID, pepper: env.PIN_PEPPER || null, readInvoice, admins: (env.PLATFORM_ADMINS ?? '').split(','), support: env.SUPPORT_WHATSAPP || null,
+    // كل حساب جديد ينتظر موافقتك: مفعّل افتراضياً مع MongoDB (الإنتاج)، ومعطّل للتطوير المحلي بالملف؛ REQUIRE_APPROVAL يفرض أحدهما
+    approval: env.REQUIRE_APPROVAL ? env.REQUIRE_APPROVAL === 'true' : Boolean(env.MONGODB_URI) });
 
   const server = createHttpServer(app, {
     publicDir: join(ROOT, 'public'), sharedDir: join(ROOT, 'shared'),

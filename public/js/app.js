@@ -12,10 +12,11 @@ import * as platform from './views/platform.js';
 import * as cancel from './views/cancel.js';
 import * as hr from './views/hr.js';
 import * as kiosk from './views/kiosk.js';
+import * as subscription from './views/subscription.js';
 import { mark } from './brand.js';
 import { flushSales, initOffline, rememberSession, savedSession } from './offline.js';
 
-const modules = [pos, receipts, ops, admin, account, platform, cancel, hr, kiosk];
+const modules = [pos, receipts, ops, admin, account, platform, cancel, hr, kiosk, subscription];
 const routes = Object.assign({}, ...modules.map((m) => m.routes ?? {}));
 const modals = Object.assign({}, ...modules.map((m) => m.modals ?? {}));
 
@@ -65,10 +66,12 @@ export const views = {
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
     if (parseHash().route === 'platform') return platform.platformView(s);
     if (s.shop?.disabled) return account.disabledView(s);
+    // حساب ينتظر موافقة المزوّد: صفحة الاشتراك فقط؛ وصفحة التجديد عند طلبها
+    if (s.shop && (s.shop.subscription?.status === 'pending' || s.subPage)) return subscription.subscriptionView(s);
     if (s.kiosk && s.shop) return kiosk.kioskView(s);
     if (!s.employee) return account.gateView(s);
     const body = (routes[s.route] ?? routes.pos)(s);
-    return `<div class="shell">${topbarView(s)}${railView(s)}<main class="main" id="main">${body}</main></div>`;
+    return `<div class="shell">${topbarView(s)}${railView(s)}<main class="main ${subscription.subscriptionBanner(s) ? 'has-banner' : ''}" id="main">${subscription.subscriptionBanner(s)}${body}</main></div>`;
   },
   modal(s) {
     const fn = modals[s.modal?.type];

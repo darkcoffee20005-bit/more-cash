@@ -19,7 +19,13 @@ services:
         value: morecash
       - key: PLATFORM_ADMINS
         sync: false
+      - key: SUPPORT_WHATSAPP   # رقم الدعم بصيغة 964… (اختياري)
+        sync: false
+      - key: PIN_PEPPER         # يولّده Render عشوائياً مرة واحدة، لا يُكتب في أي مكان
+        generateValue: true
       - key: REQUIRE_MONGODB   # لا يعمل أبداً بملف محلي على الخادم (البيانات تضيع عند إعادة التشغيل)
+        value: "true"
+      - key: REQUIRE_APPROVAL  # كل مقهى جديد ينتظر موافقتك واشتراكه من لوحة المزوّد #/platform
         value: "true"
       - key: COOKIE_SECURE
         value: "true"

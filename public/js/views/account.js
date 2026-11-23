@@ -183,6 +183,7 @@ function pin(s) {
     </aside>
     <main class="acc-main"><div class="pin-card">
       <div><h1>أدخل رمزك</h1><p class="muted">رمز الموظف من 4 إلى 6 أرقام</p></div>
+      ${s.shop?.subscription?.status === 'expired' ? `<div class="alert-low">${icon('alert')}<div><b>انتهى الاشتراك</b><div class="small">التقارير متاحة والبيع موقوف. <button class="link-btn" data-action="sub-open">تجديد الاشتراك</button></div></div></div>` : ''}
       ${DEMO() ? `<div class="demo-note">رموز التجربة: ${DEMO_PINS.map(([r, c]) => `${r} <b>${c}</b>`).join('، ')}</div>` : ''}
       <div class="pin-dots ${s.view.pinShake ? 'shake' : ''}" aria-label="عدد الأرقام المدخلة ${p.length}">
         ${Array.from({ length: Math.max(4, p.length) }, (_, i) => `<span class="${i < p.length ? 'on' : ''}"></span>`).join('')}

@@ -111,6 +111,10 @@ const ERRORS = {
   LEAVE_BALANCE: 'رصيد الإجازة السنوية لا يكفي لهذه المدة.',
   LEAVE_ALREADY_DECIDED: 'سبق البت في هذا الطلب.',
   NO_HOURS: 'لا ساعات عمل مسجّلة في هذا الشهر لتوزيع الحوافز عليها.',
+  SUBSCRIPTION_PENDING: 'حسابك بانتظار تفعيل الاشتراك.',
+  SUBSCRIPTION_EXPIRED: 'انتهى الاشتراك: التقارير متاحة والبيع موقوف حتى التجديد.',
+  ALREADY_DECIDED: 'سبق البت في هذا الطلب.',
+  IMAGE_TOO_LARGE: 'الصورة كبيرة. جرّب صورة أصغر.',
   TABLE_TAKEN: 'هذه الطاولة عليها تذكرة مفتوحة. افتح تذكرتها أو اختر طاولة أخرى.',
   UNKNOWN_TABLE: 'الطاولة لم تعد موجودة في الخريطة.',
   WRONG_PIN_KIOSK: 'الرمز غير صحيح.',
@@ -171,6 +175,15 @@ export function fail(e) {
   // بلا إنترنت: شريط الحالة على شاشة البيع يكفي، لا إشعار خطأ مع كل طلب
   if (e?.code === 'NETWORK' && state.online === false) return;
   if (e?.code === 'NETWORK' && state.pos) { state.online = false; render(); }
+  // حساب بانتظار الموافقة: صفحة الاشتراك تشرح الحالة، فلا إشعارات خطأ من طلبات الخلفية
+  if (e?.code === 'SUBSCRIPTION_PENDING') {
+    if (state.shop) { state.shop.subscription = { ...(state.shop.subscription ?? {}), status: 'pending' }; render(); }
+    return;
+  }
+  // انتهى الاشتراك أثناء العمل: يظهر الشريط فوراً بدل انتظار إعادة التحميل
+  if (e?.code === 'SUBSCRIPTION_EXPIRED' && state.shop && state.shop.subscription?.status !== 'expired') {
+    state.shop.subscription = { ...(state.shop.subscription ?? {}), status: 'expired', daysLeft: 0 };
+  }
   if (e?.code === 'SHOP_DISABLED') {
     // أوقف المزوّد هذا المقهى: شاشة توضيح بدل أخطاء متكررة
     Object.assign(state, { shop: { ...(state.shop ?? {}), disabled: true }, employee: null, modal: null });

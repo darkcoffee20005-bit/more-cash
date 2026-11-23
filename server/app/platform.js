@@ -10,6 +10,7 @@ import { hashPassword, normalizePin, randomToken, sha256, validPin, verifyPasswo
 import { scopeDb } from '../db/scoped.js';
 import { createPlatformAdmin } from './platform-admin.js';
 import { createBranches } from './branches.js';
+import { createSubscriptions } from './subscriptions.js';
 
 const DEVICE_DAYS = 90;
 const MAX_FAILS = 5;
@@ -19,7 +20,10 @@ const IP_MAX = 20;
 const MAX_CACHED_APPS = 300;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null } = {}) {
+/** approval: كل حساب جديد ينتظر موافقة المزوّد واشتراكاً (يُفعَّل في الإنتاج من نقطة الدخول؛ معطّل في النسخة التجريبية والاختبارات) */
+export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null, approval = false } = {}) {
+  const adminSet = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
+  const subs = createSubscriptions({ db, now, newId, admins: adminSet, enabled: approval });
   const apps = new Map(); // tenantId → {app, ready}
   // أخطاء الخادم غير المتوقعة تُحفظ (14 يوماً) لتظهر في لوحة المزوّد قبل أن يبلّغ عنها مقهى
   function recordError(e, where = {}) {
@@ -122,7 +126,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     const account = {
       _id: newId(), email: mail, name: ownerName, tenantId, role: 'owner',
       passwordHash: await hashPassword(pass, passwordIterations ? { iterations: passwordIterations } : undefined),
-      failedLogins: 0, lockedUntil: null, createdAt: now(),
+      failedLogins: 0, lockedUntil: null, createdAt: now(), lastLoginAt: now(),
     };
     try {
       await db.collection('accounts').insertOne(account);
@@ -136,7 +140,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
       await app.ctx.services.auth.setup({ storeName: shopName, ownerName, pin: body.pin, seed: body.seed !== false });
       const staff = await app.ctx.services.auth.login({ pin: body.pin }, ip);
       const device = await createDevice(account);
-      return { status: 200, body: { shop: { id: tenantId, name: shopName }, employee: staff.employee }, setDevice: device, setToken: staff.token };
+      return { status: 200, body: { shop: { id: tenantId, name: shopName, subscription: subs.stateOf(account) }, employee: staff.employee }, setDevice: device, setToken: staff.token };
     } catch (e) {
       // لا نترك حساباً بلا مقهى
       await db.collection('accounts').deleteOne({ _id: account._id }).catch(() => {});
@@ -171,7 +175,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     }
     await db.collection('accounts').updateOne({ _id: acc._id }, { $set: { failedLogins: 0, lockedUntil: null, lastLoginAt: now() } });
     const device = await createDevice(acc);
-    return { status: 200, body: { shop: await shopInfo(acc.tenantId), mustChangePassword: !!acc.mustChangePassword }, setDevice: device, setToken: null };
+    return { status: 200, body: { shop: { ...(await shopInfo(acc.tenantId)), subscription: subs.stateOf(acc) }, mustChangePassword: !!acc.mustChangePassword }, setDevice: device, setToken: null };
   }
 
   async function changePassword(device, actor, body = {}) {
@@ -214,6 +218,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
       if (key === 'GET /api/state') {
         const shop = device ? await shopInfo(device.tenantId) : null;
         if (!shop) return { status: 200, body: { shop: null, employee: null }, ...(req.deviceToken ? { setDevice: null } : {}) };
+        shop.subscription = await subs.stateForAccount(device.accountId);
         const r = await (await appFor(device.tenantId)).handle(req);
         return { ...r, body: { shop, employee: r.body?.employee ?? null } };
       }
@@ -221,6 +226,11 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
       if (!device) return { status: 401, body: { error: 'NO_SHOP' }, ...(req.deviceToken ? { setDevice: null } : {}) };
       if (await isDisabled(device.tenantId)) return { status: 403, body: { error: 'SHOP_DISABLED' } };
       const app = await appFor(device.tenantId);
+
+      // صفحة الاشتراك: تعمل دائماً على الجهاز المرتبط (كلمة مرور الحساب أُدخلت عند ربطه)
+      if (key === 'GET /api/subscription') return { status: 200, body: await subs.clientInfo(device) };
+      if (key === 'POST /api/subscription/request') return { status: 200, body: await subs.submitRequest(device, req.body, await shopInfo(device.tenantId)) };
+      if (key !== 'POST /api/account/password') await subs.gate(device, req);
 
       if (key === 'POST /api/account/password') {
         const actor = await app.ctx.services.auth.resolve(req.token);
@@ -252,7 +262,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
 
   // الإيقاف يسري فوراً على هذه النسخة من الخادم، وخلال 30 ثانية على غيرها
   const branches = createBranches({ db, now, newId, appFor, forgetApp: (id) => apps.delete(id) });
-  const platformAdmin = createPlatformAdmin({ db, now, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log });
+  const platformAdmin = createPlatformAdmin({ db, now, newId, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log, subs });
 
   return { handle, appFor };
 }

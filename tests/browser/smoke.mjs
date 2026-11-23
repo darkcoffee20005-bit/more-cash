@@ -16,7 +16,7 @@ const PORT = 40500 + Math.floor(Math.random() * 400);
 const dir = mkdtempSync(join(tmpdir(), 'mcb-'));
 // --vercel: يختبر نسخة النشر على Vercel (out/ + api/index.js) بدل خادم Node
 const VERCEL = process.argv.includes('--vercel');
-const server = spawn(process.execPath, [VERCEL ? 'scripts/vercel_dev.mjs' : 'server/index.js'], { env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', DATA_FILE: join(dir, 'db.json'), MONGODB_URI: '', MORECASH_ALLOW_MEMORY: '1', PLATFORM_ADMINS: 'ahmed@zaytoon.iq', SUPPORT_WHATSAPP: '9647700000000' }, stdio: 'pipe' });
+const server = spawn(process.execPath, [VERCEL ? 'scripts/vercel_dev.mjs' : 'server/index.js'], { env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', DATA_FILE: join(dir, 'db.json'), MONGODB_URI: '', MORECASH_ALLOW_MEMORY: '1', PLATFORM_ADMINS: 'ahmed@zaytoon.iq', SUPPORT_WHATSAPP: '9647700000000', REQUIRE_APPROVAL: 'true' }, stdio: 'pipe' });
 await new Promise((r, j) => { server.stdout.on('data', (d) => String(d).includes('يعمل') && r()); setTimeout(() => j(new Error('server timeout')), 8000); });
 
 const browser = await playwright.chromium.launch();
@@ -401,9 +401,52 @@ try {
     await pp.fill('#pf-email', 'ahmed@zaytoon.iq');
     await pp.fill('#pf-pass', 'qahwa-2026!');
     await pp.click('form[data-form="platform-login"] button[type=submit]');
-    await pp.waitForSelector('td:has-text("مقهى الزيتون")');
-    await pp.waitForTimeout(200);
+    await pp.waitForSelector('[data-action="pf-tab"][data-k="clients"]');
+    // بيانات التحويل التي يراها العميل
+    await pp.click('[data-action="pf-tab"][data-k="config"]');
+    await pp.fill('#cf-price', '25,000 د.ع شهرياً');
+    await pp.fill('#cf-l-0', 'زين كاش');
+    await pp.fill('#cf-v-0', '07701234567');
+    await pp.click('[data-action="pf-cfg-save"]');
+    await pp.waitForSelector('.toast.ok:has-text("بيانات التحويل")');
+    // عميل جديد: بانتظار الموافقة، يرى السعر ورقم التحويل، ويرسل طلباً
+    const cc = await browser.newContext({ viewport: { width: 1180, height: 820 } });
+    const cp = await cc.newPage();
+    cp.on('pageerror', (e) => errors.push(`pageerror(client): ${e.message}`));
+    await cp.route(/fonts\.(googleapis|gstatic)/, (r) => r.abort());
+    await cp.goto(`http://127.0.0.1:${PORT}/#/signup`);
+    await cp.waitForSelector('form[data-form="signup"]');
+    await cp.fill('#su-shop', 'كوفي النخلة');
+    await cp.fill('#su-owner', 'حسين');
+    await cp.fill('#su-email', 'hussein@nakhla.iq');
+    await cp.fill('#su-pass', 'nakhla-2026!');
+    await cp.fill('#su-pin', '2580');
+    await cp.fill('#su-pin2', '2580');
+    await cp.click('form[data-form="signup"] button[type=submit]');
+    await cp.waitForSelector('.sub-page');
+    await cp.waitForSelector('.sub-number:has-text("07701234567")');
+    await cp.waitForSelector('.sub-price:has-text("25,000")');
+    await cp.fill('#sub-phone', '07709998877');
+    await cp.fill('#sub-ref', 'ZC-778899');
+    await cp.click('form[data-form="sub-submit"] button[type=submit]');
+    await cp.waitForSelector('.toast.ok:has-text("وصل طلبك")');
+    await cp.screenshot({ path: join(shots, '25a-subscription.png') });
+    // المزوّد يوافق بشهر
+    await pp.click('[data-action="platform-refresh"]');
+    await pp.click('[data-action="pf-tab"][data-k="requests"]');
+    await pp.waitForSelector('.card:has-text("كوفي النخلة") [data-action="pf-approve"]');
     await pp.screenshot({ path: join(shots, '25-platform.png') });
+    await pp.click('[data-action="pf-approve"]');
+    await pp.click('form[data-form="pf-approve-submit"] button[type=submit]');
+    await pp.waitForSelector('.toast.ok:has-text("فُعّل")');
+    await pp.click('[data-action="pf-tab"][data-k="clients"]');
+    await pp.waitForSelector('td:has-text("كوفي النخلة") >> xpath=.. >> .pill.ok:has-text("مشترك")');
+    await pp.screenshot({ path: join(shots, '25b-platform-clients.png') });
+    // العميل يحدّث الحالة فينفتح البرنامج
+    await cp.click('[data-action="sub-refresh"]');
+    await cp.waitForSelector('.toast.ok:has-text("تم تفعيل حسابك")');
+    await cp.waitForSelector('.shell, #shift-start, .pin-card');
+    await cc.close();
     await pp.goto(`http://127.0.0.1:${PORT}/#/forgot`);
     await pp.waitForSelector('a[href^="https://wa.me/9647700000000"]');
     await pc.close();

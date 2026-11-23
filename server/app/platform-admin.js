@@ -7,7 +7,7 @@ import { hashPassword, randomToken, sha256, verifyPassword } from './security.js
 const SESSION_HOURS = 4;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-export function createPlatformAdmin({ db, now, admins = [], passwordIterations, checkIp, failIp, onTenantChange = () => {}, log = console }) {
+export function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID(), admins = [], passwordIterations, checkIp, failIp, onTenantChange = () => {}, log = console, subs = null }) {
   const allowed = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const sessions = () => db.collection('platform_sessions');
   const hashOpts = passwordIterations ? { iterations: passwordIterations } : undefined;
@@ -35,7 +35,8 @@ export function createPlatformAdmin({ db, now, admins = [], passwordIterations, 
 
   async function shops({ search = '' } = {}) {
     const tenants = await db.collection('tenants').find({}).sort({ createdAt: -1 }).limit(2000).toArray();
-    const accounts = await db.collection('accounts').find({}).project({ email: 1, name: 1, tenantId: 1, branches: 1, lastLoginAt: 1 }).limit(5000).toArray();
+    const accounts = await db.collection('accounts').find({}).project({ email: 1, name: 1, tenantId: 1, branches: 1, lastLoginAt: 1, sub: 1, createdAt: 1 }).limit(5000).toArray();
+    const pendingReq = new Set((await db.collection('sub_requests').find({ status: 'pending' }).project({ tenantId: 1 }).toArray()).map((r) => r.tenantId));
     // الفروع: كل فرع مقهى مستقل يعود لنفس حساب المالك
     const byTenant = new Map();
     for (const a of accounts) for (const t of [a.tenantId, ...(a.branches ?? [])]) byTenant.set(t, a);
@@ -54,12 +55,16 @@ export function createPlatformAdmin({ db, now, admins = [], passwordIterations, 
         id: t._id, name: t.name, ownerName: acc?.name ?? null, email: acc?.email ?? null, createdAt: t.createdAt,
         lastLoginAt: acc?.lastLoginAt ?? null, lastSaleAt: last[0]?.createdAt ?? null, sales30, devices,
         disabled: !!t.disabled, disabledReason: t.disabledReason ?? null, branchOf: t.branchOf ?? null,
+        subscription: subs ? subs.stateOf(acc) : null, pendingRequest: pendingReq.has(t._id),
       });
     }
     const weekAgo = now().getTime() - 7 * 86400_000;
     return {
       rows,
-      totals: { shops: rows.length, active7: rows.filter((r) => r.lastSaleAt && new Date(r.lastSaleAt).getTime() >= weekAgo).length, disabled: rows.filter((r) => r.disabled).length },
+      totals: { shops: rows.length, active7: rows.filter((r) => r.lastSaleAt && new Date(r.lastSaleAt).getTime() >= weekAgo).length, disabled: rows.filter((r) => r.disabled).length,
+        pending: rows.filter((r) => r.subscription?.status === 'pending' && !r.branchOf).length, expired: rows.filter((r) => r.subscription?.status === 'expired' && !r.branchOf).length,
+        paying: rows.filter((r) => r.subscription?.status === 'active' && !r.subscription.unlimited && !r.branchOf).length, trial: rows.filter((r) => r.subscription?.status === 'trial' && !r.branchOf).length,
+        requests: pendingReq.size, approval: !!subs?.enabled },
     };
   }
 
@@ -89,6 +94,25 @@ export function createPlatformAdmin({ db, now, admins = [], passwordIterations, 
     return { email: acc.email, tempPassword: temp };
   }
 
+  /** نسخة احتياطية كاملة لمقهى (وفروعه) بصيغة JSON، بلا أسرار: لا كلمات مرور ولا رموز ولا جلسات */
+  const BACKUP = ['settings', 'employees', 'categories', 'items', 'variants', 'modifiers', 'discounts', 'customers', 'receipts', 'shifts', 'tickets', 'stock_moves',
+    'expenses', 'attendance', 'hr_adjustments', 'leaves', 'hr_awards', 'hr_advances', 'payrolls', 'audit', 'point_moves', 'item_images', 'counters'];
+  async function backup(tenantId, admin) {
+    const id = checkId(tenantId);
+    const t = await db.collection('tenants').findOne({ _id: id });
+    if (!t) throw new AppError(404, 'NOT_FOUND');
+    const data = {};
+    for (const name of BACKUP) {
+      const rows = await db.collection(name).find({ tenantId: id }).toArray();
+      data[name] = rows.map((r) => {
+        const { pinLookup, secret, ...rest } = r; // أسرار الدخول لا تخرج في النسخة
+        return rest;
+      });
+    }
+    if (subs) await subs.audit(admin, 'backup.download', { tenantId: id, shopName: t.name });
+    return { format: 'morecash-backup', version: 1, exportedAt: now(), tenant: { id: t._id, name: t.name, createdAt: t.createdAt }, data };
+  }
+
   async function handle(req) {
     const key = `${req.method} ${req.path}`;
     if (key === 'POST /api/platform/login') {
@@ -108,11 +132,31 @@ export function createPlatformAdmin({ db, now, admins = [], passwordIterations, 
       const recent = await db.collection('platform_errors').find({}).sort({ at: -1 }).limit(30).toArray();
       return { status: 200, body: { count24h: await db.collection('platform_errors').countDocuments({ at: { $gte: since } }), recent: recent.map(({ _id, ...x }) => x) } };
     }
+    // الاشتراكات: الطلبات، الموافقة/الرفض، التمديد من صف العميل، بيانات التحويل والتفاصيل، والسجل
+    if (subs) {
+      if (key === 'GET /api/platform/requests') return { status: 200, body: await subs.listRequests(req.query ?? {}) };
+      if (key === 'GET /api/platform/config') return { status: 200, body: await subs.config() };
+      if (key === 'PUT /api/platform/config') return { status: 200, body: await subs.saveConfig(admin, req.body) };
+      if (key === 'GET /api/platform/audit') return { status: 200, body: await subs.auditLog(req.query ?? {}) };
+      const rq = /^\/api\/platform\/requests\/([A-Za-z0-9_-]{1,64})\/(image|approve|reject)$/.exec(req.path);
+      if (rq && rq[2] === 'image' && req.method === 'GET') return { status: 200, body: await subs.requestImage(rq[1]) };
+      if (rq && req.method === 'POST') return { status: 200, body: await subs.decide(admin, rq[1], req.body, rq[2] === 'approve') };
+      const sb = /^\/api\/platform\/shops\/([A-Za-z0-9_-]{1,64})\/subscription$/.exec(req.path);
+      if (sb && req.method === 'POST') return { status: 200, body: await subs.setForTenant(admin, sb[1], req.body) };
+    }
+    const bk = /^\/api\/platform\/shops\/([A-Za-z0-9_-]{1,64})\/backup$/.exec(req.path);
+    if (bk && req.method === 'GET') return { status: 200, body: await backup(bk[1], admin) };
     const m = /^\/api\/platform\/shops\/([A-Za-z0-9_-]{1,64})\/(disable|enable|reset-password)$/.exec(req.path);
     if (m && req.method === 'POST') {
-      if (m[2] === 'reset-password') return { status: 200, body: await resetPassword(m[1], admin) };
+      if (m[2] === 'reset-password') {
+        const r = await resetPassword(m[1], admin);
+        if (subs) await subs.audit(admin, 'account.reset_password', { tenantId: m[1] });
+        return { status: 200, body: r };
+      }
       if (m[2] === 'disable' && !String(req.body?.reason ?? '').trim()) throw bad('REQUIRED', 'reason');
-      return { status: 200, body: await setDisabled(m[1], m[2] === 'disable', req.body?.reason, admin) };
+      const r = await setDisabled(m[1], m[2] === 'disable', req.body?.reason, admin);
+      if (subs) await subs.audit(admin, m[2] === 'disable' ? 'shop.disable' : 'shop.enable', { tenantId: m[1], note: req.body?.reason ?? null });
+      return { status: 200, body: r };
     }
     throw new AppError(404, 'NOT_FOUND');
   }

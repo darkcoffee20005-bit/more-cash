@@ -737,3 +737,22 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 .kiosk-emp .avatar { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: #0f3d31; color: #fff; font-weight: 700; font-size: 1.1rem; flex: none; }
 .kiosk-pad { width: 340px; position: sticky; top: 20px; }
 @media (max-width: 760px) { .kiosk-body { grid-template-columns: 1fr; } .kiosk-pad { width: auto; position: static; order: -1; } }
+
+/* صفحة الاشتراك (حساب بانتظار الموافقة أو تجديد) وشريط تنبيه الاشتراك */
+.sub-page { min-height: 100dvh; background: var(--bg); display: flex; flex-direction: column; overflow: auto; }
+.sub-head { display: flex; align-items: center; gap: 14px; padding: 18px 24px; background: var(--brand-900, #0a1a15); color: #e8f1ef; }
+.sub-head h1 { margin: 0; color: #fff; font-size: 1.4rem; }
+.sub-head p { color: #a9c3bc; }
+.sub-head svg { width: 44px; height: 44px; }
+.sub-body { width: min(1100px, 100%); margin: 0 auto; padding: 20px 16px 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.sub-price { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--olive-b, #687b1b); margin: 0; }
+.sub-method { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface-2); }
+.sub-number { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; letter-spacing: .03em; text-align: end; }
+.sub-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 16px; font-weight: 600; font-size: .9rem; }
+.sub-banner.warn { background: #f8ecd6; color: #7a4b08; }
+.sub-banner.bad { background: #f7e1de; color: #8f2b20; }
+.sub-banner .btn { margin-inline-start: auto; }
+/* شريط الاشتراك فوق الصفحة: الصفحة تأخذ الباقي (شاشة البيع بلا تمرير) */
+.main.has-banner { display: flex; flex-direction: column; }
+.main.has-banner > :last-child { flex: 1; min-height: 0; }
+.card a[href^="https://wa.me"] { color: var(--olive-b, #687b1b); font-weight: 600; }
