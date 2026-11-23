@@ -1,5 +1,5 @@
-// الموارد البشرية: صفحة «سجلي» لكل موظف (حضور/انصراف، ساعاته، تأخيره وغيابه، حوافزه وغراماته، إجازاته، قسيمة راتبه وسلفه)،
-// وقسم الإدارة (الموظفون والأداء، الحاضرون، التأخير والغياب، جدول الدوام، الإجازات، السلف، الرواتب، موظف الشهر، الإعدادات).
+// الموارد البشرية: صفحة «سجلي» لكل موظف (حضور/انصراف، ساعاته، تأخيره وغيابه، حوافزه وغراماته، إجازاته، قسيمة راتبه وسحوباته من الراتب)،
+// وقسم الإدارة (الموظفون والأداء، الحاضرون، التأخير والغياب، جدول الدوام، الإجازات، السحوبات من الراتب، الرواتب، موظف الشهر، الإعدادات).
 import { dateTime, esc, localDate, money, parseAmount, time } from '../../../shared/format.js';
 import { del, get, post, uid } from '../api.js';
 import { icon } from '../icons.js';
@@ -69,11 +69,11 @@ function recordView(r, { self }) {
       ${r.leaves.map((l) => `<div class="r-line"><span>${esc(l.typeName)} · ${esc(l.from)} → ${esc(l.to)} <span class="muted small">(${l.days} يوم${l.paid ? '، مدفوعة' : ''})</span>${l.reason ? ` <span class="muted small">— ${esc(l.reason)}</span>` : ''}</span>
         <span class="pill ${STATUS[l.status][1]}">${STATUS[l.status][0]}</span></div>`).join('') || '<p class="muted">لا إجازات</p>'}
     </section>
-    ${(r.advances ?? []).length ? `<section class="card pad stack"><h2>السلف</h2>${r.advances.map(advLine).join('')}</section>` : ''}`;
+    ${(r.advances ?? []).length ? `<section class="card pad stack"><h2>السحب من الراتب</h2>${r.advances.map(advLine).join('')}</section>` : ''}`;
 }
 
-const advLine = (a) => `<div class="r-line"><span>${money(a.amount)} <span class="muted small">${esc(localDate(a.createdAt, tz()))} · ${a.installments} قسط × ${money(a.perMonth)} من ${esc(a.startMonth)}${a.note ? ` — ${esc(a.note)}` : ''}</span></span>
-  <span class="pill ${a.remaining ? 'warn' : 'ok'}">${a.remaining ? `متبقٍ ${money(a.remaining)}` : 'سُدّدت'}</span></div>`;
+const advLine = (a) => `<div class="r-line"><span>${money(a.amount)} <span class="muted small">${esc(localDate(a.createdAt, tz()))} · يُخصم من راتب ${esc(a.startMonth)}${a.note ? ` — ${esc(a.note)}` : ''}</span></span>
+  <span class="pill ${a.remaining ? 'warn' : 'ok'}">${a.remaining ? (a.repaid ? `خُصم ${money(a.repaid)}، والباقي ${money(a.remaining)} من الراتب القادم` : 'يُخصم عند صرف الراتب') : 'خُصم من الراتب'}</span></div>`;
 
 function scheduleText(sch) {
   if (!sch) return 'بلا جدول';
@@ -100,7 +100,7 @@ function payLines(x) {
     ['غرامات', x.fine, -1],
     [`إجازة بلا راتب (${x.unpaidLeaveDays} يوم)`, x.leaveDeduction, -1],
     [`غياب (${x.absentDays} يوم)`, x.absenceDeduction, -1],
-    ['قسط السلفة', x.advance, -1],
+    ['سحب من الراتب خلال الشهر', x.advance, -1],
   ].filter(([, v]) => v);
 }
 
@@ -173,12 +173,12 @@ export function hrPage() {
   const owner = can('admin.employees');
   const lateOpen = (d?.late ?? []).filter((l) => !l.fined).length;
   const TABS = [['team', 'الموظفون والأداء'], ['present', 'الحاضرون الآن'], ['late', `التأخير والغياب${lateOpen ? ` (${lateOpen})` : ''}`], ['schedule', 'جدول الدوام'],
-    ['leaves', `الإجازات${d?.pending.length ? ` (${d.pending.length})` : ''}`], ['advances', 'السلف'], ...(owner ? [['payroll', 'الرواتب']] : [])];
+    ['leaves', `الإجازات${d?.pending.length ? ` (${d.pending.length})` : ''}`], ['advances', 'السحب من الراتب'], ...(owner ? [['payroll', 'الرواتب']] : [])];
   const head = `<div class="page-head"><h1>الموارد البشرية</h1><input type="month" id="hr-month" value="${esc(h.month)}" max="${thisMonth()}" data-change="hr-month" aria-label="الشهر">
       <span class="spacer"></span>
       <button class="btn" data-action="hr-adj-new" data-type="bonus">${icon('plus', 'sm')} حافز</button>
       <button class="btn" data-action="hr-adj-new" data-type="fine">${icon('minus', 'sm')} غرامة</button>
-      <button class="btn" data-action="hr-adv-new">${icon('wallet', 'sm')} سلفة</button>
+      <button class="btn" data-action="hr-adv-new">${icon('wallet', 'sm')} سحب من الراتب</button>
       <button class="btn" data-action="hr-pool">توزيع حوافز حسب الساعات</button>
       <button class="btn primary" data-action="hr-award">${icon('star', 'sm')} موظف الشهر</button>
       ${owner ? `<button class="icon-btn" data-action="hr-policy" title="إعدادات الموارد البشرية" aria-label="إعدادات الموارد البشرية">${icon('gear')}</button>` : ''}</div>
@@ -214,10 +214,10 @@ export function hrPage() {
         ${WEEK_ORDER.map((i) => `<td class="num small">${p.schedule?.[i] ? `${p.schedule[i].start}–${p.schedule[i].end}` : '<span class="muted">عطلة</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`,
     advances: () => {
       const list = h.advances;
-      if (!owner && !list) return '<p class="muted small">السلف وأرصدتها يراها المالك في تبويب الرواتب. يمكنك تسجيل سلفة جديدة من الزر أعلاه.</p>';
+      if (!owner && !list) return '<p class="muted small">السحوبات يراها المالك في تبويب الرواتب. يمكنك تسجيل سحب جديد من الزر أعلاه.</p>';
       return `${(list ?? []).map((a) => `<div class="card pad row wrap"><div style="flex:1;min-width:0"><b>${esc(a.employeeName)}</b> ${advLine(a)}</div>
-        ${!a.repaid ? `<button class="btn sm ghost danger" data-action="hr-adv-cancel" data-id="${a.id}">إلغاء</button>` : ''}</div>`).join('') || '<p class="muted">لا سلف قائمة</p>'}
-        <p class="muted small">السلفة تُسجَّل مصروفاً (سلف موظفين) يوم صرفها، وأقساطها تُخصم تلقائياً من الراتب عند الصرف.</p>`;
+        ${!a.repaid ? `<button class="btn sm ghost danger" data-action="hr-adv-cancel" data-id="${a.id}">إلغاء</button>` : ''}</div>`).join('') || '<p class="muted">لا سحوبات لم تُخصم بعد</p>'}
+        <p class="muted small">السحب جزء من الراتب يُدفع مبكراً: يُسجَّل ضمن الرواتب يوم دفعه، ويُخصم كاملاً من صافي راتب الشهر عند الصرف.</p>`;
     },
     payroll: () => payrollView(h),
     team: () => {
@@ -245,10 +245,10 @@ function payrollView(h) {
   return `<div class="kpis"><div class="kpi lead"><span class="label">صافي رواتب ${esc(p.month)}</span><b>${money(p.totals.net)}</b><span class="small">${p.rows.length} موظف</span></div>
       <div class="kpi"><span class="label">مصروف</span><b style="color:var(--ok)">${money(p.totals.paid)}</b></div>
       <div class="kpi"><span class="label">لم يُصرف</span><b style="color:var(--warn)">${money(p.totals.unpaid)}</b></div>
-      <div class="kpi"><span class="label">أقساط السلف</span><b>${money(p.totals.advance)}</b></div></div>
+      <div class="kpi"><span class="label">سحوبات مخصومة</span><b>${money(p.totals.advance)}</b></div></div>
     <div class="row wrap"><label class="row small" style="gap:6px;flex:1"><input type="checkbox" id="pay-drawer" ${h.payFromDrawer ? 'checked' : ''} data-change="hr-pay-drawer"> الدفع من درج الوردية المفتوحة (وإلا: من خارج الدرج)</label>
       ${unpaid.length ? `<button class="btn primary" data-action="hr-pay" data-id="">${icon('cash', 'sm')} صرف كل الرواتب (${money(unpaid.reduce((a, r) => a + r.net, 0))})</button>` : ''}</div>
-    <div class="table-wrap"><table><thead><tr><th>الموظف</th><th>الأجر</th><th class="num">المستحق</th><th class="num">الخصومات</th><th class="num">السلفة</th><th class="num">الصافي</th><th></th></tr></thead><tbody>
+    <div class="table-wrap"><table><thead><tr><th>الموظف</th><th>الأجر</th><th class="num">المستحق</th><th class="num">الخصومات</th><th class="num">السحوبات</th><th class="num">الصافي</th><th></th></tr></thead><tbody>
     ${p.rows.map((r) => {
       const plus = r.base + r.overtimePay + r.bonus;
       const minus = r.fine + r.leaveDeduction + r.absenceDeduction;
@@ -258,7 +258,7 @@ function payrollView(h) {
           ${r.paid ? `<span class="pill ok">مصروف</span><button class="btn sm ghost danger" data-action="hr-pay-cancel" data-id="${r.id}">إلغاء</button>` : `<button class="btn sm primary" data-action="hr-pay" data-id="${r.employeeId}">صرف</button>`}</td></tr>`;
     }).join('') || '<tr><td colspan="7" class="muted">لا موظفين</td></tr>'}</tbody></table></div>
     <p class="muted small">الصرف يُقفل قسيمة الشهر (لا تتغير حوافزه وغراماته وحضوره) ويسجّل الصافي مصروف «رواتب» فيظهر في صافي الربح. إلغاء الصرف يحذف المصروف ويفتح الشهر.</p>
-    ${p.advances.length ? `<section class="card pad stack"><h2>السلف القائمة</h2>${p.advances.map((a) => `<div class="row wrap"><b>${esc(a.employeeName)}</b> <div style="flex:1">${advLine(a)}</div>${!a.repaid ? `<button class="btn sm ghost danger" data-action="hr-adv-cancel" data-id="${a.id}">إلغاء</button>` : ''}</div>`).join('')}</section>` : ''}`;
+    ${p.advances.length ? `<section class="card pad stack"><h2>سحوبات من الراتب لم تُخصم بعد</h2>${p.advances.map((a) => `<div class="row wrap"><b>${esc(a.employeeName)}</b> <div style="flex:1">${advLine(a)}</div>${!a.repaid ? `<button class="btn sm ghost danger" data-action="hr-adv-cancel" data-id="${a.id}">إلغاء</button>` : ''}</div>`).join('')}</section>` : ''}`;
 }
 
 /** تقسيم مبلغ على الساعات كما يفعل الخادم (للمعاينة قبل التأكيد) */
@@ -299,13 +299,12 @@ export const modals = {
   },
   'hr-adv'(s) {
     const rows = (H().data?.rows ?? []).filter((r) => r.active);
-    return modalFrame({ title: 'سلفة لموظف', body: `<form class="stack" data-form="hr-adv-save" id="hr-adv-form">
+    return modalFrame({ title: 'سحب من الراتب', body: `<form class="stack" data-form="hr-adv-save" id="hr-adv-form">
       ${field('الموظف', `<select name="employeeId" id="adv-emp">${rows.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>`)}
-      <div class="grid-2">${field('المبلغ (د.ع)', '<input class="amount-input" name="amount" id="adv-amount" inputmode="numeric" required autocomplete="off">')}
-        ${field('عدد الأقساط', `<select name="installments" id="adv-inst">${[1, 2, 3, 4, 5, 6, 8, 10, 12].map((n) => `<option value="${n}">${n === 1 ? 'دفعة واحدة' : `${n} أشهر`}</option>`).join('')}</select>`, 'تُخصم من الراتب ابتداءً من هذا الشهر')}</div>
+      ${field('المبلغ (د.ع)', '<input class="amount-input" name="amount" id="adv-amount" inputmode="numeric" required autocomplete="off">', 'يُخصم كاملاً من راتب هذا الشهر عند الصرف')}
       ${field('ملاحظة', '<input name="note" id="adv-note" maxlength="120">')}
       ${s.shift && can('shift.cash') ? '<label class="row small" style="gap:6px"><input type="checkbox" name="fromDrawer" id="adv-drawer" checked> صُرفت نقداً من درج الوردية المفتوحة (تُسجَّل سحباً منه)</label>' : ''}
-      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل السلفة</button></form>` });
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل السحب</button></form>` });
   },
   'hr-policy'(s) {
     const p = s.modal.policy;
@@ -313,8 +312,7 @@ export const modals = {
       <div class="grid-3">${field('سماح التأخير (دقيقة)', `<input name="graceMin" id="po-grace" inputmode="numeric" value="${p.graceMin}">`)}
         ${field('غرامة التأخير (د.ع)', `<input name="lateFine" id="po-fine" inputmode="numeric" value="${p.lateFine}">`, '0 = بلا غرامة مقترحة')}
         ${field('لكل (دقيقة)', `<input name="lateStepMin" id="po-step" inputmode="numeric" value="${p.lateStepMin}">`)}</div>
-      <div class="grid-2">${field('أجر الساعة الإضافية (د.ع)', `<input name="overtimeHourly" id="po-ot" inputmode="numeric" value="${p.overtimeHourly}">`, 'للراتب الشهري فقط. 0 = بلا')}
-        ${field('حد السلف من الراتب (%)', `<input name="advanceMaxPct" id="po-adv" inputmode="numeric" value="${p.advanceMaxBp / 100}">`, '0 = بلا حد')}</div>
+      ${field('أجر الساعة الإضافية (د.ع)', `<input name="overtimeHourly" id="po-ot" inputmode="numeric" value="${p.overtimeHourly}">`, 'للراتب الشهري فقط. 0 = بلا')}
       <label class="row small" style="gap:6px"><input type="checkbox" name="deductAbsence" id="po-abs" ${p.deductAbsence ? 'checked' : ''}> خصم أيام الغياب من الراتب الشهري (أجر اليوم = الراتب ÷ 30)</label>
       <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ</button></form>` });
   },
@@ -491,24 +489,24 @@ on({
   'hr-adv-save': (_el, _e, d) => busy(async () => {
     const amount = parseAmount(d.amount);
     if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('أدخل مبلغاً صحيحاً');
-    await post('/api/hr/advances', { clientId: state.modal.clientId, employeeId: d.employeeId, amount, installments: Number(d.installments), note: d.note || null, fromDrawer: d.fromDrawer === 'on' });
+    await post('/api/hr/advances', { clientId: state.modal.clientId, employeeId: d.employeeId, amount, note: d.note || null, fromDrawer: d.fromDrawer === 'on' });
     state.modal = null;
-    toast('سُجّلت السلفة', 'ok');
+    toast('سُجّل السحب من الراتب', 'ok');
     await loadHr();
   }),
   'hr-adv-cancel': (el) => busy(async () => {
     const h = H();
-    if (h.confirmAdv !== el.dataset.id) { h.confirmAdv = el.dataset.id; toast('اضغط مرة أخرى لإلغاء السلفة وحذف مصروفها'); return; }
+    if (h.confirmAdv !== el.dataset.id) { h.confirmAdv = el.dataset.id; toast('اضغط مرة أخرى لإلغاء السحب وحذف مصروفه'); return; }
     await del(`/api/hr/advances/${el.dataset.id}`);
     h.confirmAdv = null;
-    toast('أُلغيت السلفة', 'ok');
+    toast('أُلغي السحب', 'ok');
     await loadHr();
   }),
   'hr-policy': () => busy(async () => openModal({ type: 'hr-policy', policy: await get('/api/hr/policy') })),
   'hr-policy-save': (_el, _e, d) => busy(async () => {
     const n = (v, label) => { const x = parseAmount(String(v ?? '0')); if (!Number.isSafeInteger(x) || x < 0) throw new Error(`قيمة غير صحيحة: ${label}`); return x; };
     await post('/api/hr/policy', { graceMin: n(d.graceMin, 'السماح'), lateFine: n(d.lateFine, 'الغرامة'), lateStepMin: Math.max(1, n(d.lateStepMin, 'الدقائق')),
-      overtimeHourly: n(d.overtimeHourly, 'الإضافي'), advanceMaxBp: n(d.advanceMaxPct, 'حد السلف') * 100, deductAbsence: d.deductAbsence === 'on' });
+      overtimeHourly: n(d.overtimeHourly, 'الإضافي'), deductAbsence: d.deductAbsence === 'on' });
     state.modal = null;
     toast('حُفظت الإعدادات', 'ok');
     await loadHr();

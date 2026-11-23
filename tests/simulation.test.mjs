@@ -214,7 +214,7 @@ async function simulate(seed, steps) {
     stats.expenseDel += 1;
   }
 
-  // ------------------------------------------------------------ الموارد البشرية: سلف ورواتب تمر بالمصروفات والدرج
+  // ------------------------------------------------------------ الموارد البشرية: سحوبات من الراتب ورواتب تمر بالمصروفات والدرج
   const trackExpense = (exp) => {
     expenses.set(exp.id, { amount: exp.amount, day: exp.day, fromDrawer: exp.fromDrawer, shiftId: exp.fromDrawer ? shift.id : null });
     if (exp.fromDrawer) shift.payOut += exp.amount;
@@ -231,14 +231,14 @@ async function simulate(seed, steps) {
   }
 
   async function doAdvance() {
-    const body = { clientId: randomUUID(), employeeId: R.pick(payees), amount: R.int(1, 20) * 5000, installments: R.int(1, 4), fromDrawer: R.chance(0.5) };
+    const body = { clientId: randomUUID(), employeeId: R.pick(payees), amount: R.int(1, 20) * 5000, fromDrawer: R.chance(0.5) };
     const r = await call(R.pick(['owner', 'mgr']), 'POST', '/api/hr/advances', body);
     if (r.status !== 200) { reject(r.body.error); return; }
     if (R.chance(0.2)) { stats.replay += 1; assert.equal((await ok('mgr', 'POST', '/api/hr/advances', body)).id, r.body.id); }
     const adv = await db.collection('hr_advances').findOne({ _id: r.body.id });
     const exp = await expenseById(adv.expenseId);
-    assert.equal(exp.amount, body.amount, 'مصروف السلفة = مبلغها');
-    assert.equal(exp.category, 'advances');
+    assert.equal(exp.amount, body.amount, 'مصروف السحب = مبلغه');
+    assert.equal(exp.category, 'salaries', 'السحب جزء من الرواتب');
     advances.set(r.body.id, { amount: body.amount, expenseId: adv.expenseId });
     trackExpense(exp);
     stats.advance += 1;
@@ -261,7 +261,7 @@ async function simulate(seed, steps) {
     const r = await call('owner', 'POST', '/api/hr/payroll/pay', body);
     if (r.status !== 200) { reject(r.body.error); return; }
     for (const p of r.body.rows) {
-      // القسيمة متسقة داخلياً: الإجمالي = المكونات، والصافي = max(0, الإجمالي) − قسط السلفة، والقسط لا يتجاوز المتاح
+      // القسيمة متسقة داخلياً: الإجمالي = المكونات، والصافي = max(0, الإجمالي) − السحب، والسحب المخصوم لا يتجاوز المتاح
       assert.equal(p.gross, p.base + p.overtimePay + p.bonus - p.fine - p.leaveDeduction - p.absenceDeduction, 'القسيمة: الإجمالي');
       assert.equal(p.net, Math.max(0, p.gross) - p.advance, 'القسيمة: الصافي');
       assert.ok(p.net >= 0 && p.advance <= Math.max(0, p.gross), 'القسيمة: لا صافي سالب');
@@ -288,12 +288,12 @@ async function simulate(seed, steps) {
     stats.payrollDel += 1;
   }
 
-  /** السلف: ما سُدّد من كل سلفة عبر القسائم لا يتجاوز مبلغها، والمصروفات المرتبطة لا تُحذف من صفحة المصروفات */
+  /** السحوبات: ما خُصم من كل سحب عبر القسائم لا يتجاوز مبلغها، والمصروفات المرتبطة لا تُحذف من صفحة المصروفات */
   async function checkHr(label) {
     const pays = await db.collection('payrolls').find({}).toArray();
     for (const a of await db.collection('hr_advances').find({}).toArray()) {
       const repaid = pays.flatMap((p) => p.advanceParts ?? []).filter((x) => x.advanceId === a._id).reduce((x, y) => x + y.amount, 0);
-      assert.ok(repaid <= a.amount, `${label}: سداد السلفة لا يتجاوز مبلغها`);
+      assert.ok(repaid <= a.amount, `${label}: المخصوم لا يتجاوز مبلغ السحب`);
     }
     assert.equal(pays.length, payrolls.size, `${label}: عدد القسائم`);
   }
@@ -333,6 +333,18 @@ async function simulate(seed, steps) {
     const inv = await ok('owner', 'GET', '/api/admin/inventory');
     const row = R.pick(inv.rows);
     const kind = R.pick(['receive', 'receive', 'loss', 'count']);
+    if (kind === 'receive' && shift && R.chance(0.35)) {
+      // استلام بقائمة مدفوع نقداً من الدرج: سحب واحد بمجموع الأسطر، والإعادة لا تسحب مرتين
+      const lines = [{ id: randomUUID(), variantId: row.variantId, qty: R.int(1, 500), total: R.int(1, 40) * 500 }];
+      const body = { supplier: 'مورد', lines, fromDrawer: true };
+      const r = await call(R.pick(['owner', 'mgr']), 'POST', '/api/admin/inventory/receive', body);
+      if (r.status !== 200) { reject(r.body.error); return; }
+      assert.equal(r.body.paidFromDrawer, lines[0].total);
+      shift.payOut += lines[0].total;
+      if (R.chance(0.3)) { stats.replay += 1; assert.equal((await ok('owner', 'POST', '/api/admin/inventory/receive', body)).received, 0); }
+      stats.receive += 1;
+      return;
+    }
     const body = { clientId: randomUUID(), variantId: row.variantId, type: kind, qty: kind === 'count' ? R.int(0, 3000) : R.int(1, 500), note: kind === 'loss' ? 'انسكب' : null };
     if (kind === 'receive' && R.chance(0.7)) body.cost = `${R.int(0, 40)}.${R.int(0, 999)}`;
     const r = await call('owner', 'POST', '/api/admin/inventory/adjust', body);
@@ -476,7 +488,7 @@ async function simulate(seed, steps) {
     const sp = await ok('owner', 'GET', '/api/admin/expenses/summary', null, { from: sorted[0], to: sorted.at(-1) });
     assert.equal(sp.profit.netProfit, range.summary.netProfit, 'الملخص: صافي الربح = التقرير');
     assert.equal(sp.costs.stockLoss, agg.loss);
-    assert.equal(sp.cash.operating + sp.cash.salaries + sp.cash.advances, agg.expenses, 'الملخص: المصروفات بأنواعها = مجموعها');
+    assert.equal(sp.cash.operating + sp.cash.salaries, agg.expenses, 'الملخص: المصروفات بأنواعها = مجموعها');
     assert.equal(range.summary.wasteCost, agg.waste, 'الفترة: الهدر');
     assert.equal(range.byCategory.reduce((a, c) => a + c.net, 0), agg.net, 'الفترة: التصنيفات = الصافي');
     assert.equal(range.byEmployee.reduce((a, c) => a + c.net, 0), agg.net, 'الفترة: الموظفون = الصافي');

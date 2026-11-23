@@ -196,10 +196,9 @@ try {
   await page.waitForSelector('td:has-text("09:00–17:00")').catch(() => errors.push('schedule not shown in HR schedule tab'));
   await page.click('[data-action="hr-adv-new"]');
   await page.fill('#adv-amount', '100000');
-  await page.selectOption('#adv-inst', '2');
   if (await page.$('#adv-drawer')) await page.uncheck('#adv-drawer');
   await page.click('form[data-form="hr-adv-save"] button[type=submit]');
-  await page.waitForSelector('.toast.ok:has-text("السلفة")');
+  await page.waitForSelector('.toast.ok:has-text("السحب من الراتب")');
   await page.click('[data-action="hr-tab"][data-k="payroll"]');
   await page.waitForSelector('[data-action="hr-pay"][data-id]:not([data-id=""])');
   await shot('11i-hr-payroll');
@@ -217,7 +216,7 @@ try {
   await page.waitForSelector('.toast.ok:has-text("الإعدادات")');
   await page.click('[data-action="hr-tab"][data-k="late"]');
   await page.waitForSelector('h2:has-text("الغياب")');
-  // المصروفات: ملخص «خرج من المقهى» يربط الراتب المصروف والسلفة والمشتريات، والمصروف المرتبط لا يُحذف من هنا
+  // المصروفات: ملخص «خرج من المقهى» يربط الراتب المصروف والسحب من الراتب والمشتريات، والمصروف المرتبط لا يُحذف من هنا
   await page.goto(`http://127.0.0.1:${PORT}/#/admin/expenses`);
   await page.waitForSelector('h2:has-text("خرج من المقهى")');
   await page.waitForSelector('a.pill:has-text("راتب")').catch(() => errors.push('payroll expense not marked as linked'));

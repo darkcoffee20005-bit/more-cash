@@ -149,7 +149,7 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
         }
         if (day === 3) {
           const cashier = employees.find((e) => e.role === 'cashier');
-          await call('POST', '/api/hr/advances', { clientId: crypto.randomUUID(), employeeId: cashier.id, amount: 150000, installments: 3, note: 'ظرف عائلي' });
+          await call('POST', '/api/hr/advances', { clientId: crypto.randomUUID(), employeeId: cashier.id, amount: 50000, note: 'ظرف عائلي' });
         }
         // حوافز وغرامات متفرقة كما في أسبوع عمل حقيقي
         const pickEmp = employees.find((e) => e.role === pick(['cashier', 'barista']));

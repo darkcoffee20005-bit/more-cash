@@ -4,7 +4,7 @@ import { AppError, audit, bad, getSettings, id as checkId, int, isDup, notFound,
 import { localDate } from '../../shared/format.js';
 
 export const EXPENSE_CATEGORIES = Object.freeze({
-  rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', advances: 'سلف موظفين', other: 'أخرى',
+  rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', advances: 'سحوبات من الرواتب', other: 'أخرى',
 });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 

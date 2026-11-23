@@ -7,18 +7,25 @@ export const MOVE_REASON = Object.freeze({
   initial: 'رصيد افتتاحي', sale: 'بيع', refund: 'استرجاع', receive: 'استلام', receive_fix: 'تصحيح استلام', loss: 'هدر/تالف', count: 'جرد', adjust: 'تعديل',
 });
 
+/** بصمة قصيرة ثابتة (FNV-1a 32 بت) لنص: مفتاح idempotency يعمل في الخادم والمتصفح (النسخة التجريبية) */
+function fnv(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0') + text.length.toString(16);
+}
+
 export function createInventory(ctx) {
   const { db, now } = ctx;
   const moves = () => db.collection('stock_moves');
   const variants = () => db.collection('variants');
 
   /** يطبّق حركة مرة واحدة فقط. يعيد true إن طُبّقت الآن، false إن كانت مطبّقة سابقاً. */
-  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null, value = null }) {
+  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null, value = null, fromDrawer = false }) {
     if (!Number.isSafeInteger(delta) || delta === 0) return false;
     // البيع لا ينزل بالرصيد تحت الصفر (بيع بلا إنترنت أو بيعان متزامنان على آخر قطعة): يُخصم المتوفر فقط
     if (reason === 'sale' && delta < 0) return applySaleMove({ key, variantId, delta, refId, by });
     try {
-      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}), ...(value !== null ? { value } : {}) });
+      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}), ...(value !== null ? { value } : {}), ...(fromDrawer ? { fromDrawer: true } : {}) });
     } catch (e) {
       if (isDup(e)) return false;
       throw e;
@@ -99,8 +106,10 @@ export function createInventory(ctx) {
       if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     }
     // هدر/جرد/تعديل: قيمة الحركة بتكلفة الوحدة لحظتها (دينار صحيح بإشارة) — النقص يُطرح من صافي الربح
-    const value = type === 'receive' || delta === 0 ? null : (delta < 0 ? -costOf(-delta, v.costMilli ?? 0) : costOf(delta, v.costMilli ?? 0));
-    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli, value });
+    let value = type === 'receive' || delta === 0 ? null : (delta < 0 ? -costOf(-delta, v.costMilli ?? 0) : costOf(delta, v.costMilli ?? 0));
+    // الاستلام يحفظ المبلغ المدفوع فعلاً (مجموع السطر) ليظهر في المشتريات بلا فرق تقريب
+    if (type === 'receive' && Number.isSafeInteger(input.amount) && input.amount >= 0) value = input.amount;
+    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli, value, ...(input.fromDrawer ? { fromDrawer: true } : {}) });
     if (applied) await audit({ ...ctx, actor }, `inventory.${type}`, { variantId: v._id, delta, note });
     const after = await variants().findOne({ _id: v._id });
     return { applied, delta, stock: after.stock, costMilli: after.costMilli };
@@ -164,14 +173,25 @@ export function createInventory(ctx) {
     const found = await variants().find({ _id: { $in: [...new Set(lines.map((l) => l.variantId))] } }).toArray();
     const tracked = new Set(found.filter((v) => v.trackStock && v.active !== false).map((v) => v._id));
     if (lines.some((l) => !tracked.has(l.variantId))) throw notFound('VARIANT_NOT_TRACKED');
+    // الدفع نقداً من درج الوردية المفتوحة: سحب واحد بمجموع الأسطر قبل أي إضافة للمخزون (نقد غير كافٍ = لا شيء يُكتب).
+    // المفتاح مشتق من معرّفات الأسطر: إعادة إرسال نفس الدفعة لا تسحب مرتين، وتعديل أي سطر يغيّره
+    let paidFromDrawer = 0;
+    if (input.fromDrawer === true) {
+      if (lines.some((l) => l.total === null)) throw bad('PRICE_REQUIRED');
+      paidFromDrawer = lines.reduce((a, l) => a + l.total, 0);
+      if (paidFromDrawer > 0) {
+        const key = `rcvpay-${fnv(lines.map((l) => l.id).sort().join('|'))}`;
+        await ctx.shifts.move(actor, { type: 'pay_out', clientId: key, amount: paidFromDrawer, note: `مشتريات المخزون${supplier ? ` — ${supplier}` : ''}`.slice(0, 120) });
+      }
+    }
     const results = [];
     for (const l of lines) {
       // التكلفة لكل وحدة (بالدينار، حتى 3 منازل) = مبلغ السطر ÷ الكمية؛ تدخل متوسط التكلفة الموزون
       const cost = l.total === null ? undefined : formatMilli(Math.round((l.total * 1000) / l.qty));
-      const r = await adjust(actor, { clientId: `rcv-${l.id}`.slice(0, 64), type: 'receive', variantId: l.variantId, qty: l.qty, cost, note });
+      const r = await adjust(actor, { clientId: `rcv-${l.id}`.slice(0, 64), type: 'receive', variantId: l.variantId, qty: l.qty, cost, note, amount: l.total, fromDrawer: paidFromDrawer > 0 });
       results.push({ variantId: l.variantId, ...r });
     }
-    return { received: results.filter((r) => r.applied).length, lines: results };
+    return { received: results.filter((r) => r.applied).length, lines: results, paidFromDrawer };
   }
 
   // ---------------------------------------------------------------- مراجعة الاستلام وتصحيحه

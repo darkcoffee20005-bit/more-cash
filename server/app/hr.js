@@ -1,6 +1,6 @@
 // الموارد البشرية: الحضور والانصراف، الحوافز والغرامات، الإجازات (طلب وموافقة ورصيد مدفوع)،
 // سجل لكل موظف، ترتيب الحوافز حسب ساعات العمل، وموظف الشهر،
-// جدول الدوام (تأخير، غياب، ساعات إضافية)، ملف الموظف، السلف بأقساط، وصرف الرواتب بقسيمة ومصروف مرتبط.
+// جدول الدوام (تأخير، غياب، ساعات إضافية)، ملف الموظف، السحب من الراتب (يُخصم كاملاً عند الصرف)، وصرف الرواتب بقسيمة ومصروف مرتبط.
 // كل عملية كتابة من الجهاز تحمل clientId (لا تتكرر عند إعادة الإرسال)، والمبالغ دنانير صحيحة.
 import { localDate } from '../../shared/format.js';
 import { AppError, audit, bad, conflict, getSettings, id as checkId, int, isDup, notFound, oneOf, requirePerm, str } from './core.js';
@@ -18,7 +18,7 @@ export const HR_POLICY = Object.freeze({
   lateFine: 0, // 0 = بلا غرامة مقترحة
   deductAbsence: true, // يوم دوام بلا حضور ولا إجازة يُخصم من الراتب الشهري
   overtimeHourly: 0, // أجر الساعة الإضافية للراتب الشهري (0 = بلا)
-  advanceMaxBp: 5000, // حد السلف القائمة من الراتب الشهري (نقاط أساس، 0 = بلا حد)
+  advanceMaxBp: 10000, // حد السحب من الراتب: مجموع السحوبات غير المخصومة ≤ الراتب الشهري (نقاط أساس، 0 = بلا حد)
   dayDivisor: 30, // أجر اليوم = الراتب ÷ 30
 });
 const mulDiv = (a, b, c) => (c ? Number((BigInt(a) * BigInt(b)) / BigInt(c)) : 0); // floor(a×b÷c) بأعداد صحيحة
@@ -280,7 +280,7 @@ export function createHr(ctx) {
     return out;
   }
 
-  /** الراتب المستحق للشهر: شهري (ناقص الإجازة بلا راتب والغياب) أو بالساعة، + الإضافي والحوافز − الغرامات − قسط السلف */
+  /** الراتب المستحق للشهر: شهري (ناقص الإجازة بلا راتب والغياب) أو بالساعة، + الإضافي والحوافز − الغرامات − السحب من الراتب */
   function computePay(emp, month, info, adjs, pol, advances, pays) {
     const payType = emp.payType ?? 'monthly';
     const salary = emp.salary ?? 0;
@@ -443,7 +443,7 @@ export function createHr(ctx) {
     return { month: md.month, count: out.length, total: out.reduce((a, x) => a + x.amount, 0) };
   }
 
-  // ---------------------------------------------------------------- السلف (بأقساط تُخصم من الراتب)
+  // ---------------------------------------------------------------- السحب من الراتب: جزء من الراتب يُدفع مبكراً ويُخصم كاملاً عند الصرف
   const viewAdv = (a, pays) => {
     const repaid = pays.flatMap((p) => p.advanceParts ?? []).filter((x) => x.advanceId === a._id).reduce((x, y) => x + y.amount, 0);
     return { id: a._id, employeeId: a.employeeId, employeeName: a.employeeName, amount: a.amount, installments: a.installments, perMonth: a.perMonth,
@@ -458,7 +458,8 @@ export function createHr(ctx) {
     const emp = await EMP().findOne({ _id: checkId(input.employeeId, 'employeeId') });
     if (!emp || !emp.active) throw notFound();
     const amount = int(input.amount, { field: 'amount', min: 1, max: 100_000_000 });
-    const installments = int(input.installments ?? 1, { field: 'installments', min: 1, max: 12 });
+    // سحب من الراتب: يُخصم كاملاً من راتب الشهر عند الصرف (لا أقساط)
+    const installments = 1;
     const note = str(input.note, { field: 'note', max: 120, optional: true });
     const pol = await policy();
     const pays = await PAY().find({ employeeId: emp._id }).toArray();
@@ -469,8 +470,8 @@ export function createHr(ctx) {
     }
     const thisMonth = localDate(now(), await tz()).slice(0, 7);
     const startMonth = pays.some((p) => p.month === thisMonth) ? addMonths(thisMonth, 1) : thisMonth;
-    // السلفة نقد خرج من المقهى: تُسجَّل مصروفاً (سلف موظفين) فتبقى المصروفات = ما دُفع فعلاً، وقسطها يُنقص صافي الراتب لاحقاً
-    const expense = await ctx.expenses.create(actor, { clientId: `adv-${clientId}`.slice(0, 64), amount, category: 'advances', note: `سلفة ${emp.name}${note ? ` — ${note}` : ''}`.slice(0, 120), fromDrawer: input.fromDrawer === true }, { ref: 'advance' });
+    // السحب جزء من الراتب دُفع مبكراً: يُسجَّل مصروف «رواتب» يوم دفعه، ويُخصم من صافي راتب الشهر عند الصرف (المجموع = الراتب المستحق)
+    const expense = await ctx.expenses.create(actor, { clientId: `adv-${clientId}`.slice(0, 64), amount, category: 'salaries', note: `سحب من راتب ${emp.name}${note ? ` — ${note}` : ''}`.slice(0, 120), fromDrawer: input.fromDrawer === true }, { ref: 'advance' });
     const doc = { _id: newId(), clientId, employeeId: emp._id, employeeName: emp.name, amount, installments, perMonth: Math.ceil(amount / installments), startMonth, note,
       fromDrawer: input.fromDrawer === true, expenseId: expense.id, by: actor.id, byName: actor.name, createdAt: now() };
     try { await ADV().insertOne(doc); } catch (e) { if (isDup(e)) return viewAdv(await ADV().findOne({ clientId }), pays); throw e; }

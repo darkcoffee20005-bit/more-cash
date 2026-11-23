@@ -59,20 +59,26 @@ export function createReports(ctx) {
     const moves = await db.collection('stock_moves').find({ at: { $gte: r.from, $lt: r.to }, reason: { $in: ['receive', 'receive_fix'] } }).toArray();
     let purchases = 0;
     let noCost = 0;
+    let purchasesFromDrawer = 0;
     for (const m of moves) {
-      if (m.reason === 'receive') { if (m.unitCostMilli === undefined || m.unitCostMilli === null) noCost += 1; else purchases += costOf(m.delta, m.unitCostMilli); }
+      if (m.reason === 'receive') {
+        // المبلغ المدفوع فعلاً إن حُفظ (استلام بقائمة)، وإلا الكمية × سعر الوحدة
+        const paid = Number.isSafeInteger(m.value) ? m.value : m.unitCostMilli === undefined || m.unitCostMilli === null ? null : costOf(m.delta, m.unitCostMilli);
+        if (paid === null) noCost += 1; else { purchases += paid; if (m.fromDrawer) purchasesFromDrawer += paid; }
+      }
       else if (m.fixOf) purchases += costOf(m.fixOf.qty + m.delta, m.unitCostMilli) - costOf(m.fixOf.qty, m.fixOf.unitCostMilli ?? m.unitCostMilli);
     }
     const adj = await db.collection('hr_adjustments').find({ day: { $gte: from, $lte: to } }).toArray();
-    const salaries = sum(exp.filter((e) => e.ref === 'payroll'));
-    const advances = sum(exp.filter((e) => e.ref === 'advance'));
+    // السحب من الراتب جزء من الرواتب (يُخصم عند الصرف)؛ advances للعرض فقط ومشمول في salaries
+    const advances = sum(exp.filter((e) => e.ref === 'advance' || e.category === 'advances'));
+    const salaries = sum(exp.filter((e) => e.ref === 'payroll')) + advances;
     const operating = sum(manual);
     const stockLoss = await stockLossBetween(db, r.from, r.to);
     const S = rep.summary;
     const expensesTotal = sum(exp);
     return {
       from, to,
-      cash: { operating, byCategory, salaries, advances, purchases, purchasesNoCost: noCost, total: operating + salaries + advances + purchases },
+      cash: { operating, byCategory, salaries, advances, purchases, purchasesFromDrawer, purchasesNoCost: noCost, total: operating + salaries + purchases },
       costs: { cogs: S.cogs, waste: S.wasteCost ?? 0, stockLoss, discounts: S.discounts },
       hr: { bonuses: sum(adj.filter((a) => a.type === 'bonus')), fines: sum(adj.filter((a) => a.type === 'fine')) },
       profit: { net: S.net, profit: S.profit, expenses: expensesTotal, stockLoss, netProfit: S.profit - expensesTotal - stockLoss },

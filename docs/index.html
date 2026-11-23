@@ -2396,18 +2396,25 @@ const MOVE_REASON = Object.freeze({
   initial: 'رصيد افتتاحي', sale: 'بيع', refund: 'استرجاع', receive: 'استلام', receive_fix: 'تصحيح استلام', loss: 'هدر/تالف', count: 'جرد', adjust: 'تعديل',
 });
 
+/** بصمة قصيرة ثابتة (FNV-1a 32 بت) لنص: مفتاح idempotency يعمل في الخادم والمتصفح (النسخة التجريبية) */
+function fnv(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0') + text.length.toString(16);
+}
+
 function createInventory(ctx) {
   const { db, now } = ctx;
   const moves = () => db.collection('stock_moves');
   const variants = () => db.collection('variants');
 
   /** يطبّق حركة مرة واحدة فقط. يعيد true إن طُبّقت الآن، false إن كانت مطبّقة سابقاً. */
-  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null, value = null }) {
+  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null, value = null, fromDrawer = false }) {
     if (!Number.isSafeInteger(delta) || delta === 0) return false;
     // البيع لا ينزل بالرصيد تحت الصفر (بيع بلا إنترنت أو بيعان متزامنان على آخر قطعة): يُخصم المتوفر فقط
     if (reason === 'sale' && delta < 0) return applySaleMove({ key, variantId, delta, refId, by });
     try {
-      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}), ...(value !== null ? { value } : {}) });
+      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}), ...(value !== null ? { value } : {}), ...(fromDrawer ? { fromDrawer: true } : {}) });
     } catch (e) {
       if (isDup(e)) return false;
       throw e;
@@ -2488,8 +2495,10 @@ function createInventory(ctx) {
       if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     }
     // هدر/جرد/تعديل: قيمة الحركة بتكلفة الوحدة لحظتها (دينار صحيح بإشارة) — النقص يُطرح من صافي الربح
-    const value = type === 'receive' || delta === 0 ? null : (delta < 0 ? -costOf(-delta, v.costMilli ?? 0) : costOf(delta, v.costMilli ?? 0));
-    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli, value });
+    let value = type === 'receive' || delta === 0 ? null : (delta < 0 ? -costOf(-delta, v.costMilli ?? 0) : costOf(delta, v.costMilli ?? 0));
+    // الاستلام يحفظ المبلغ المدفوع فعلاً (مجموع السطر) ليظهر في المشتريات بلا فرق تقريب
+    if (type === 'receive' && Number.isSafeInteger(input.amount) && input.amount >= 0) value = input.amount;
+    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli, value, ...(input.fromDrawer ? { fromDrawer: true } : {}) });
     if (applied) await audit({ ...ctx, actor }, `inventory.${type}`, { variantId: v._id, delta, note });
     const after = await variants().findOne({ _id: v._id });
     return { applied, delta, stock: after.stock, costMilli: after.costMilli };
@@ -2553,14 +2562,25 @@ function createInventory(ctx) {
     const found = await variants().find({ _id: { $in: [...new Set(lines.map((l) => l.variantId))] } }).toArray();
     const tracked = new Set(found.filter((v) => v.trackStock && v.active !== false).map((v) => v._id));
     if (lines.some((l) => !tracked.has(l.variantId))) throw notFound('VARIANT_NOT_TRACKED');
+    // الدفع نقداً من درج الوردية المفتوحة: سحب واحد بمجموع الأسطر قبل أي إضافة للمخزون (نقد غير كافٍ = لا شيء يُكتب).
+    // المفتاح مشتق من معرّفات الأسطر: إعادة إرسال نفس الدفعة لا تسحب مرتين، وتعديل أي سطر يغيّره
+    let paidFromDrawer = 0;
+    if (input.fromDrawer === true) {
+      if (lines.some((l) => l.total === null)) throw bad('PRICE_REQUIRED');
+      paidFromDrawer = lines.reduce((a, l) => a + l.total, 0);
+      if (paidFromDrawer > 0) {
+        const key = `rcvpay-${fnv(lines.map((l) => l.id).sort().join('|'))}`;
+        await ctx.shifts.move(actor, { type: 'pay_out', clientId: key, amount: paidFromDrawer, note: `مشتريات المخزون${supplier ? ` — ${supplier}` : ''}`.slice(0, 120) });
+      }
+    }
     const results = [];
     for (const l of lines) {
       // التكلفة لكل وحدة (بالدينار، حتى 3 منازل) = مبلغ السطر ÷ الكمية؛ تدخل متوسط التكلفة الموزون
       const cost = l.total === null ? undefined : formatMilli(Math.round((l.total * 1000) / l.qty));
-      const r = await adjust(actor, { clientId: `rcv-${l.id}`.slice(0, 64), type: 'receive', variantId: l.variantId, qty: l.qty, cost, note });
+      const r = await adjust(actor, { clientId: `rcv-${l.id}`.slice(0, 64), type: 'receive', variantId: l.variantId, qty: l.qty, cost, note, amount: l.total, fromDrawer: paidFromDrawer > 0 });
       results.push({ variantId: l.variantId, ...r });
     }
-    return { received: results.filter((r) => r.applied).length, lines: results };
+    return { received: results.filter((r) => r.applied).length, lines: results, paidFromDrawer };
   }
 
   // ---------------------------------------------------------------- مراجعة الاستلام وتصحيحه
@@ -2849,20 +2869,26 @@ function createReports(ctx) {
     const moves = await db.collection('stock_moves').find({ at: { $gte: r.from, $lt: r.to }, reason: { $in: ['receive', 'receive_fix'] } }).toArray();
     let purchases = 0;
     let noCost = 0;
+    let purchasesFromDrawer = 0;
     for (const m of moves) {
-      if (m.reason === 'receive') { if (m.unitCostMilli === undefined || m.unitCostMilli === null) noCost += 1; else purchases += costOf(m.delta, m.unitCostMilli); }
+      if (m.reason === 'receive') {
+        // المبلغ المدفوع فعلاً إن حُفظ (استلام بقائمة)، وإلا الكمية × سعر الوحدة
+        const paid = Number.isSafeInteger(m.value) ? m.value : m.unitCostMilli === undefined || m.unitCostMilli === null ? null : costOf(m.delta, m.unitCostMilli);
+        if (paid === null) noCost += 1; else { purchases += paid; if (m.fromDrawer) purchasesFromDrawer += paid; }
+      }
       else if (m.fixOf) purchases += costOf(m.fixOf.qty + m.delta, m.unitCostMilli) - costOf(m.fixOf.qty, m.fixOf.unitCostMilli ?? m.unitCostMilli);
     }
     const adj = await db.collection('hr_adjustments').find({ day: { $gte: from, $lte: to } }).toArray();
-    const salaries = sum(exp.filter((e) => e.ref === 'payroll'));
-    const advances = sum(exp.filter((e) => e.ref === 'advance'));
+    // السحب من الراتب جزء من الرواتب (يُخصم عند الصرف)؛ advances للعرض فقط ومشمول في salaries
+    const advances = sum(exp.filter((e) => e.ref === 'advance' || e.category === 'advances'));
+    const salaries = sum(exp.filter((e) => e.ref === 'payroll')) + advances;
     const operating = sum(manual);
     const stockLoss = await stockLossBetween(db, r.from, r.to);
     const S = rep.summary;
     const expensesTotal = sum(exp);
     return {
       from, to,
-      cash: { operating, byCategory, salaries, advances, purchases, purchasesNoCost: noCost, total: operating + salaries + advances + purchases },
+      cash: { operating, byCategory, salaries, advances, purchases, purchasesFromDrawer, purchasesNoCost: noCost, total: operating + salaries + purchases },
       costs: { cogs: S.cogs, waste: S.wasteCost ?? 0, stockLoss, discounts: S.discounts },
       hr: { bonuses: sum(adj.filter((a) => a.type === 'bonus')), fines: sum(adj.filter((a) => a.type === 'fine')) },
       profit: { net: S.net, profit: S.profit, expenses: expensesTotal, stockLoss, netProfit: S.profit - expensesTotal - stockLoss },
@@ -2985,7 +3011,7 @@ const { localDate } = __m_shared_format_js;
 
 
 const EXPENSE_CATEGORIES = Object.freeze({
-  rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', advances: 'سلف موظفين', other: 'أخرى',
+  rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', advances: 'سحوبات من الرواتب', other: 'أخرى',
 });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -3077,7 +3103,7 @@ const { AppError, audit, bad, conflict, getSettings, id: checkId, int, isDup, no
 const { can } = __m_shared_perms_js;
 // الموارد البشرية: الحضور والانصراف، الحوافز والغرامات، الإجازات (طلب وموافقة ورصيد مدفوع)،
 // سجل لكل موظف، ترتيب الحوافز حسب ساعات العمل، وموظف الشهر،
-// جدول الدوام (تأخير، غياب، ساعات إضافية)، ملف الموظف، السلف بأقساط، وصرف الرواتب بقسيمة ومصروف مرتبط.
+// جدول الدوام (تأخير، غياب، ساعات إضافية)، ملف الموظف، السحب من الراتب (يُخصم كاملاً عند الصرف)، وصرف الرواتب بقسيمة ومصروف مرتبط.
 // كل عملية كتابة من الجهاز تحمل clientId (لا تتكرر عند إعادة الإرسال)، والمبالغ دنانير صحيحة.
 
 
@@ -3095,7 +3121,7 @@ const HR_POLICY = Object.freeze({
   lateFine: 0, // 0 = بلا غرامة مقترحة
   deductAbsence: true, // يوم دوام بلا حضور ولا إجازة يُخصم من الراتب الشهري
   overtimeHourly: 0, // أجر الساعة الإضافية للراتب الشهري (0 = بلا)
-  advanceMaxBp: 5000, // حد السلف القائمة من الراتب الشهري (نقاط أساس، 0 = بلا حد)
+  advanceMaxBp: 10000, // حد السحب من الراتب: مجموع السحوبات غير المخصومة ≤ الراتب الشهري (نقاط أساس، 0 = بلا حد)
   dayDivisor: 30, // أجر اليوم = الراتب ÷ 30
 });
 const mulDiv = (a, b, c) => (c ? Number((BigInt(a) * BigInt(b)) / BigInt(c)) : 0); // floor(a×b÷c) بأعداد صحيحة
@@ -3357,7 +3383,7 @@ function createHr(ctx) {
     return out;
   }
 
-  /** الراتب المستحق للشهر: شهري (ناقص الإجازة بلا راتب والغياب) أو بالساعة، + الإضافي والحوافز − الغرامات − قسط السلف */
+  /** الراتب المستحق للشهر: شهري (ناقص الإجازة بلا راتب والغياب) أو بالساعة، + الإضافي والحوافز − الغرامات − السحب من الراتب */
   function computePay(emp, month, info, adjs, pol, advances, pays) {
     const payType = emp.payType ?? 'monthly';
     const salary = emp.salary ?? 0;
@@ -3520,7 +3546,7 @@ function createHr(ctx) {
     return { month: md.month, count: out.length, total: out.reduce((a, x) => a + x.amount, 0) };
   }
 
-  // ---------------------------------------------------------------- السلف (بأقساط تُخصم من الراتب)
+  // ---------------------------------------------------------------- السحب من الراتب: جزء من الراتب يُدفع مبكراً ويُخصم كاملاً عند الصرف
   const viewAdv = (a, pays) => {
     const repaid = pays.flatMap((p) => p.advanceParts ?? []).filter((x) => x.advanceId === a._id).reduce((x, y) => x + y.amount, 0);
     return { id: a._id, employeeId: a.employeeId, employeeName: a.employeeName, amount: a.amount, installments: a.installments, perMonth: a.perMonth,
@@ -3535,7 +3561,8 @@ function createHr(ctx) {
     const emp = await EMP().findOne({ _id: checkId(input.employeeId, 'employeeId') });
     if (!emp || !emp.active) throw notFound();
     const amount = int(input.amount, { field: 'amount', min: 1, max: 100_000_000 });
-    const installments = int(input.installments ?? 1, { field: 'installments', min: 1, max: 12 });
+    // سحب من الراتب: يُخصم كاملاً من راتب الشهر عند الصرف (لا أقساط)
+    const installments = 1;
     const note = str(input.note, { field: 'note', max: 120, optional: true });
     const pol = await policy();
     const pays = await PAY().find({ employeeId: emp._id }).toArray();
@@ -3546,8 +3573,8 @@ function createHr(ctx) {
     }
     const thisMonth = localDate(now(), await tz()).slice(0, 7);
     const startMonth = pays.some((p) => p.month === thisMonth) ? addMonths(thisMonth, 1) : thisMonth;
-    // السلفة نقد خرج من المقهى: تُسجَّل مصروفاً (سلف موظفين) فتبقى المصروفات = ما دُفع فعلاً، وقسطها يُنقص صافي الراتب لاحقاً
-    const expense = await ctx.expenses.create(actor, { clientId: `adv-${clientId}`.slice(0, 64), amount, category: 'advances', note: `سلفة ${emp.name}${note ? ` — ${note}` : ''}`.slice(0, 120), fromDrawer: input.fromDrawer === true }, { ref: 'advance' });
+    // السحب جزء من الراتب دُفع مبكراً: يُسجَّل مصروف «رواتب» يوم دفعه، ويُخصم من صافي راتب الشهر عند الصرف (المجموع = الراتب المستحق)
+    const expense = await ctx.expenses.create(actor, { clientId: `adv-${clientId}`.slice(0, 64), amount, category: 'salaries', note: `سحب من راتب ${emp.name}${note ? ` — ${note}` : ''}`.slice(0, 120), fromDrawer: input.fromDrawer === true }, { ref: 'advance' });
     const doc = { _id: newId(), clientId, employeeId: emp._id, employeeName: emp.name, amount, installments, perMonth: Math.ceil(amount / installments), startMonth, note,
       fromDrawer: input.fromDrawer === true, expenseId: expense.id, by: actor.id, byName: actor.name, createdAt: now() };
     try { await ADV().insertOne(doc); } catch (e) { if (isDup(e)) return viewAdv(await ADV().findOne({ clientId }), pays); throw e; }
@@ -5439,7 +5466,7 @@ async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
         }
         if (day === 3) {
           const cashier = employees.find((e) => e.role === 'cashier');
-          await call('POST', '/api/hr/advances', { clientId: crypto.randomUUID(), employeeId: cashier.id, amount: 150000, installments: 3, note: 'ظرف عائلي' });
+          await call('POST', '/api/hr/advances', { clientId: crypto.randomUUID(), employeeId: cashier.id, amount: 50000, note: 'ظرف عائلي' });
         }
         // حوافز وغرامات متفرقة كما في أسبوع عمل حقيقي
         const pickEmp = employees.find((e) => e.role === pick(['cashier', 'barista']));
@@ -5690,10 +5717,11 @@ const ERRORS = {
   LEAVE_BALANCE: 'رصيد الإجازة السنوية لا يكفي لهذه المدة.',
   LEAVE_ALREADY_DECIDED: 'سبق البت في هذا الطلب.',
   NO_HOURS: 'لا ساعات عمل مسجّلة في هذا الشهر لتوزيع الحوافز عليها.',
+  PRICE_REQUIRED: 'للدفع من الدرج أدخل مبلغ كل سطر.',
   PAYROLL_LOCKED: 'صُرف راتب هذا الشهر لهذا الموظف، فالقسيمة مقفلة. ألغِ الصرف أولاً إن أردت التعديل.',
-  ADVANCE_LIMIT: 'السلفة تتجاوز الحد المسموح من الراتب.',
-  ADVANCE_IN_USE: 'خُصم من هذه السلفة في راتب مصروف، فلا يمكن إلغاؤها.',
-  EXPENSE_LINKED: 'هذا المصروف مرتبط بالموارد البشرية (راتب أو سلفة). ألغِه من هناك.',
+  ADVANCE_LIMIT: 'مجموع السحوبات أكبر من راتب الموظف.',
+  ADVANCE_IN_USE: 'خُصم هذا السحب من راتب مصروف، فلا يمكن إلغاؤه.',
+  EXPENSE_LINKED: 'هذا المصروف مرتبط بالموارد البشرية (راتب أو سحب من الراتب). ألغِه من هناك.',
   INVALID_TIME: 'وقت غير صحيح في جدول الدوام.',
   NO_CHANGE: 'لم يتغير شيء: الكمية والسعر كما هما.',
   OUT_OF_STOCK: 'هذا الصنف غير متوفر حالياً — نفد من المخزون.',
@@ -5736,7 +5764,7 @@ const ERRORS = {
 function errorText(e) {
   if (!e) return '';
   if (e.code === 'OUT_OF_STOCK' && e.detail) return `«${e.detail}» غير متوفر حالياً — نفد من المخزون.`;
-  if (e.code === 'ADVANCE_LIMIT' && e.detail) return `السلفة تتجاوز الحد المسموح من الراتب. المتاح الآن ${Number(e.detail).toLocaleString('en-US')} د.ع.`;
+  if (e.code === 'ADVANCE_LIMIT' && e.detail) return `مجموع السحوبات أكبر من راتب الموظف. المتاح للسحب الآن ${Number(e.detail).toLocaleString('en-US')} د.ع.`;
   if (e.code === 'LEAVE_BALANCE' && e.detail) return `رصيد الإجازة السنوية لا يكفي: المتبقي ${e.detail} يوم.`;
   return ERRORS[e.code] ?? e.message ?? 'حدث خطأ';
 }
@@ -7677,8 +7705,8 @@ const { del, get, post, uid } = __m_public_js_api_js;
 const { icon } = __m_public_js_icons_js;
 const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
 const { printHtml } = __m_public_js_views_receipts_js;
-// الموارد البشرية: صفحة «سجلي» لكل موظف (حضور/انصراف، ساعاته، تأخيره وغيابه، حوافزه وغراماته، إجازاته، قسيمة راتبه وسلفه)،
-// وقسم الإدارة (الموظفون والأداء، الحاضرون، التأخير والغياب، جدول الدوام، الإجازات، السلف، الرواتب، موظف الشهر، الإعدادات).
+// الموارد البشرية: صفحة «سجلي» لكل موظف (حضور/انصراف، ساعاته، تأخيره وغيابه، حوافزه وغراماته، إجازاته، قسيمة راتبه وسحوباته من الراتب)،
+// وقسم الإدارة (الموظفون والأداء، الحاضرون، التأخير والغياب، جدول الدوام، الإجازات، السحوبات من الراتب، الرواتب، موظف الشهر، الإعدادات).
 
 
 
@@ -7748,11 +7776,11 @@ function recordView(r, { self }) {
       ${r.leaves.map((l) => `<div class="r-line"><span>${esc(l.typeName)} · ${esc(l.from)} → ${esc(l.to)} <span class="muted small">(${l.days} يوم${l.paid ? '، مدفوعة' : ''})</span>${l.reason ? ` <span class="muted small">— ${esc(l.reason)}</span>` : ''}</span>
         <span class="pill ${STATUS[l.status][1]}">${STATUS[l.status][0]}</span></div>`).join('') || '<p class="muted">لا إجازات</p>'}
     </section>
-    ${(r.advances ?? []).length ? `<section class="card pad stack"><h2>السلف</h2>${r.advances.map(advLine).join('')}</section>` : ''}`;
+    ${(r.advances ?? []).length ? `<section class="card pad stack"><h2>السحب من الراتب</h2>${r.advances.map(advLine).join('')}</section>` : ''}`;
 }
 
-const advLine = (a) => `<div class="r-line"><span>${money(a.amount)} <span class="muted small">${esc(localDate(a.createdAt, tz()))} · ${a.installments} قسط × ${money(a.perMonth)} من ${esc(a.startMonth)}${a.note ? ` — ${esc(a.note)}` : ''}</span></span>
-  <span class="pill ${a.remaining ? 'warn' : 'ok'}">${a.remaining ? `متبقٍ ${money(a.remaining)}` : 'سُدّدت'}</span></div>`;
+const advLine = (a) => `<div class="r-line"><span>${money(a.amount)} <span class="muted small">${esc(localDate(a.createdAt, tz()))} · يُخصم من راتب ${esc(a.startMonth)}${a.note ? ` — ${esc(a.note)}` : ''}</span></span>
+  <span class="pill ${a.remaining ? 'warn' : 'ok'}">${a.remaining ? (a.repaid ? `خُصم ${money(a.repaid)}، والباقي ${money(a.remaining)} من الراتب القادم` : 'يُخصم عند صرف الراتب') : 'خُصم من الراتب'}</span></div>`;
 
 function scheduleText(sch) {
   if (!sch) return 'بلا جدول';
@@ -7779,7 +7807,7 @@ function payLines(x) {
     ['غرامات', x.fine, -1],
     [`إجازة بلا راتب (${x.unpaidLeaveDays} يوم)`, x.leaveDeduction, -1],
     [`غياب (${x.absentDays} يوم)`, x.absenceDeduction, -1],
-    ['قسط السلفة', x.advance, -1],
+    ['سحب من الراتب خلال الشهر', x.advance, -1],
   ].filter(([, v]) => v);
 }
 
@@ -7852,12 +7880,12 @@ function hrPage() {
   const owner = can('admin.employees');
   const lateOpen = (d?.late ?? []).filter((l) => !l.fined).length;
   const TABS = [['team', 'الموظفون والأداء'], ['present', 'الحاضرون الآن'], ['late', `التأخير والغياب${lateOpen ? ` (${lateOpen})` : ''}`], ['schedule', 'جدول الدوام'],
-    ['leaves', `الإجازات${d?.pending.length ? ` (${d.pending.length})` : ''}`], ['advances', 'السلف'], ...(owner ? [['payroll', 'الرواتب']] : [])];
+    ['leaves', `الإجازات${d?.pending.length ? ` (${d.pending.length})` : ''}`], ['advances', 'السحب من الراتب'], ...(owner ? [['payroll', 'الرواتب']] : [])];
   const head = `<div class="page-head"><h1>الموارد البشرية</h1><input type="month" id="hr-month" value="${esc(h.month)}" max="${thisMonth()}" data-change="hr-month" aria-label="الشهر">
       <span class="spacer"></span>
       <button class="btn" data-action="hr-adj-new" data-type="bonus">${icon('plus', 'sm')} حافز</button>
       <button class="btn" data-action="hr-adj-new" data-type="fine">${icon('minus', 'sm')} غرامة</button>
-      <button class="btn" data-action="hr-adv-new">${icon('wallet', 'sm')} سلفة</button>
+      <button class="btn" data-action="hr-adv-new">${icon('wallet', 'sm')} سحب من الراتب</button>
       <button class="btn" data-action="hr-pool">توزيع حوافز حسب الساعات</button>
       <button class="btn primary" data-action="hr-award">${icon('star', 'sm')} موظف الشهر</button>
       ${owner ? `<button class="icon-btn" data-action="hr-policy" title="إعدادات الموارد البشرية" aria-label="إعدادات الموارد البشرية">${icon('gear')}</button>` : ''}</div>
@@ -7893,10 +7921,10 @@ function hrPage() {
         ${WEEK_ORDER.map((i) => `<td class="num small">${p.schedule?.[i] ? `${p.schedule[i].start}–${p.schedule[i].end}` : '<span class="muted">عطلة</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`,
     advances: () => {
       const list = h.advances;
-      if (!owner && !list) return '<p class="muted small">السلف وأرصدتها يراها المالك في تبويب الرواتب. يمكنك تسجيل سلفة جديدة من الزر أعلاه.</p>';
+      if (!owner && !list) return '<p class="muted small">السحوبات يراها المالك في تبويب الرواتب. يمكنك تسجيل سحب جديد من الزر أعلاه.</p>';
       return `${(list ?? []).map((a) => `<div class="card pad row wrap"><div style="flex:1;min-width:0"><b>${esc(a.employeeName)}</b> ${advLine(a)}</div>
-        ${!a.repaid ? `<button class="btn sm ghost danger" data-action="hr-adv-cancel" data-id="${a.id}">إلغاء</button>` : ''}</div>`).join('') || '<p class="muted">لا سلف قائمة</p>'}
-        <p class="muted small">السلفة تُسجَّل مصروفاً (سلف موظفين) يوم صرفها، وأقساطها تُخصم تلقائياً من الراتب عند الصرف.</p>`;
+        ${!a.repaid ? `<button class="btn sm ghost danger" data-action="hr-adv-cancel" data-id="${a.id}">إلغاء</button>` : ''}</div>`).join('') || '<p class="muted">لا سحوبات لم تُخصم بعد</p>'}
+        <p class="muted small">السحب جزء من الراتب يُدفع مبكراً: يُسجَّل ضمن الرواتب يوم دفعه، ويُخصم كاملاً من صافي راتب الشهر عند الصرف.</p>`;
     },
     payroll: () => payrollView(h),
     team: () => {
@@ -7924,10 +7952,10 @@ function payrollView(h) {
   return `<div class="kpis"><div class="kpi lead"><span class="label">صافي رواتب ${esc(p.month)}</span><b>${money(p.totals.net)}</b><span class="small">${p.rows.length} موظف</span></div>
       <div class="kpi"><span class="label">مصروف</span><b style="color:var(--ok)">${money(p.totals.paid)}</b></div>
       <div class="kpi"><span class="label">لم يُصرف</span><b style="color:var(--warn)">${money(p.totals.unpaid)}</b></div>
-      <div class="kpi"><span class="label">أقساط السلف</span><b>${money(p.totals.advance)}</b></div></div>
+      <div class="kpi"><span class="label">سحوبات مخصومة</span><b>${money(p.totals.advance)}</b></div></div>
     <div class="row wrap"><label class="row small" style="gap:6px;flex:1"><input type="checkbox" id="pay-drawer" ${h.payFromDrawer ? 'checked' : ''} data-change="hr-pay-drawer"> الدفع من درج الوردية المفتوحة (وإلا: من خارج الدرج)</label>
       ${unpaid.length ? `<button class="btn primary" data-action="hr-pay" data-id="">${icon('cash', 'sm')} صرف كل الرواتب (${money(unpaid.reduce((a, r) => a + r.net, 0))})</button>` : ''}</div>
-    <div class="table-wrap"><table><thead><tr><th>الموظف</th><th>الأجر</th><th class="num">المستحق</th><th class="num">الخصومات</th><th class="num">السلفة</th><th class="num">الصافي</th><th></th></tr></thead><tbody>
+    <div class="table-wrap"><table><thead><tr><th>الموظف</th><th>الأجر</th><th class="num">المستحق</th><th class="num">الخصومات</th><th class="num">السحوبات</th><th class="num">الصافي</th><th></th></tr></thead><tbody>
     ${p.rows.map((r) => {
       const plus = r.base + r.overtimePay + r.bonus;
       const minus = r.fine + r.leaveDeduction + r.absenceDeduction;
@@ -7937,7 +7965,7 @@ function payrollView(h) {
           ${r.paid ? `<span class="pill ok">مصروف</span><button class="btn sm ghost danger" data-action="hr-pay-cancel" data-id="${r.id}">إلغاء</button>` : `<button class="btn sm primary" data-action="hr-pay" data-id="${r.employeeId}">صرف</button>`}</td></tr>`;
     }).join('') || '<tr><td colspan="7" class="muted">لا موظفين</td></tr>'}</tbody></table></div>
     <p class="muted small">الصرف يُقفل قسيمة الشهر (لا تتغير حوافزه وغراماته وحضوره) ويسجّل الصافي مصروف «رواتب» فيظهر في صافي الربح. إلغاء الصرف يحذف المصروف ويفتح الشهر.</p>
-    ${p.advances.length ? `<section class="card pad stack"><h2>السلف القائمة</h2>${p.advances.map((a) => `<div class="row wrap"><b>${esc(a.employeeName)}</b> <div style="flex:1">${advLine(a)}</div>${!a.repaid ? `<button class="btn sm ghost danger" data-action="hr-adv-cancel" data-id="${a.id}">إلغاء</button>` : ''}</div>`).join('')}</section>` : ''}`;
+    ${p.advances.length ? `<section class="card pad stack"><h2>سحوبات من الراتب لم تُخصم بعد</h2>${p.advances.map((a) => `<div class="row wrap"><b>${esc(a.employeeName)}</b> <div style="flex:1">${advLine(a)}</div>${!a.repaid ? `<button class="btn sm ghost danger" data-action="hr-adv-cancel" data-id="${a.id}">إلغاء</button>` : ''}</div>`).join('')}</section>` : ''}`;
 }
 
 /** تقسيم مبلغ على الساعات كما يفعل الخادم (للمعاينة قبل التأكيد) */
@@ -7978,13 +8006,12 @@ const modals = {
   },
   'hr-adv'(s) {
     const rows = (H().data?.rows ?? []).filter((r) => r.active);
-    return modalFrame({ title: 'سلفة لموظف', body: `<form class="stack" data-form="hr-adv-save" id="hr-adv-form">
+    return modalFrame({ title: 'سحب من الراتب', body: `<form class="stack" data-form="hr-adv-save" id="hr-adv-form">
       ${field('الموظف', `<select name="employeeId" id="adv-emp">${rows.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select>`)}
-      <div class="grid-2">${field('المبلغ (د.ع)', '<input class="amount-input" name="amount" id="adv-amount" inputmode="numeric" required autocomplete="off">')}
-        ${field('عدد الأقساط', `<select name="installments" id="adv-inst">${[1, 2, 3, 4, 5, 6, 8, 10, 12].map((n) => `<option value="${n}">${n === 1 ? 'دفعة واحدة' : `${n} أشهر`}</option>`).join('')}</select>`, 'تُخصم من الراتب ابتداءً من هذا الشهر')}</div>
+      ${field('المبلغ (د.ع)', '<input class="amount-input" name="amount" id="adv-amount" inputmode="numeric" required autocomplete="off">', 'يُخصم كاملاً من راتب هذا الشهر عند الصرف')}
       ${field('ملاحظة', '<input name="note" id="adv-note" maxlength="120">')}
       ${s.shift && can('shift.cash') ? '<label class="row small" style="gap:6px"><input type="checkbox" name="fromDrawer" id="adv-drawer" checked> صُرفت نقداً من درج الوردية المفتوحة (تُسجَّل سحباً منه)</label>' : ''}
-      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل السلفة</button></form>` });
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل السحب</button></form>` });
   },
   'hr-policy'(s) {
     const p = s.modal.policy;
@@ -7992,8 +8019,7 @@ const modals = {
       <div class="grid-3">${field('سماح التأخير (دقيقة)', `<input name="graceMin" id="po-grace" inputmode="numeric" value="${p.graceMin}">`)}
         ${field('غرامة التأخير (د.ع)', `<input name="lateFine" id="po-fine" inputmode="numeric" value="${p.lateFine}">`, '0 = بلا غرامة مقترحة')}
         ${field('لكل (دقيقة)', `<input name="lateStepMin" id="po-step" inputmode="numeric" value="${p.lateStepMin}">`)}</div>
-      <div class="grid-2">${field('أجر الساعة الإضافية (د.ع)', `<input name="overtimeHourly" id="po-ot" inputmode="numeric" value="${p.overtimeHourly}">`, 'للراتب الشهري فقط. 0 = بلا')}
-        ${field('حد السلف من الراتب (%)', `<input name="advanceMaxPct" id="po-adv" inputmode="numeric" value="${p.advanceMaxBp / 100}">`, '0 = بلا حد')}</div>
+      ${field('أجر الساعة الإضافية (د.ع)', `<input name="overtimeHourly" id="po-ot" inputmode="numeric" value="${p.overtimeHourly}">`, 'للراتب الشهري فقط. 0 = بلا')}
       <label class="row small" style="gap:6px"><input type="checkbox" name="deductAbsence" id="po-abs" ${p.deductAbsence ? 'checked' : ''}> خصم أيام الغياب من الراتب الشهري (أجر اليوم = الراتب ÷ 30)</label>
       <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ</button></form>` });
   },
@@ -8170,24 +8196,24 @@ on({
   'hr-adv-save': (_el, _e, d) => busy(async () => {
     const amount = parseAmount(d.amount);
     if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('أدخل مبلغاً صحيحاً');
-    await post('/api/hr/advances', { clientId: state.modal.clientId, employeeId: d.employeeId, amount, installments: Number(d.installments), note: d.note || null, fromDrawer: d.fromDrawer === 'on' });
+    await post('/api/hr/advances', { clientId: state.modal.clientId, employeeId: d.employeeId, amount, note: d.note || null, fromDrawer: d.fromDrawer === 'on' });
     state.modal = null;
-    toast('سُجّلت السلفة', 'ok');
+    toast('سُجّل السحب من الراتب', 'ok');
     await loadHr();
   }),
   'hr-adv-cancel': (el) => busy(async () => {
     const h = H();
-    if (h.confirmAdv !== el.dataset.id) { h.confirmAdv = el.dataset.id; toast('اضغط مرة أخرى لإلغاء السلفة وحذف مصروفها'); return; }
+    if (h.confirmAdv !== el.dataset.id) { h.confirmAdv = el.dataset.id; toast('اضغط مرة أخرى لإلغاء السحب وحذف مصروفه'); return; }
     await del(`/api/hr/advances/${el.dataset.id}`);
     h.confirmAdv = null;
-    toast('أُلغيت السلفة', 'ok');
+    toast('أُلغي السحب', 'ok');
     await loadHr();
   }),
   'hr-policy': () => busy(async () => openModal({ type: 'hr-policy', policy: await get('/api/hr/policy') })),
   'hr-policy-save': (_el, _e, d) => busy(async () => {
     const n = (v, label) => { const x = parseAmount(String(v ?? '0')); if (!Number.isSafeInteger(x) || x < 0) throw new Error(`قيمة غير صحيحة: ${label}`); return x; };
     await post('/api/hr/policy', { graceMin: n(d.graceMin, 'السماح'), lateFine: n(d.lateFine, 'الغرامة'), lateStepMin: Math.max(1, n(d.lateStepMin, 'الدقائق')),
-      overtimeHourly: n(d.overtimeHourly, 'الإضافي'), advanceMaxBp: n(d.advanceMaxPct, 'حد السلف') * 100, deductAbsence: d.deductAbsence === 'on' });
+      overtimeHourly: n(d.overtimeHourly, 'الإضافي'), deductAbsence: d.deductAbsence === 'on' });
     state.modal = null;
     toast('حُفظت الإعدادات', 'ok');
     await loadHr();
@@ -8370,7 +8396,7 @@ const PAGES = {
       <div class="table-wrap"><table><thead><tr><th>اليوم</th><th>البند</th><th>ملاحظة</th><th>بواسطة</th><th class="num">المبلغ</th><th></th></tr></thead>
       <tbody>${e.rows.map((x) => `<tr><td class="small">${esc(x.day)}</td><td><b>${esc(x.categoryName)}</b>${x.fromDrawer ? ' <span class="pill">من الدرج</span>' : ''}</td>
         <td class="small">${esc(x.note ?? '')}</td><td class="small">${esc(x.byName ?? '')}</td><td class="num">${money(x.amount)}</td>
-        <td>${x.ref ? `<a class="pill" href="#/admin/hr" title="يُلغى من الموارد البشرية">${x.ref === 'payroll' ? 'راتب' : 'سلفة'}</a>` : `<button class="icon-btn" data-action="exp-delete" data-id="${x.id}" aria-label="حذف">${icon('trash', 'sm')}</button>`}</td></tr>`).join('')
+        <td>${x.ref ? `<a class="pill" href="#/admin/hr" title="يُلغى من الموارد البشرية">${x.ref === 'payroll' ? 'راتب' : 'سحب من الراتب'}</a>` : `<button class="icon-btn" data-action="exp-delete" data-id="${x.id}" aria-label="حذف">${icon('trash', 'sm')}</button>`}</td></tr>`).join('')
         || '<tr><td colspan="6" class="muted">لا مصروفات في هذه الفترة</td></tr>'}</tbody></table></div>
       <p class="muted small">المصروفات تُطرح من الربح الإجمالي في التقرير اليومي والتقارير ليظهر صافي الربح. المصروف المدفوع من الدرج يُسجَّل أيضاً كسحب من الوردية.</p>`;
   },
@@ -8605,12 +8631,12 @@ const PAGES = {
 const neg = (v) => (v ? `−${money(v)}` : money(0));
 const latin = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', other: 'أخرى' };
-const EXPENSE_NAMES = { ...EXPENSE_CATS, advances: 'سلف موظفين' }; // السلف تُسجَّل من الموارد البشرية فقط
+const EXPENSE_NAMES = { ...EXPENSE_CATS, advances: 'سحوبات من الرواتب' }; // بند قديم: السحوبات الآن ضمن «رواتب»
 
 // ---------------------------------------------------------------- سجل العمليات
 const AUDIT_LABELS = {
   'receipt.refund': 'استرجاع', 'receipt.cancel': 'إلغاء طلب', 'inventory.receive_fix': 'تصحيح استلام', 'inventory.threshold': 'تعديل حد التنبيه', 'inventory.shortfall': 'بيع بنقص مخزون',
-  'hr.bonus': 'حافز', 'hr.fine': 'غرامة', 'hr.adjustment_delete': 'حذف حافز/غرامة', 'hr.attendance_fix': 'تصحيح حضور', 'hr.leave_approved': 'موافقة إجازة', 'hr.leave_rejected': 'رفض إجازة', 'hr.award': 'موظف الشهر', 'hr.policy': 'إعدادات الموارد البشرية', 'hr.profile': 'ملف موظف', 'hr.advance': 'سلفة', 'hr.advance_cancel': 'إلغاء سلفة', 'hr.payroll_pay': 'صرف راتب', 'hr.payroll_cancel': 'إلغاء صرف راتب', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
+  'hr.bonus': 'حافز', 'hr.fine': 'غرامة', 'hr.adjustment_delete': 'حذف حافز/غرامة', 'hr.attendance_fix': 'تصحيح حضور', 'hr.leave_approved': 'موافقة إجازة', 'hr.leave_rejected': 'رفض إجازة', 'hr.award': 'موظف الشهر', 'hr.policy': 'إعدادات الموارد البشرية', 'hr.profile': 'ملف موظف', 'hr.advance': 'سحب من الراتب', 'hr.advance_cancel': 'إلغاء سحب من الراتب', 'hr.payroll_pay': 'صرف راتب', 'hr.payroll_cancel': 'إلغاء صرف راتب', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
   'inventory.receive': 'استلام مخزون', 'inventory.loss': 'هدر/تالف', 'inventory.count': 'جرد', 'inventory.adjust': 'تعديل مخزون', 'inventory.reconcile': 'مطابقة المخزون',
   'item.create': 'صنف جديد', 'item.update': 'تعديل صنف/سعر', 'items.archive': 'أرشفة صنف', 'categories.archive': 'أرشفة تصنيف', 'modifiers.archive': 'أرشفة إضافة',
   'shift.open': 'فتح وردية', 'shift.close': 'إغلاق وردية', 'shift.pay_in': 'إدخال نقد للدرج', 'shift.pay_out': 'سحب نقد من الدرج',
@@ -8656,12 +8682,11 @@ function spendingPanel(sp) {
   return `<div class="grid-2" style="align-items:start">
     <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">خرج من المقهى</h2><b class="num">${money(c.total)}</b></div>
       ${line('مصروفات التشغيل', c.operating, { note: Object.entries(c.byCategory).map(([k, v]) => `${EXPENSE_NAMES[k] ?? k} ${money(v)}`).join('، ') })}
-      ${line('رواتب مصروفة', c.salaries, { href: '#/admin/hr', note: 'تشمل الحوافز ناقص الغرامات' })}
-      ${line('سلف الموظفين', c.advances, { href: '#/admin/hr', note: 'تُسترد من الرواتب' })}
-      ${line('مشتريات المخزون', c.purchases, { href: '#/admin/inventory', note: c.purchasesNoCost ? `و${c.purchasesNoCost} استلام بلا سعر` : 'من الاستلام وتصحيحاته' })}</section>
+      ${line('الرواتب', c.salaries, { href: '#/admin/hr', note: `تشمل الحوافز ناقص الغرامات${c.advances ? `، ومنها سحوبات خلال الشهر ${money(c.advances)}` : ''}` })}
+      ${line('مشتريات المخزون', c.purchases, { href: '#/admin/inventory', note: [c.purchasesFromDrawer ? `منها ${money(c.purchasesFromDrawer)} من الدرج` : 'من الاستلام وتصحيحاته', c.purchasesNoCost ? `و${c.purchasesNoCost} استلام بلا سعر` : ''].filter(Boolean).join(' · ') })}</section>
     <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">من الربح</h2><b class="num" style="color:${sp.profit.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sp.profit.netProfit)}</b></div>
       ${line('الربح الإجمالي', sp.profit.profit, { href: '#/admin/reports', note: `بعد تكلفة ما بيع ${money(sp.costs.cogs)}` })}
-      ${line('المصروفات والرواتب والسلف', sp.profit.expenses, { neg: true })}
+      ${line('المصروفات والرواتب', sp.profit.expenses, { neg: true })}
       ${line('نقص المخزون', sp.costs.stockLoss, { href: '#/admin/inventory', neg: true, note: 'هدر وفروقات جرد بتكلفتها' })}
       <div class="r-line"><b>صافي الربح</b><b class="num">${money(sp.profit.netProfit)}</b></div>
       <p class="muted small" style="margin:0">ومن غير نقد: خصومات للزبائن ${money(sp.costs.discounts)} (مطروحة من المبيعات)، هدر الطلبات الملغاة ${money(sp.costs.waste)} (ضمن التكلفة)، حوافز مسجّلة ${money(sp.hr.bonuses)} وغرامات ${money(sp.hr.fines)} (تدخل الرواتب عند الصرف). المشتريات لا تُطرح من الربح مرة ثانية: الربح يحسب تكلفة المكونات التي بيعت فعلاً.</p></section></div>`;
@@ -8923,11 +8948,12 @@ const modals = {
       ${m.scanned ? `<div class="card pad small" style="background:var(--surface-2)">${icon('check', 'sm')} قُرئت الفاتورة${m.supplier ? ` من <b>${esc(m.supplier)}</b>` : ''}${m.invoiceTotal ? ` · إجمالي الفاتورة ${money(m.invoiceTotal)}` : ''}.
         <b>راجع كل سطر قبل التأكيد</b> — الأسطر المظللة تحتاج اختيار مادة أو كمية.</div>` : ''}
       ${field('المورد (اختياري)', `<input id="rcv-supplier" data-input="rcv-supplier" value="${esc(m.supplier ?? '')}" maxlength="60" placeholder="اسم المورد أو رقم الفاتورة">`)}
+      ${s.shift && can('shift.cash') ? `<label class="check"><input type="checkbox" id="rcv-drawer" data-change="rcv-drawer" ${m.fromDrawer ? 'checked' : ''}> دُفعت نقداً من درج الوردية الحالية (يُسجَّل سحباً من الدرج بمجموع الأسطر)</label>` : ''}
       <div class="stack" style="gap:10px">${rows || '<p class="muted">لا أسطر بعد. أضف سطراً لكل مادة مستلمة.</p>'}</div>
       <button type="button" class="btn sm" data-action="rcv-add">${icon('plus', 'sm')} سطر</button>
       ${items.length ? '' : '<p class="muted small">لا توجد مواد مخزون بعد. أضفها من الأصناف بنوع «مكوّن» أولاً.</p>'}`;
     const foot = `<div class="muted small" style="align-self:center;flex:none">${m.lines.length ? `المجموع ${money(sum)}${m.invoiceTotal && sum !== m.invoiceTotal ? ` <span class="pill warn">يختلف عن الفاتورة</span>` : ''}` : ''}</div>
-      <button class="btn primary" data-action="rcv-submit" ${ready.length && !invalid && !s.busy ? '' : 'disabled'}>${invalid ? `أكمل ${invalid} ${invalid === 1 ? 'سطر' : 'أسطر'}` : `${icon('check', 'sm')} تأكيد وإضافة للمخزون (${ready.length})`}</button>`;
+      <button class="btn primary" data-action="rcv-submit" ${ready.length && !invalid && !s.busy ? '' : 'disabled'}>${invalid ? `أكمل ${invalid} ${invalid === 1 ? 'سطر' : 'أسطر'}` : `${icon('check', 'sm')} تأكيد وإضافة للمخزون (${ready.length})${m.fromDrawer ? ' ودفع من الدرج' : ''}`}</button>`;
     return modalFrame({ title: 'استلام مشتريات', cls: 'wide', body, foot });
   },
 
@@ -9266,6 +9292,7 @@ on({
     render();
   },
   'rcv-supplier': (el) => { state.modal.supplier = el.value; },
+  'rcv-drawer': (el) => { state.modal.fromDrawer = el.checked; render(); },
   // سطر عُدّل = عملية جديدة (مفتاح جديد)؛ إعادة إرسال سطر لم يتغير لا تكرره
   'rcv-field': (el) => { const l = state.modal.lines[Number(el.dataset.i)]; l[el.dataset.k] = el.value; l.id = uid(); render(); },
   'rcv-add': () => { state.modal.lines.push(blankLine()); render(); },
@@ -9273,9 +9300,10 @@ on({
   'rcv-submit': () => busy(async () => {
     const m = state.modal;
     const lines = m.lines.map((l) => ({ id: l.id, variantId: l.variantId, qty: num(String(l.qty), 'الكمية'), total: l.total === '' || l.total === null ? null : num(String(l.total), 'المبلغ') }));
-    const r = await post('/api/admin/inventory/receive', { supplier: m.supplier || null, lines });
+    if (m.fromDrawer && lines.some((l) => l.total === null)) throw new Error('للدفع من الدرج أدخل مبلغ كل سطر');
+    const r = await post('/api/admin/inventory/receive', { supplier: m.supplier || null, lines, fromDrawer: m.fromDrawer === true });
     state.modal = null;
-    toast(`أُضيفت ${r.received} ${r.received === 1 ? 'مادة' : 'مواد'} إلى المخزون`, 'ok');
+    toast(`أُضيفت ${r.received} ${r.received === 1 ? 'مادة' : 'مواد'} إلى المخزون${r.paidFromDrawer ? ` · سُحب ${money(r.paidFromDrawer)} من الدرج` : ''}`, 'ok');
     state.catalog = null;
     await loadSection('inventory');
   }),

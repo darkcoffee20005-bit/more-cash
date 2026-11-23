@@ -121,7 +121,7 @@ const PAGES = {
       <div class="table-wrap"><table><thead><tr><th>اليوم</th><th>البند</th><th>ملاحظة</th><th>بواسطة</th><th class="num">المبلغ</th><th></th></tr></thead>
       <tbody>${e.rows.map((x) => `<tr><td class="small">${esc(x.day)}</td><td><b>${esc(x.categoryName)}</b>${x.fromDrawer ? ' <span class="pill">من الدرج</span>' : ''}</td>
         <td class="small">${esc(x.note ?? '')}</td><td class="small">${esc(x.byName ?? '')}</td><td class="num">${money(x.amount)}</td>
-        <td>${x.ref ? `<a class="pill" href="#/admin/hr" title="يُلغى من الموارد البشرية">${x.ref === 'payroll' ? 'راتب' : 'سلفة'}</a>` : `<button class="icon-btn" data-action="exp-delete" data-id="${x.id}" aria-label="حذف">${icon('trash', 'sm')}</button>`}</td></tr>`).join('')
+        <td>${x.ref ? `<a class="pill" href="#/admin/hr" title="يُلغى من الموارد البشرية">${x.ref === 'payroll' ? 'راتب' : 'سحب من الراتب'}</a>` : `<button class="icon-btn" data-action="exp-delete" data-id="${x.id}" aria-label="حذف">${icon('trash', 'sm')}</button>`}</td></tr>`).join('')
         || '<tr><td colspan="6" class="muted">لا مصروفات في هذه الفترة</td></tr>'}</tbody></table></div>
       <p class="muted small">المصروفات تُطرح من الربح الإجمالي في التقرير اليومي والتقارير ليظهر صافي الربح. المصروف المدفوع من الدرج يُسجَّل أيضاً كسحب من الوردية.</p>`;
   },
@@ -356,12 +356,12 @@ const PAGES = {
 const neg = (v) => (v ? `−${money(v)}` : money(0));
 const latin = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', other: 'أخرى' };
-const EXPENSE_NAMES = { ...EXPENSE_CATS, advances: 'سلف موظفين' }; // السلف تُسجَّل من الموارد البشرية فقط
+const EXPENSE_NAMES = { ...EXPENSE_CATS, advances: 'سحوبات من الرواتب' }; // بند قديم: السحوبات الآن ضمن «رواتب»
 
 // ---------------------------------------------------------------- سجل العمليات
 const AUDIT_LABELS = {
   'receipt.refund': 'استرجاع', 'receipt.cancel': 'إلغاء طلب', 'inventory.receive_fix': 'تصحيح استلام', 'inventory.threshold': 'تعديل حد التنبيه', 'inventory.shortfall': 'بيع بنقص مخزون',
-  'hr.bonus': 'حافز', 'hr.fine': 'غرامة', 'hr.adjustment_delete': 'حذف حافز/غرامة', 'hr.attendance_fix': 'تصحيح حضور', 'hr.leave_approved': 'موافقة إجازة', 'hr.leave_rejected': 'رفض إجازة', 'hr.award': 'موظف الشهر', 'hr.policy': 'إعدادات الموارد البشرية', 'hr.profile': 'ملف موظف', 'hr.advance': 'سلفة', 'hr.advance_cancel': 'إلغاء سلفة', 'hr.payroll_pay': 'صرف راتب', 'hr.payroll_cancel': 'إلغاء صرف راتب', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
+  'hr.bonus': 'حافز', 'hr.fine': 'غرامة', 'hr.adjustment_delete': 'حذف حافز/غرامة', 'hr.attendance_fix': 'تصحيح حضور', 'hr.leave_approved': 'موافقة إجازة', 'hr.leave_rejected': 'رفض إجازة', 'hr.award': 'موظف الشهر', 'hr.policy': 'إعدادات الموارد البشرية', 'hr.profile': 'ملف موظف', 'hr.advance': 'سحب من الراتب', 'hr.advance_cancel': 'إلغاء سحب من الراتب', 'hr.payroll_pay': 'صرف راتب', 'hr.payroll_cancel': 'إلغاء صرف راتب', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
   'inventory.receive': 'استلام مخزون', 'inventory.loss': 'هدر/تالف', 'inventory.count': 'جرد', 'inventory.adjust': 'تعديل مخزون', 'inventory.reconcile': 'مطابقة المخزون',
   'item.create': 'صنف جديد', 'item.update': 'تعديل صنف/سعر', 'items.archive': 'أرشفة صنف', 'categories.archive': 'أرشفة تصنيف', 'modifiers.archive': 'أرشفة إضافة',
   'shift.open': 'فتح وردية', 'shift.close': 'إغلاق وردية', 'shift.pay_in': 'إدخال نقد للدرج', 'shift.pay_out': 'سحب نقد من الدرج',
@@ -407,12 +407,11 @@ function spendingPanel(sp) {
   return `<div class="grid-2" style="align-items:start">
     <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">خرج من المقهى</h2><b class="num">${money(c.total)}</b></div>
       ${line('مصروفات التشغيل', c.operating, { note: Object.entries(c.byCategory).map(([k, v]) => `${EXPENSE_NAMES[k] ?? k} ${money(v)}`).join('، ') })}
-      ${line('رواتب مصروفة', c.salaries, { href: '#/admin/hr', note: 'تشمل الحوافز ناقص الغرامات' })}
-      ${line('سلف الموظفين', c.advances, { href: '#/admin/hr', note: 'تُسترد من الرواتب' })}
-      ${line('مشتريات المخزون', c.purchases, { href: '#/admin/inventory', note: c.purchasesNoCost ? `و${c.purchasesNoCost} استلام بلا سعر` : 'من الاستلام وتصحيحاته' })}</section>
+      ${line('الرواتب', c.salaries, { href: '#/admin/hr', note: `تشمل الحوافز ناقص الغرامات${c.advances ? `، ومنها سحوبات خلال الشهر ${money(c.advances)}` : ''}` })}
+      ${line('مشتريات المخزون', c.purchases, { href: '#/admin/inventory', note: [c.purchasesFromDrawer ? `منها ${money(c.purchasesFromDrawer)} من الدرج` : 'من الاستلام وتصحيحاته', c.purchasesNoCost ? `و${c.purchasesNoCost} استلام بلا سعر` : ''].filter(Boolean).join(' · ') })}</section>
     <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">من الربح</h2><b class="num" style="color:${sp.profit.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sp.profit.netProfit)}</b></div>
       ${line('الربح الإجمالي', sp.profit.profit, { href: '#/admin/reports', note: `بعد تكلفة ما بيع ${money(sp.costs.cogs)}` })}
-      ${line('المصروفات والرواتب والسلف', sp.profit.expenses, { neg: true })}
+      ${line('المصروفات والرواتب', sp.profit.expenses, { neg: true })}
       ${line('نقص المخزون', sp.costs.stockLoss, { href: '#/admin/inventory', neg: true, note: 'هدر وفروقات جرد بتكلفتها' })}
       <div class="r-line"><b>صافي الربح</b><b class="num">${money(sp.profit.netProfit)}</b></div>
       <p class="muted small" style="margin:0">ومن غير نقد: خصومات للزبائن ${money(sp.costs.discounts)} (مطروحة من المبيعات)، هدر الطلبات الملغاة ${money(sp.costs.waste)} (ضمن التكلفة)، حوافز مسجّلة ${money(sp.hr.bonuses)} وغرامات ${money(sp.hr.fines)} (تدخل الرواتب عند الصرف). المشتريات لا تُطرح من الربح مرة ثانية: الربح يحسب تكلفة المكونات التي بيعت فعلاً.</p></section></div>`;
@@ -674,11 +673,12 @@ export const modals = {
       ${m.scanned ? `<div class="card pad small" style="background:var(--surface-2)">${icon('check', 'sm')} قُرئت الفاتورة${m.supplier ? ` من <b>${esc(m.supplier)}</b>` : ''}${m.invoiceTotal ? ` · إجمالي الفاتورة ${money(m.invoiceTotal)}` : ''}.
         <b>راجع كل سطر قبل التأكيد</b> — الأسطر المظللة تحتاج اختيار مادة أو كمية.</div>` : ''}
       ${field('المورد (اختياري)', `<input id="rcv-supplier" data-input="rcv-supplier" value="${esc(m.supplier ?? '')}" maxlength="60" placeholder="اسم المورد أو رقم الفاتورة">`)}
+      ${s.shift && can('shift.cash') ? `<label class="check"><input type="checkbox" id="rcv-drawer" data-change="rcv-drawer" ${m.fromDrawer ? 'checked' : ''}> دُفعت نقداً من درج الوردية الحالية (يُسجَّل سحباً من الدرج بمجموع الأسطر)</label>` : ''}
       <div class="stack" style="gap:10px">${rows || '<p class="muted">لا أسطر بعد. أضف سطراً لكل مادة مستلمة.</p>'}</div>
       <button type="button" class="btn sm" data-action="rcv-add">${icon('plus', 'sm')} سطر</button>
       ${items.length ? '' : '<p class="muted small">لا توجد مواد مخزون بعد. أضفها من الأصناف بنوع «مكوّن» أولاً.</p>'}`;
     const foot = `<div class="muted small" style="align-self:center;flex:none">${m.lines.length ? `المجموع ${money(sum)}${m.invoiceTotal && sum !== m.invoiceTotal ? ` <span class="pill warn">يختلف عن الفاتورة</span>` : ''}` : ''}</div>
-      <button class="btn primary" data-action="rcv-submit" ${ready.length && !invalid && !s.busy ? '' : 'disabled'}>${invalid ? `أكمل ${invalid} ${invalid === 1 ? 'سطر' : 'أسطر'}` : `${icon('check', 'sm')} تأكيد وإضافة للمخزون (${ready.length})`}</button>`;
+      <button class="btn primary" data-action="rcv-submit" ${ready.length && !invalid && !s.busy ? '' : 'disabled'}>${invalid ? `أكمل ${invalid} ${invalid === 1 ? 'سطر' : 'أسطر'}` : `${icon('check', 'sm')} تأكيد وإضافة للمخزون (${ready.length})${m.fromDrawer ? ' ودفع من الدرج' : ''}`}</button>`;
     return modalFrame({ title: 'استلام مشتريات', cls: 'wide', body, foot });
   },
 
@@ -1017,6 +1017,7 @@ on({
     render();
   },
   'rcv-supplier': (el) => { state.modal.supplier = el.value; },
+  'rcv-drawer': (el) => { state.modal.fromDrawer = el.checked; render(); },
   // سطر عُدّل = عملية جديدة (مفتاح جديد)؛ إعادة إرسال سطر لم يتغير لا تكرره
   'rcv-field': (el) => { const l = state.modal.lines[Number(el.dataset.i)]; l[el.dataset.k] = el.value; l.id = uid(); render(); },
   'rcv-add': () => { state.modal.lines.push(blankLine()); render(); },
@@ -1024,9 +1025,10 @@ on({
   'rcv-submit': () => busy(async () => {
     const m = state.modal;
     const lines = m.lines.map((l) => ({ id: l.id, variantId: l.variantId, qty: num(String(l.qty), 'الكمية'), total: l.total === '' || l.total === null ? null : num(String(l.total), 'المبلغ') }));
-    const r = await post('/api/admin/inventory/receive', { supplier: m.supplier || null, lines });
+    if (m.fromDrawer && lines.some((l) => l.total === null)) throw new Error('للدفع من الدرج أدخل مبلغ كل سطر');
+    const r = await post('/api/admin/inventory/receive', { supplier: m.supplier || null, lines, fromDrawer: m.fromDrawer === true });
     state.modal = null;
-    toast(`أُضيفت ${r.received} ${r.received === 1 ? 'مادة' : 'مواد'} إلى المخزون`, 'ok');
+    toast(`أُضيفت ${r.received} ${r.received === 1 ? 'مادة' : 'مواد'} إلى المخزون${r.paidFromDrawer ? ` · سُحب ${money(r.paidFromDrawer)} من الدرج` : ''}`, 'ok');
     state.catalog = null;
     await loadSection('inventory');
   }),
