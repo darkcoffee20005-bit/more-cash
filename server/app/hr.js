@@ -364,13 +364,21 @@ export function createHr(ctx) {
     return { month, rows, late, policy: pol, detail, award: award ? { employeeId: award.employeeId, name: award.name, note: award.note, bonus: award.bonus ?? 0 } : null };
   }
 
-  const pub = ({ detail, ...m }) => m; // detail داخلي (مستندات الموظفين) لا يُرسل للواجهة
 
   async function overview(actor, { month } = {}) {
     requirePerm(actor, 'hr.manage');
-    const m = pub(await monthData(month));
+    const { detail, ...m } = await monthData(month);
     const showPay = can(actor.role, 'admin.employees'); // الرواتب للمالك فقط
-    for (const r of m.rows) { if (!showPay) delete r.salary; else r.net = r.salary + r.bonus - r.fine; }
+    if (showPay) {
+      // الصافي التقديري = نفس حساب كشف الرواتب (بالساعة، الغياب، الإجازة بلا راتب، قسط السلفة)
+      const pays = await PAY().find({}).toArray();
+      const advs = await ADV().find({}).toArray();
+      for (const r of m.rows) {
+        const paid = pays.find((p) => p.month === m.month && p.employeeId === r.id);
+        const d = detail.get(r.id);
+        r.net = paid ? paid.net : computePay(d.emp, m.month, d.info, d.adj, m.policy, advs.filter((a) => a.employeeId === r.id), pays.filter((p) => p.employeeId === r.id)).net;
+      }
+    } else for (const r of m.rows) delete r.salary;
     const t = await tz();
     const today = localDate(now(), t);
     const present = (await ATT().find({ open: true }).toArray()).map(viewAtt);
@@ -495,6 +503,8 @@ export function createHr(ctx) {
       if (paid) { rows.push(viewPay(paid)); continue; }
       const d = md.detail.get(r.id);
       if (!r.active) continue;
+      // بلا أجر محدد ولا حوافز أو غرامات أو سلف (المالك عادةً): لا سطر فارغ في كشف الرواتب
+      if (!d.emp.salary && !d.emp.hourlyRate && !d.adj.length && !advs.some((a) => a.employeeId === r.id)) continue;
       rows.push({ ...computePay(d.emp, md.month, d.info, d.adj, md.policy, advs.filter((a) => a.employeeId === r.id), pays.filter((p) => p.employeeId === r.id)), paid: false, month: md.month, employeeId: r.id, name: r.name, role: r.role });
     }
     const sum = (k) => rows.reduce((x, r) => x + (r[k] ?? 0), 0);

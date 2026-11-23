@@ -72,7 +72,7 @@ function recordView(r, { self }) {
     ${(r.advances ?? []).length ? `<section class="card pad stack"><h2>السلف</h2>${r.advances.map(advLine).join('')}</section>` : ''}`;
 }
 
-const advLine = (a) => `<div class="r-line"><span>${money(a.amount)} <span class="muted small">${esc(String(a.createdAt).slice(0, 10))} · ${a.installments} قسط × ${money(a.perMonth)} من ${esc(a.startMonth)}${a.note ? ` — ${esc(a.note)}` : ''}</span></span>
+const advLine = (a) => `<div class="r-line"><span>${money(a.amount)} <span class="muted small">${esc(localDate(a.createdAt, tz()))} · ${a.installments} قسط × ${money(a.perMonth)} من ${esc(a.startMonth)}${a.note ? ` — ${esc(a.note)}` : ''}</span></span>
   <span class="pill ${a.remaining ? 'warn' : 'ok'}">${a.remaining ? `متبقٍ ${money(a.remaining)}` : 'سُدّدت'}</span></div>`;
 
 function scheduleText(sch) {
@@ -232,7 +232,7 @@ export function hrPage() {
         <td class="num">${r.overtimeMin ? hours(r.overtimeMin) : '—'}</td>
         <td class="num">${r.perf.sales ? `${money(r.perf.salesTotal)} <span class="muted small">(${r.perf.sales})</span>` : '—'}</td>
         <td class="num">${r.bonus ? money(r.bonus) : '—'}</td><td class="num">${r.fine ? money(r.fine) : '—'}</td>
-        ${d.showPay ? `<td class="num">${money(r.net)}</td>` : ''}</tr>`).join('')}</tbody></table></div>`;
+        ${d.showPay ? `<td class="num">${money(h.payroll?.rows.find((x) => x.employeeId === r.id)?.net ?? r.net)}</td>` : ''}</tr>`).join('')}</tbody></table></div>`;
     },
   };
   return `${head}${(body[h.tab] ?? body.team)()}`;
