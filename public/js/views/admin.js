@@ -593,7 +593,7 @@ export const modals = {
   },
   'rcv-fix'(s) {
     const r = s.modal.row;
-    return modalFrame({ title: `تصحيح استلام: ${r.name}`, sub: `المسجّل الآن ${r.qty.toLocaleString('en-US')} ${r.unit}${r.unitCostMilli !== null ? ` بسعر ${formatMilli(r.unitCostMilli)} د.ع` : ''}`, body: `<form class="stack" data-form="rcv-fix-save" id="rcv-fix-form">
+    return modalFrame({ title: `تصحيح استلام: ${r.name}`, sub: `المسجّل الآن ${r.qty.toLocaleString('en-US')} ${esc(r.unit)}${r.unitCostMilli !== null ? ` بسعر ${formatMilli(r.unitCostMilli)} د.ع` : ''}`, body: `<form class="stack" data-form="rcv-fix-save" id="rcv-fix-form">
       <div class="grid-2">${field(`الكمية الصحيحة (${esc(r.unit)})`, `<input class="amount-input" name="qty" id="rf-qty" inputmode="numeric" required value="${r.qty}">`)}
         ${field('سعر الوحدة الصحيح (د.ع)', `<input name="cost" id="rf-cost" inputmode="decimal" value="${r.unitCostMilli !== null ? formatMilli(r.unitCostMilli) : ''}" placeholder="اتركه للإبقاء">`)}</div>
       ${field('سبب التصحيح', '<input name="note" id="rf-note" required minlength="2" maxlength="120" placeholder="أُدخلت الكمية بصفر زائد">')}

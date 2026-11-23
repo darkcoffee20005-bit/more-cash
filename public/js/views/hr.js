@@ -94,7 +94,7 @@ function profileCard(p, { self }) {
 /** قسيمة الراتب: سطور الاستحقاق والخصم بالتفصيل، مع طباعة 80 مم ومشاركة */
 function payLines(x) {
   return [
-    [x.payType === 'hourly' ? `أجر ${hours(x.minutes)} ساعة × ${plain(x.hourlyRate)}` : 'الراتب الأساسي', x.base, 1],
+    [x.payType === 'hourly' ? `أجر ${hours(x.minutes)} ساعة × ${plain(x.hourlyRate)}` : x.preHireDays ? `الراتب (من تاريخ التعيين، ${x.preHireDays} يوم قبله)` : 'الراتب الأساسي', x.base, 1],
     [`ساعات إضافية (${hours(x.overtimeMin)})`, x.overtimePay, 1],
     ['حوافز', x.bonus, 1],
     ['غرامات', x.fine, -1],

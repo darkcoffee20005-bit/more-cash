@@ -109,12 +109,12 @@ test('الرواتب: تأخير وغياب وإضافي وإجازة بلا ر�
   const shift = await ok('owner', 'GET', '/api/shifts/current');
   assert.equal(shift.live.expectedCash, 300000 + total - 200000, 'السلفة خرجت من الدرج');
 
-  // كشف الرواتب: 600,000 + إضافي 3,000 + حافز 10,000 − تأخير 4,000 − إجازة بلا راتب 40,000 − غياب 40,000 = 529,000؛ قسط السلفة 100,000 → الصافي 429,000
+  // كشف الرواتب: عُيّنت يوم 12 فالراتب 600,000 − 11 يوماً × 20,000 = 380,000، + إضافي 3,000 + حافز 10,000 − تأخير 4,000 − إجازة بلا راتب 40,000 − غياب 40,000 = 309,000؛ قسط السلفة 100,000 → الصافي 209,000
   assert.equal((await call('mgr', 'GET', '/api/hr/payroll', null, { month: '2026-10' })).status, 403, 'الرواتب للمالك فقط');
   let pr = await ok('owner', 'GET', '/api/hr/payroll', null, { month: '2026-10' });
   const ps = pr.rows.find((r) => r.employeeId === sara.id);
   assert.deepEqual([ps.base, ps.overtimePay, ps.bonus, ps.fine, ps.leaveDeduction, ps.absenceDeduction, ps.gross, ps.advance, ps.net],
-    [600000, 3000, 10000, 4000, 40000, 40000, 529000, 100000, 429000]);
+    [380000, 3000, 10000, 4000, 40000, 40000, 309000, 100000, 209000]);
   const pa = pr.rows.find((r) => r.employeeId === ali.id);
   assert.equal(pa.payType, 'hourly');
   assert.equal(pa.net, 16000, '8 ساعات × 2,000');
@@ -125,15 +125,15 @@ test('الرواتب: تأخير وغياب وإضافي وإجازة بلا ر�
   pr = await ok('owner', 'GET', '/api/hr/payroll', null, { month: '2026-10' });
   assert.equal(pr.rows.find((r) => r.employeeId === sara.id).paid, false);
   const paid = await ok('owner', 'POST', '/api/hr/payroll/pay', { ...payBody, fromDrawer: false });
-  assert.equal(paid.total, 429000);
+  assert.equal(paid.total, 209000);
   assert.equal((await ok('owner', 'POST', '/api/hr/payroll/pay', { ...payBody, fromDrawer: false })).rows[0].id, paid.rows[0].id, 'لا يُصرف مرتين');
 
   // القسيمة مقفلة: لا حوافز ولا غرامات ولا إجازات في الشهر المصروف، والمصروف المرتبط لا يُحذف من صفحة المصروفات
   assert.equal(await errOf(call('mgr', 'POST', '/api/hr/adjustments', { clientId: randomUUID(), employeeId: sara.id, type: 'fine', amount: 1000, reason: 'كسر كوب' })), 'PAYROLL_LOCKED');
   const exp = await ok('owner', 'GET', '/api/admin/expenses', null, { from: '2026-10-01', to: '2026-10-31' });
-  assert.equal(exp.byCategory.salaries, 429000);
+  assert.equal(exp.byCategory.salaries, 209000);
   assert.equal(exp.byCategory.advances, 200000);
-  assert.equal(exp.total, 629000, 'ما خرج فعلاً = الصافي + السلفة');
+  assert.equal(exp.total, 409000, 'ما خرج فعلاً = الصافي + السلفة');
   const salExp = exp.rows.find((r) => r.category === 'salaries');
   assert.equal(await errOf(call('owner', 'DELETE', `/api/admin/expenses/${salExp.id}`)), 'EXPENSE_LINKED');
   assert.equal(await errOf(call('mgr', 'DELETE', `/api/hr/advances/${adv.id}`)), 'ADVANCE_IN_USE');
@@ -141,7 +141,7 @@ test('الرواتب: تأخير وغياب وإضافي وإجازة بلا ر�
   // سجل الموظف: يرى قسيمته المصروفة وسلفته المتبقية
   rec = await ok('sara', 'GET', '/api/hr/record/me', null, { month: '2026-10' });
   assert.equal(rec.payroll.paid, true);
-  assert.equal(rec.payroll.net, 429000);
+  assert.equal(rec.payroll.net, 209000);
   assert.equal(rec.advances[0].remaining, 100000);
   // الشهر القادم: القسط الثاني يُخصم تلقائياً
   rec = await ok('owner', 'GET', `/api/hr/record/${sara.id}`, null, { month: '2026-11' });
@@ -153,11 +153,22 @@ test('الرواتب: تأخير وغياب وإضافي وإجازة بلا ر�
   assert.equal((await ok('owner', 'GET', '/api/admin/expenses', null, { from: '2026-10-01', to: '2026-10-31' })).total, 200000);
   await ok('mgr', 'POST', '/api/hr/adjustments', { clientId: randomUUID(), employeeId: sara.id, type: 'fine', amount: 1000, reason: 'كسر كوب' });
   pr = await ok('owner', 'GET', '/api/hr/payroll', null, { month: '2026-10' });
-  assert.equal(pr.rows.find((r) => r.employeeId === sara.id).net, 428000);
+  assert.equal(pr.rows.find((r) => r.employeeId === sara.id).net, 208000);
   // بلا قسيمة: السلفة تُلغى ويُحذف مصروفها ويعود نقدها للدرج
   await ok('mgr', 'DELETE', `/api/hr/advances/${adv.id}`);
   assert.equal((await ok('owner', 'GET', '/api/shifts/current')).live.expectedCash, 300000 + total);
-  assert.equal((await ok('owner', 'GET', '/api/hr/payroll', null, { month: '2026-10' })).rows.find((r) => r.employeeId === sara.id).net, 528000);
+  assert.equal((await ok('owner', 'GET', '/api/hr/payroll', null, { month: '2026-10' })).rows.find((r) => r.employeeId === sara.id).net, 308000);
+});
+
+test('الرواتب: موظف عُيّن خلال الشهر يأخذ راتبه بنسبة الأيام، ولا غياب قبل تعيينه', async () => {
+  const { ok } = await boot();
+  const emp = await ok('owner', 'POST', '/api/admin/employees', { name: 'مريم', role: 'cashier', pin: '7531', salary: 900000 });
+  await ok('owner', 'POST', `/api/hr/profile/${emp.id}`, { hiredAt: '2026-10-11', schedule: WEEK('09:00', '17:00') });
+  const r = (await ok('owner', 'GET', '/api/hr/payroll', null, { month: '2026-10' })).rows.find((x) => x.employeeId === emp.id);
+  assert.equal(r.preHireDays, 10);
+  assert.equal(r.base, 900000 - 300000, '10 أيام × (900,000 ÷ 30)');
+  assert.equal(r.absentDays, 3, 'الأحد 11 والإثنين 12 والثلاثاء 13 فقط، لا ما قبل التعيين');
+  assert.equal(r.net, 600000 - 90000);
 });
 
 test('الرواتب: الخصومات لا تجعل الصافي سالباً، والغرامات الزائدة تظهر كعجز', async () => {

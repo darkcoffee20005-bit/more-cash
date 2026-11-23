@@ -7,7 +7,7 @@ services:
     plan: free
     region: singapore          # الأقرب لقاعدة البيانات (Atlas هونغ كونغ)
     branch: main
-    buildCommand: npm install --omit=dev && node scripts/build_demo.mjs public/demo.html
+    buildCommand: npm ci --omit=dev && node scripts/build_demo.mjs public/demo.html
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:

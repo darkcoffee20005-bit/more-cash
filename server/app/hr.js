@@ -256,8 +256,9 @@ export function createHr(ctx) {
   function analyze(emp, month, att, leaves, pol, today, t) {
     const sched = emp.schedule ?? null;
     const startDay = emp.hiredAt ?? (emp.createdAt ? localDate(emp.createdAt, t) : `${month}-01`);
-    const out = { minutes: 0, lateMin: 0, lateCount: 0, absentDays: 0, overtimeMin: 0, unpaidLeaveDays: 0, paidLeaveDays: 0, late: [], absent: [] };
+    const out = { minutes: 0, lateMin: 0, lateCount: 0, absentDays: 0, overtimeMin: 0, unpaidLeaveDays: 0, paidLeaveDays: 0, preHireDays: 0, late: [], absent: [] };
     for (let d = `${month}-01`; d <= lastDay(month); d = new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10)) {
+      if (emp.hiredAt && d < emp.hiredAt) { out.preHireDays += 1; continue; } // قبل التعيين: لا راتب ولا غياب
       const plan = sched?.[weekday(d)] ?? null;
       const mine = att.filter((a) => a.day === d).sort((x, y) => new Date(x.inAt) - new Date(y.inAt));
       const leave = leaves.find((l) => l.from <= d && l.to >= d);
@@ -288,9 +289,10 @@ export function createHr(ctx) {
     const fine = adjs.filter((a) => a.type === 'fine').reduce((x, a) => x + a.amount, 0);
     let base; let leaveDeduction = 0; let absenceDeduction = 0; let overtimePay = 0;
     if (payType === 'monthly') {
-      base = salary;
-      leaveDeduction = Math.min(salary, mulDiv(salary, info.unpaidLeaveDays, pol.dayDivisor));
-      absenceDeduction = pol.deductAbsence ? Math.min(salary - leaveDeduction, mulDiv(salary, info.absentDays, pol.dayDivisor)) : 0;
+      // عُيّن خلال الشهر: الراتب بنسبة الأيام من تاريخ التعيين (أجر اليوم = الراتب ÷ 30)
+      base = Math.max(0, salary - mulDiv(salary, info.preHireDays, pol.dayDivisor));
+      leaveDeduction = Math.min(base, mulDiv(salary, info.unpaidLeaveDays, pol.dayDivisor));
+      absenceDeduction = pol.deductAbsence ? Math.min(base - leaveDeduction, mulDiv(salary, info.absentDays, pol.dayDivisor)) : 0;
       overtimePay = mulDiv(pol.overtimeHourly, info.overtimeMin, 60);
     } else {
       base = mulDiv(hourlyRate, info.minutes, 60);
@@ -306,18 +308,18 @@ export function createHr(ctx) {
     }
     const advance = advanceParts.reduce((x, y) => x + y.amount, 0);
     return {
-      payType, salary, hourlyRate, minutes: info.minutes, base, overtimeMin: info.overtimeMin, overtimePay, bonus, fine,
+      payType, salary, hourlyRate, minutes: info.minutes, base, preHireDays: info.preHireDays, overtimeMin: info.overtimeMin, overtimePay, bonus, fine,
       unpaidLeaveDays: info.unpaidLeaveDays, leaveDeduction, absentDays: info.absentDays, absenceDeduction, gross, advance, advanceParts,
       net: Math.max(0, gross) - advance, shortfall: gross < 0 ? -gross : 0,
     };
   }
 
   /** أداء الموظف من المبيعات: عدد الطلبات وصافيها، والاسترجاع والإلغاء الذي نفّذه */
-  async function performance(month, t) {
+  async function performance(month, t, employeeId = null) {
     const from = new Date(Date.parse(`${month}-01T00:00:00Z`) - t * 60000);
     const to = new Date(Date.parse(`${lastDay(month)}T00:00:00Z`) + 86400000 - t * 60000);
     const map = new Map();
-    for (const r of await db.collection('receipts').find({ createdAt: { $gte: from, $lt: to } }).toArray()) {
+    for (const r of await db.collection('receipts').find({ createdAt: { $gte: from, $lt: to }, ...(employeeId ? { employeeId } : {}) }).toArray()) {
       const p = map.get(r.employeeId) ?? { sales: 0, salesTotal: 0, refunds: 0, cancels: 0 };
       if (r.type === 'sale') { p.sales += 1; p.salesTotal += r.totals?.net ?? 0; } else if (r.cancel) p.cancels += 1; else p.refunds += 1;
       map.set(r.employeeId, p);
@@ -326,17 +328,19 @@ export function createHr(ctx) {
   }
 
   // ---------------------------------------------------------------- الملخص الشهري والترتيب
-  async function monthData(month) {
+  /** opts.perfFor: حساب أداء المبيعات لموظف واحد فقط (سجل الموظف) بدل قراءة إيصالات الشهر كلها */
+  async function monthData(month, opts = {}) {
     if (!MONTH.test(String(month ?? ''))) throw new AppError(400, 'INVALID_RANGE');
     const t = await tz();
     const today = localDate(now(), t);
     const pol = await policy();
     const emps = await EMP().find({}).toArray();
-    const att = (await ATT().find({}).toArray()).filter((a) => a.day?.startsWith(month));
-    const adj = (await ADJ().find({}).toArray()).filter((a) => a.day.startsWith(month));
-    const lv = (await LV().find({}).toArray()).filter((l) => l.status === 'approved' && l.from <= lastDay(month) && l.to >= `${month}-01`);
+    // استعلامات بمدى الشهر (فهرس by_day) لا قراءة كل السجل
+    const att = await ATT().find({ day: { $gte: `${month}-01`, $lte: lastDay(month) } }).toArray();
+    const adj = await ADJ().find({ day: { $gte: `${month}-01`, $lte: lastDay(month) } }).toArray();
+    const lv = await LV().find({ status: 'approved', from: { $lte: lastDay(month) }, to: { $gte: `${month}-01` } }).toArray();
     const award = await AW().findOne({ month });
-    const perf = await performance(month, t);
+    const perf = await performance(month, t, opts.perfFor ?? null);
     const detail = new Map();
     const late = [];
     const rows = emps.filter((e) => e.active || att.some((a) => a.employeeId === e._id)).map((e) => {
@@ -385,12 +389,12 @@ export function createHr(ctx) {
     if (!emp) throw notFound();
     const t = await tz();
     const m = month && MONTH.test(month) ? month : localDate(now(), t).slice(0, 7);
-    const att = (await ATT().find({ employeeId: id }).toArray()).filter((a) => a.day?.startsWith(m)).sort((a, b) => new Date(b.inAt) - new Date(a.inAt)).map(viewAtt);
-    const adj = (await ADJ().find({ employeeId: id }).toArray()).filter((a) => a.day.startsWith(m)).sort((a, b) => b.day.localeCompare(a.day)).map(viewAdj);
+    const att = (await ATT().find({ employeeId: id, day: { $gte: `${m}-01`, $lte: lastDay(m) } }).toArray()).sort((a, b) => new Date(b.inAt) - new Date(a.inAt)).map(viewAtt);
+    const adj = (await ADJ().find({ employeeId: id, day: { $gte: `${m}-01`, $lte: lastDay(m) } }).toArray()).sort((a, b) => b.day.localeCompare(a.day)).map(viewAdj);
     const leaves = (await LV().find({ employeeId: id }).toArray()).sort((a, b) => b.from.localeCompare(a.from)).slice(0, 30).map(viewLeave);
     const awards = (await AW().find({ employeeId: id }).toArray()).sort((a, b) => b.month.localeCompare(a.month)).map((a) => a.month);
     const open = await ATT().findOne({ employeeId: id, open: true });
-    const md = await monthData(m);
+    const md = await monthData(m, { perfFor: id });
     const summary = md.rows.find((r) => r.id === id) ?? { minutes: 0, days: 0, bonus: 0, fine: 0, paidLeaveDays: 0, rank: null, lateMin: 0, lateCount: 0, absentDays: 0, overtimeMin: 0 };
     const showPay = id === actor.id || can(actor.role, 'admin.employees');
     if (!showPay) delete summary.salary; else summary.net = (summary.salary ?? 0) + summary.bonus - summary.fine;

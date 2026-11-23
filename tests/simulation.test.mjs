@@ -53,8 +53,10 @@ async function boot() {
 async function simulate(seed, steps) {
   const R = rng(seed);
   const { db, call, ok, tick, now } = await boot();
-  await ok('owner', 'POST', '/api/admin/employees', { name: 'زينب', role: 'manager', pin: '2580' });
-  await ok('owner', 'POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: '2468' });
+  const zainab = await ok('owner', 'POST', '/api/admin/employees', { name: 'زينب', role: 'manager', pin: '2580', salary: R.int(4, 12) * 100000 });
+  const saraEmp = await ok('owner', 'POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: '2468', salary: R.int(3, 9) * 100000 });
+  const payees = [zainab.id, saraEmp.id];
+  await ok('owner', 'POST', '/api/hr/policy', { advanceMaxBp: 10000, overtimeHourly: 2500 });
   await ok('mgr', 'POST', '/api/auth/pin', { pin: '2580' });
   await ok('sara', 'POST', '/api/auth/pin', { pin: '2468' });
   const staff = ['owner', 'mgr', 'sara'];
@@ -68,10 +70,12 @@ async function simulate(seed, steps) {
   const sales = new Map(); // id → receipt
   const refundsOf = new Map(); // saleId → [refund receipts]
   const expenses = new Map(); // id → { amount, day }
+  const advances = new Map(); // id → { amount, expenseId }
+  const payrolls = new Map(); // id → { net, expenseId }
   let shift = null; // { id, starting, cashIn, cashOut, payIn, payOut }
   const closedShifts = [];
   const days = new Set();
-  const stats = { sale: 0, refund: 0, cancel: 0, expense: 0, expenseDel: 0, payIn: 0, payOut: 0, close: 0, receive: 0, loss: 0, count: 0, tax: 0, replay: 0, rejected: {} };
+  const stats = { advance: 0, advanceDel: 0, payroll: 0, payrollDel: 0, sale: 0, refund: 0, cancel: 0, expense: 0, expenseDel: 0, payIn: 0, payOut: 0, close: 0, receive: 0, loss: 0, count: 0, tax: 0, replay: 0, rejected: {} };
   const reject = (code) => { stats.rejected[code] = (stats.rejected[code] ?? 0) + 1; };
 
   const today = () => localDate(now(), TZ);
@@ -207,6 +211,90 @@ async function simulate(seed, steps) {
     if (e.fromDrawer && e.shiftId === shift.id) shift.payOut -= e.amount;
     expenses.delete(id);
     stats.expenseDel += 1;
+  }
+
+  // ------------------------------------------------------------ الموارد البشرية: سلف ورواتب تمر بالمصروفات والدرج
+  const trackExpense = (exp) => {
+    expenses.set(exp.id, { amount: exp.amount, day: exp.day, fromDrawer: exp.fromDrawer, shiftId: exp.fromDrawer ? shift.id : null });
+    if (exp.fromDrawer) shift.payOut += exp.amount;
+  };
+  const untrackExpense = (id) => {
+    const e = expenses.get(id);
+    if (!e) return;
+    if (e.fromDrawer && e.shiftId === shift?.id) shift.payOut -= e.amount;
+    expenses.delete(id);
+  };
+  async function expenseById(id) {
+    const d = today();
+    return (await ok('owner', 'GET', '/api/admin/expenses', null, { from: '2026-01-01', to: d })).rows.find((x) => x.id === id);
+  }
+
+  async function doAdvance() {
+    const body = { clientId: randomUUID(), employeeId: R.pick(payees), amount: R.int(1, 20) * 5000, installments: R.int(1, 4), fromDrawer: R.chance(0.5) };
+    const r = await call(R.pick(['owner', 'mgr']), 'POST', '/api/hr/advances', body);
+    if (r.status !== 200) { reject(r.body.error); return; }
+    if (R.chance(0.2)) { stats.replay += 1; assert.equal((await ok('mgr', 'POST', '/api/hr/advances', body)).id, r.body.id); }
+    const adv = await db.collection('hr_advances').findOne({ _id: r.body.id });
+    const exp = await expenseById(adv.expenseId);
+    assert.equal(exp.amount, body.amount, 'مصروف السلفة = مبلغها');
+    assert.equal(exp.category, 'advances');
+    advances.set(r.body.id, { amount: body.amount, expenseId: adv.expenseId });
+    trackExpense(exp);
+    stats.advance += 1;
+  }
+
+  async function doCancelAdvance() {
+    const ids = [...advances.keys()];
+    if (!ids.length) return;
+    const id = R.pick(ids);
+    const r = await call('mgr', 'DELETE', `/api/hr/advances/${id}`);
+    if (r.status !== 200) { reject(r.body.error); return; }
+    untrackExpense(advances.get(id).expenseId);
+    advances.delete(id);
+    stats.advanceDel += 1;
+  }
+
+  async function doPayroll() {
+    const month = today().slice(0, 7);
+    const body = { clientId: randomUUID(), month, employeeIds: [R.pick(payees)], fromDrawer: R.chance(0.4) };
+    const r = await call('owner', 'POST', '/api/hr/payroll/pay', body);
+    if (r.status !== 200) { reject(r.body.error); return; }
+    for (const p of r.body.rows) {
+      // القسيمة متسقة داخلياً: الإجمالي = المكونات، والصافي = max(0, الإجمالي) − قسط السلفة، والقسط لا يتجاوز المتاح
+      assert.equal(p.gross, p.base + p.overtimePay + p.bonus - p.fine - p.leaveDeduction - p.absenceDeduction, 'القسيمة: الإجمالي');
+      assert.equal(p.net, Math.max(0, p.gross) - p.advance, 'القسيمة: الصافي');
+      assert.ok(p.net >= 0 && p.advance <= Math.max(0, p.gross), 'القسيمة: لا صافي سالب');
+      assert.equal(p.advanceParts.reduce((a, x) => a + x.amount, 0), p.advance);
+      if (payrolls.has(p.id)) continue; // صُرف سابقاً
+      if (p.expenseId) {
+        const exp = await expenseById(p.expenseId);
+        assert.equal(exp.amount, p.net, 'مصروف الراتب = الصافي');
+        trackExpense(exp);
+      } else assert.equal(p.net, 0);
+      payrolls.set(p.id, { net: p.net, expenseId: p.expenseId });
+      stats.payroll += 1;
+    }
+  }
+
+  async function doCancelPayroll() {
+    const ids = [...payrolls.keys()];
+    if (!ids.length) return;
+    const id = R.pick(ids);
+    const r = await call('owner', 'DELETE', `/api/hr/payroll/${id}`);
+    if (r.status !== 200) { reject(r.body.error); return; }
+    if (payrolls.get(id).expenseId) untrackExpense(payrolls.get(id).expenseId);
+    payrolls.delete(id);
+    stats.payrollDel += 1;
+  }
+
+  /** السلف: ما سُدّد من كل سلفة عبر القسائم لا يتجاوز مبلغها، والمصروفات المرتبطة لا تُحذف من صفحة المصروفات */
+  async function checkHr(label) {
+    const pays = await db.collection('payrolls').find({}).toArray();
+    for (const a of await db.collection('hr_advances').find({}).toArray()) {
+      const repaid = pays.flatMap((p) => p.advanceParts ?? []).filter((x) => x.advanceId === a._id).reduce((x, y) => x + y.amount, 0);
+      assert.ok(repaid <= a.amount, `${label}: سداد السلفة لا يتجاوز مبلغها`);
+    }
+    assert.equal(pays.length, payrolls.size, `${label}: عدد القسائم`);
   }
 
   async function doMove(type) {
@@ -409,9 +497,13 @@ async function simulate(seed, steps) {
     else if (roll < 0.85) await doMove('pay_out');
     else if (roll < 0.9) await doInventory();
     else if (roll < 0.91) await doTax();
+    else if (roll < 0.915) await doAdvance();
+    else if (roll < 0.92) await doPayroll();
+    else if (roll < 0.923) await doCancelAdvance();
+    else if (roll < 0.926) await doCancelPayroll();
     else if (roll < 0.93) { const s = R.pick([...sales.values()]); if (s?.prep && ['new', 'preparing', 'ready'].includes(s.prep.status)) await call('sara', 'POST', `/api/kds/${s.id}/advance`, { from: s.prep.status }); }
     if (hour >= 23 || R.chance(0.02)) { await doClose(); tick(R.int(6, 9) * 3600000); }
-    if (step % 10 === 9) await checkInvariants(`خطوة ${step + 1}`);
+    if (step % 10 === 9) { await checkInvariants(`خطوة ${step + 1}`); await checkHr(`خطوة ${step + 1}`); }
   }
   if (shift) await doClose();
   await checkInvariants('النهاية');
@@ -425,6 +517,7 @@ const seeds = extra ? Array.from({ length: extra }, (_, i) => 1000 + i * 7919) :
 for (const seed of seeds) {
   test(`محاكاة استخدام حقيقي (بذرة ${seed}): كل الحسابات متطابقة`, { timeout: 240_000 }, async () => {
     const stats = await simulate(seed, extra ? 900 : 450);
-    assert.ok(stats.sale > 150 && stats.refund + stats.cancel > 40 && stats.expense > 10 && stats.close >= 2, JSON.stringify(stats));
+    if (process.env.SIM_STATS) console.log(JSON.stringify(stats));
+    assert.ok(stats.sale > 150 && stats.refund + stats.cancel > 40 && stats.expense > 10 && stats.close >= 2 && stats.advance + stats.payroll > 0, JSON.stringify(stats));
   });
 }

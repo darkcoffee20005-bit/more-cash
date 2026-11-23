@@ -112,23 +112,29 @@ if (typeof document !== 'undefined') {
   document.addEventListener('pointerdown', (e) => {
     const bar = e.target.closest?.('.splitter');
     if (!bar) return;
-    const pos = bar.closest('.pos');
     e.preventDefault();
-    bar.setPointerCapture?.(e.pointerId);
     bar.classList.add('dragging');
     const startX = e.clientX;
-    const startW = pos.querySelector('.ticket').getBoundingClientRect().width;
-    const move = (ev) => { setTicketW(pos, clampTicketW(pos, startW + (startX - ev.clientX))); fitLines(); };
-    const up = () => {
-      bar.classList.remove('dragging');
-      bar.removeEventListener('pointermove', move);
-      bar.removeEventListener('pointerup', up);
-      bar.removeEventListener('pointercancel', up);
+    const startW = bar.closest('.pos').querySelector('.ticket').getBoundingClientRect().width;
+    // الشاشة تُعاد رسمها كل ثانية (الساعة) فيُستبدل المقبض أثناء السحب: المستمعون على النافذة لا على المقبض،
+    // والعنصر .pos يُقرأ من جديد مع كل حركة، والحفظ عند الإفلات مهما تغيّر DOM
+    const move = (ev) => {
+      const pos = document.querySelector('.pos');
+      if (!pos || ev.pointerId !== e.pointerId) return;
+      setTicketW(pos, clampTicketW(pos, startW + (startX - ev.clientX)));
+      fitLines();
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      document.querySelector('.splitter')?.classList.remove('dragging');
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
       saveTicketW(state.pos.ticketW);
     };
-    bar.addEventListener('pointermove', move);
-    bar.addEventListener('pointerup', up);
-    bar.addEventListener('pointercancel', up);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   });
   document.addEventListener('dblclick', (e) => {
     const bar = e.target.closest?.('.splitter');
