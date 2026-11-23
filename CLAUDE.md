@@ -55,6 +55,7 @@
 - لا تكتب أي سر (MONGODB_URI، كلمات مرور) في الكود أو السجلات أو الرسائل.
 
 ## النشر
+- **الإنتاج الحالي (2026-11-23):** https://more-cashpro.vercel.app — مشروع Vercel «more-cashpro» على حساب يوسف (team `team_tvs4RS8AELagI8Lt5YbZ1XT9`، المشروع `prj_4yXGtSl2wk4Mh27pfVz8ChLiJVN5`)، مربوط بمستودع GitHub `yousefaltayar3-byte/more-cash` (نسخة من هذا المستودع؛ التحديثات تحتاج دفعاً إليه أو نشراً عبر Vercel API). المتغيرات: MONGODB_URI، MONGODB_DB، PLATFORM_ADMINS، SUPPORT_WHATSAPP (بلا PIN_PEPPER عمداً: يُستخدم سر القاعدة). الموافقة على الحسابات مفعّلة. فُحص: health متصل، لوحة المزوّد مفعّلة.
 - 2026-11-18: أوقف Vercel الحساب المجاني (402 DEPLOYMENT_DISABLED) فانتقلت الاستضافة إلى Render المجاني عبر `render.yaml` (Blueprint):
   نفس `npm start` (server/index.js) ونفس قاعدة Atlas. `REQUIRE_MONGODB=true` يمنع التشغيل بملف محلي، و`/api/health` في الخادم نفسه.
   الرابط المتوقع https://more-cash.onrender.com (المراقبة كل 10 دقائق تبقيه مستيقظاً). ملفات Vercel باقية إن عاد الحساب أو رُقّي.
