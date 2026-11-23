@@ -117,11 +117,11 @@ const PAGES = {
     const cats = Object.entries(e.byCategory).sort((x, y) => y[1] - x[1]);
     return `${head}
       <div class="kpis"><div class="kpi lead"><span class="label">مجموع المصروفات</span><b>${money(e.total)}</b><span class="muted small">${e.rows.length} مصروف</span></div>
-        ${cats.slice(0, 3).map(([k, v]) => `<div class="kpi"><span class="label">${esc(EXPENSE_CATS[k] ?? k)}</span><b>${money(v)}</b></div>`).join('')}</div>
+        ${cats.slice(0, 3).map(([k, v]) => `<div class="kpi"><span class="label">${esc(EXPENSE_NAMES[k] ?? k)}</span><b>${money(v)}</b></div>`).join('')}</div>
       <div class="table-wrap"><table><thead><tr><th>اليوم</th><th>البند</th><th>ملاحظة</th><th>بواسطة</th><th class="num">المبلغ</th><th></th></tr></thead>
       <tbody>${e.rows.map((x) => `<tr><td class="small">${esc(x.day)}</td><td><b>${esc(x.categoryName)}</b>${x.fromDrawer ? ' <span class="pill">من الدرج</span>' : ''}</td>
         <td class="small">${esc(x.note ?? '')}</td><td class="small">${esc(x.byName ?? '')}</td><td class="num">${money(x.amount)}</td>
-        <td><button class="icon-btn" data-action="exp-delete" data-id="${x.id}" aria-label="حذف">${icon('trash', 'sm')}</button></td></tr>`).join('')
+        <td>${x.ref ? `<a class="pill" href="#/admin/hr" title="يُلغى من الموارد البشرية">${x.ref === 'payroll' ? 'راتب' : 'سلفة'}</a>` : `<button class="icon-btn" data-action="exp-delete" data-id="${x.id}" aria-label="حذف">${icon('trash', 'sm')}</button>`}</td></tr>`).join('')
         || '<tr><td colspan="6" class="muted">لا مصروفات في هذه الفترة</td></tr>'}</tbody></table></div>
       <p class="muted small">المصروفات تُطرح من الربح الإجمالي في التقرير اليومي والتقارير ليظهر صافي الربح. المصروف المدفوع من الدرج يُسجَّل أيضاً كسحب من الوردية.</p>`;
   },
@@ -153,7 +153,7 @@ const PAGES = {
       <div class="kpis">
         ${kpi('صافي المبيعات', money(sm.net), `${sm.salesCount} إيصال · متوسط ${money(sm.avgSale)}`)}
         ${kpi('الربح الإجمالي', money(sm.profit), `تكلفة الموارد ${money(d.consumptionCost)}`)}
-        ${kpi('المصروفات', money(sm.expenses), d.expenses.length ? d.expenses.map((x) => esc(EXPENSE_CATS[x.category] ?? x.category)).join('، ') : 'لا مصروفات')}
+        ${kpi('المصروفات', money(sm.expenses), d.expenses.length ? d.expenses.map((x) => esc(EXPENSE_NAMES[x.category] ?? x.category)).join('، ') : 'لا مصروفات')}
         ${kpi('صافي الربح', `<span style="color:${sm.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sm.netProfit)}</span>`, 'بعد المصروفات')}
       </div>
       <div class="grid-2" style="align-items:start">
@@ -355,11 +355,12 @@ const PAGES = {
 const neg = (v) => (v ? `−${money(v)}` : money(0));
 const latin = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const EXPENSE_CATS = { rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', other: 'أخرى' };
+const EXPENSE_NAMES = { ...EXPENSE_CATS, advances: 'سلف موظفين' }; // السلف تُسجَّل من الموارد البشرية فقط
 
 // ---------------------------------------------------------------- سجل العمليات
 const AUDIT_LABELS = {
   'receipt.refund': 'استرجاع', 'receipt.cancel': 'إلغاء طلب', 'inventory.receive_fix': 'تصحيح استلام', 'inventory.threshold': 'تعديل حد التنبيه', 'inventory.shortfall': 'بيع بنقص مخزون',
-  'hr.bonus': 'حافز', 'hr.fine': 'غرامة', 'hr.adjustment_delete': 'حذف حافز/غرامة', 'hr.attendance_fix': 'تصحيح حضور', 'hr.leave_approved': 'موافقة إجازة', 'hr.leave_rejected': 'رفض إجازة', 'hr.award': 'موظف الشهر', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
+  'hr.bonus': 'حافز', 'hr.fine': 'غرامة', 'hr.adjustment_delete': 'حذف حافز/غرامة', 'hr.attendance_fix': 'تصحيح حضور', 'hr.leave_approved': 'موافقة إجازة', 'hr.leave_rejected': 'رفض إجازة', 'hr.award': 'موظف الشهر', 'hr.policy': 'إعدادات الموارد البشرية', 'hr.profile': 'ملف موظف', 'hr.advance': 'سلفة', 'hr.advance_cancel': 'إلغاء سلفة', 'hr.payroll_pay': 'صرف راتب', 'hr.payroll_cancel': 'إلغاء صرف راتب', 'discount.restricted': 'خصم مقيد على بيع', 'discount.update': 'تعديل خصم', 'discounts.archive': 'أرشفة خصم',
   'inventory.receive': 'استلام مخزون', 'inventory.loss': 'هدر/تالف', 'inventory.count': 'جرد', 'inventory.adjust': 'تعديل مخزون', 'inventory.reconcile': 'مطابقة المخزون',
   'item.create': 'صنف جديد', 'item.update': 'تعديل صنف/سعر', 'items.archive': 'أرشفة صنف', 'categories.archive': 'أرشفة تصنيف', 'modifiers.archive': 'أرشفة إضافة',
   'shift.open': 'فتح وردية', 'shift.close': 'إغلاق وردية', 'shift.pay_in': 'إدخال نقد للدرج', 'shift.pay_out': 'سحب نقد من الدرج',

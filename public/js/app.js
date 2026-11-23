@@ -104,7 +104,9 @@ function railView(s) {
   const links = NAV.filter(([r, , , p]) => allowedNav(p) || (r === 'admin' && (can('admin.catalog') || can('hr.manage')))).map(([r, label, ic]) => {
     const low = s.catalog?.lowStock?.length ?? 0;
     const badge = r === 'pos' && s.ticketsCount ? `<span class="badge">${s.ticketsCount}</span>`
-      : r === 'admin' && low && can('admin.inventory') ? `<span class="badge bad" title="مواد تحت حد التنبيه">${low}</span>` : '';
+      : r === 'admin' && low && can('admin.inventory') ? `<span class="badge bad" title="مواد تحت حد التنبيه">${low}</span>`
+      : r === 'admin' && s.me?.pendingLeaves ? `<span class="badge" title="طلبات إجازة بانتظار الموافقة">${s.me.pendingLeaves}</span>`
+      : r === 'me' && s.me?.clockedIn?.forgot ? '<span class="badge bad" title="نسيت تسجيل الانصراف">!</span>' : '';
     return `<a href="#/${r}" class="${s.route === r ? 'on' : ''}" ${s.route === r ? 'aria-current="page"' : ''}>${icon(ic)}<span>${label}</span>${badge}</a>`;
   }).join('');
   return `<nav class="rail" aria-label="التنقل الرئيسي">

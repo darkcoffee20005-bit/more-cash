@@ -5,6 +5,7 @@ import { ensureIndexes } from '../server/db/indexes.js';
 import { createPlatform } from '../server/app/platform.js';
 import { calculateTicket, unitPrice } from '../shared/calc.js';
 
+const localDateStr = (d) => new Date(d.getTime() + 3 * 3600000).toISOString().slice(0, 10); // بغداد UTC+3
 export const DEMO_PINS = { owner: '1234', manager: '2580', cashier: '1470', barista: '3690' };
 export const DEMO_ACCOUNT = { email: 'demo@morecash.app', password: 'morecash-demo' };
 
@@ -34,8 +35,8 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
   };
 
   await call('POST', '/api/account/signup', { shopName: 'مقهى مور', ownerName: 'أحمد', ...DEMO_ACCOUNT, pin: DEMO_PINS.owner, seed: true });
-  await call('POST', '/api/admin/employees', { name: 'زينب', role: 'manager', pin: DEMO_PINS.manager });
-  await call('POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: DEMO_PINS.cashier });
+  await call('POST', '/api/admin/employees', { name: 'زينب', role: 'manager', pin: DEMO_PINS.manager, salary: 900000 });
+  await call('POST', '/api/admin/employees', { name: 'سارة', role: 'cashier', pin: DEMO_PINS.cashier, salary: 650000 });
   await call('POST', '/api/admin/employees', { name: 'حيدر', role: 'barista', pin: DEMO_PINS.barista });
   const customers = [];
   for (const [name, phone] of [['علي حسن', '07701234567'], ['نور الهدى', '07809876543'], ['مصطفى كريم', '07501112233'], ['رقية سالم', '07712223344']]) {
@@ -59,6 +60,15 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
       return app.handle({ method, path, body, token: staffTokens[role], deviceToken, ip: 'demo' });
     };
     const employees = await call('GET', '/api/admin/employees');
+    // سياسة وجداول دوام وملفات حتى يظهر التأخير والإضافي والرواتب بأرقام واقعية
+    await call('POST', '/api/hr/policy', { graceMin: 10, lateStepMin: 15, lateFine: 1000, overtimeHourly: 3000, advanceMaxBp: 5000, deductAbsence: true });
+    const hired = localDateStr(new Date(startOfToday.getTime() - 6 * 86400000));
+    const every = (start, end) => Array.from({ length: 7 }, () => ({ start, end }));
+    const plans = { manager: [every('08:00', '16:00'), '07701112233'], cashier: [every('08:00', '22:00'), '07702223344'], barista: [every('08:00', '23:00'), '07703334455'] };
+    for (const e of employees.filter((x) => plans[x.role])) {
+      const [schedule, phone] = plans[e.role];
+      await call('POST', `/api/hr/profile/${e.id}`, { schedule, phone, hiredAt: hired, emergency: 'الأهل', ...(e.role === 'barista' ? { payType: 'hourly', hourlyRate: 3000 } : {}) });
+    }
 
     for (let day = 6; day >= 0; day--) {
       const base = startOfToday.getTime() - day * 86400000;
@@ -136,6 +146,10 @@ export async function createDemoBackend({ withHistory = true, seed = 7 } = {}) {
         for (const [role, , outAt] of staff) {
           offset = base + (outAt - rand() * 0.5) * 3600000 - Date.now();
           await asStaff(role, 'POST', '/api/hr/clock', { clientId: crypto.randomUUID(), action: 'out' });
+        }
+        if (day === 3) {
+          const cashier = employees.find((e) => e.role === 'cashier');
+          await call('POST', '/api/hr/advances', { clientId: crypto.randomUUID(), employeeId: cashier.id, amount: 150000, installments: 3, note: 'ظرف عائلي' });
         }
         // حوافز وغرامات متفرقة كما في أسبوع عمل حقيقي
         const pickEmp = employees.find((e) => e.role === pick(['cashier', 'barista']));

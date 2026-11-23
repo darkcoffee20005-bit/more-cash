@@ -4,7 +4,7 @@ import { AppError, audit, bad, getSettings, id as checkId, int, isDup, notFound,
 import { localDate } from '../../shared/format.js';
 
 export const EXPENSE_CATEGORIES = Object.freeze({
-  rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', other: 'أخرى',
+  rent: 'إيجار', salaries: 'رواتب', utilities: 'كهرباء وماء', supplies: 'مشتريات', maintenance: 'صيانة', advances: 'سلف موظفين', other: 'أخرى',
 });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -12,7 +12,8 @@ export function createExpenses(ctx) {
   const { db, now, newId } = ctx;
   const C = () => db.collection('expenses');
 
-  async function create(actor, input = {}) {
+  /** opts.ref: مصروف ينشئه قسم آخر (راتب، سلفة) فلا يُحذف إلا من مكانه */
+  async function create(actor, input = {}, opts = {}) {
     requirePerm(actor, 'admin.reports');
     const clientId = checkId(input.clientId, 'clientId');
     const prior = await C().findOne({ clientId });
@@ -30,7 +31,7 @@ export function createExpenses(ctx) {
       // سحب من الدرج بنفس المفتاح: إعادة المحاولة لا تسحب مرتين
       await ctx.shifts.move(actor, { type: 'pay_out', clientId: `exp-${clientId}`.slice(0, 64), amount, note: `مصروف: ${EXPENSE_CATEGORIES[category]}${note ? ` — ${note}` : ''}`.slice(0, 120) });
     }
-    const doc = { _id: newId(), clientId, amount, category, note, day, fromDrawer, by: actor.id, byName: actor.name, createdAt: now() };
+    const doc = { _id: newId(), clientId, amount, category, note, day, fromDrawer, ref: opts.ref ?? null, by: actor.id, byName: actor.name, createdAt: now() };
     try {
       await C().insertOne(doc);
     } catch (e) {
@@ -56,10 +57,11 @@ export function createExpenses(ctx) {
     return { total: rows.reduce((a, r) => a + r.amount, 0), rows };
   }
 
-  async function remove(actor, expenseId) {
+  async function remove(actor, expenseId, opts = {}) {
     requirePerm(actor, 'admin.reports');
     const doc = await C().findOne({ _id: checkId(expenseId) });
     if (!doc) throw notFound();
+    if (doc.ref && !opts.internal) throw new AppError(409, 'EXPENSE_LINKED', doc.ref);
     // مصروف دُفع من درج وردية ما زالت مفتوحة: يُعاد مبلغه للدرج المتوقع بحركة إدخال عكسية (يبقى الأثر ظاهراً في الوردية).
     // إن أُغلقت تلك الوردية فقد عُدّ النقد فعلاً، ولا يُغيَّر ما أُغلق.
     let drawerReversed = false;
@@ -81,5 +83,5 @@ export function createExpenses(ctx) {
 }
 
 function view(d) {
-  return { id: d._id, amount: d.amount, category: d.category, categoryName: EXPENSE_CATEGORIES[d.category], note: d.note, day: d.day, fromDrawer: d.fromDrawer, byName: d.byName, createdAt: d.createdAt };
+  return { id: d._id, amount: d.amount, category: d.category, categoryName: EXPENSE_CATEGORIES[d.category], note: d.note, day: d.day, fromDrawer: d.fromDrawer, ref: d.ref ?? null, byName: d.byName, createdAt: d.createdAt };
 }

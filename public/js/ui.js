@@ -111,6 +111,11 @@ const ERRORS = {
   LEAVE_BALANCE: 'رصيد الإجازة السنوية لا يكفي لهذه المدة.',
   LEAVE_ALREADY_DECIDED: 'سبق البت في هذا الطلب.',
   NO_HOURS: 'لا ساعات عمل مسجّلة في هذا الشهر لتوزيع الحوافز عليها.',
+  PAYROLL_LOCKED: 'صُرف راتب هذا الشهر لهذا الموظف، فالقسيمة مقفلة. ألغِ الصرف أولاً إن أردت التعديل.',
+  ADVANCE_LIMIT: 'السلفة تتجاوز الحد المسموح من الراتب.',
+  ADVANCE_IN_USE: 'خُصم من هذه السلفة في راتب مصروف، فلا يمكن إلغاؤها.',
+  EXPENSE_LINKED: 'هذا المصروف مرتبط بالموارد البشرية (راتب أو سلفة). ألغِه من هناك.',
+  INVALID_TIME: 'وقت غير صحيح في جدول الدوام.',
   NO_CHANGE: 'لم يتغير شيء: الكمية والسعر كما هما.',
   OUT_OF_STOCK: 'هذا الصنف غير متوفر حالياً — نفد من المخزون.',
   INSUFFICIENT_STOCK: 'الكمية أكبر من الرصيد الموجود في المخزون.',
@@ -152,6 +157,8 @@ const ERRORS = {
 export function errorText(e) {
   if (!e) return '';
   if (e.code === 'OUT_OF_STOCK' && e.detail) return `«${e.detail}» غير متوفر حالياً — نفد من المخزون.`;
+  if (e.code === 'ADVANCE_LIMIT' && e.detail) return `السلفة تتجاوز الحد المسموح من الراتب. المتاح الآن ${Number(e.detail).toLocaleString('en-US')} د.ع.`;
+  if (e.code === 'LEAVE_BALANCE' && e.detail) return `رصيد الإجازة السنوية لا يكفي: المتبقي ${e.detail} يوم.`;
   return ERRORS[e.code] ?? e.message ?? 'حدث خطأ';
 }
 

@@ -688,3 +688,10 @@ img.thumb { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; fl
 .link-num { border: none; background: none; padding: 4px 6px; border-radius: 8px; font: inherit; font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
 .link-num svg.i { width: 14px; height: 14px; color: var(--muted); }
 .link-num:hover { background: var(--surface-3); }
+
+/* الموارد البشرية: جدول الدوام في ملف الموظف، تبويبات كثيرة تلتف، وتنبيه نسيان الانصراف */
+.sched { display: grid; gap: 6px; }
+.sched-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; border-radius: var(--r-md); background: var(--surface-2); }
+.sched-row input[type=time] { width: 120px; min-height: 40px; }
+.seg.wrap-seg { flex-wrap: wrap; }
+.tb-btn.warn { background: #f8ecd6; color: #9a5b0c; border-color: transparent; text-decoration: none; }
