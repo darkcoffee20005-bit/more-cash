@@ -59,6 +59,7 @@ try {
   await page.fill('#su-owner', 'أحمد');
   await page.fill('#su-email', 'ahmed@zaytoon.iq');
   await page.fill('#su-pass', 'qahwa-2026!');
+  await page.fill('#su-pass2', 'qahwa-2026!');
   await page.fill('#su-pin', '1357');
   await page.fill('#su-pin2', '1357');
   await page.click('form[data-form="signup"] button[type=submit]');
@@ -420,6 +421,7 @@ try {
     await cp.fill('#su-owner', 'حسين');
     await cp.fill('#su-email', 'hussein@nakhla.iq');
     await cp.fill('#su-pass', 'nakhla-2026!');
+    await cp.fill('#su-pass2', 'nakhla-2026!');
     await cp.fill('#su-pin', '2580');
     await cp.fill('#su-pin2', '2580');
     await cp.click('form[data-form="signup"] button[type=submit]');

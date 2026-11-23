@@ -81,7 +81,18 @@ function landing() {
 }
 
 // ---------------------------------------------------------------- إنشاء حساب ودخول
-const pw = (name, id, auto) => `<div class="pw-wrap"><input name="${name}" id="${id}" type="password" required minlength="8" maxlength="128" autocomplete="${auto}"><button type="button" data-action="pw-toggle" data-for="${id}">إظهار</button></div>`;
+// بلا تصحيح ولا حرف كبير تلقائي: عند «إظهار» يصير الحقل نصاً فيغيّر الآيباد ما يُكتب
+const pw = (name, id, auto) => `<div class="pw-wrap"><input name="${name}" id="${id}" type="password" required minlength="8" maxlength="128" autocomplete="${auto}" autocapitalize="none" autocorrect="off" spellcheck="false"><button type="button" data-action="pw-toggle" data-for="${id}">إظهار</button></div><p class="pw-hint small" id="${id}-hint" hidden></p>`;
+/** تنبيه فوري: لوحة مفاتيح عربية أو Caps Lock — أشهر سببين لـ«كلمة المرور خطأ» */
+function pwHint(input, e) {
+  const hint = document.getElementById(`${input.id}-hint`);
+  if (!hint) return;
+  const msgs = [];
+  if (/[\u0600-\u06FF]/.test(input.value.replace(/[٠-٩۰-۹]/g, ''))) msgs.push('فيها حروف عربية — تأكد من لغة لوحة المفاتيح.');
+  if (e?.getModifierState?.('CapsLock')) msgs.push('زر الأحرف الكبيرة (Caps Lock) مفعّل.');
+  hint.textContent = msgs.join(' ');
+  hint.hidden = !msgs.length;
+}
 
 function side(title, lead, points) {
   return `<aside class="acc-side">${wordmark()}
@@ -143,8 +154,9 @@ function signup(s) {
         ${field('اسمك', '<input name="ownerName" id="su-owner" required minlength="2" maxlength="40" autocomplete="name">')}
       </fieldset>
       <fieldset><legend>الدخول للحساب</legend>
-        ${field('البريد الإلكتروني', '<input name="email" id="su-email" type="email" required dir="ltr" autocomplete="email" inputmode="email">')}
-        ${field('كلمة المرور', pw('password', 'su-pass', 'new-password'), '8 أحرف على الأقل، ولا تكون أرقاماً فقط')}
+        ${field('البريد الإلكتروني', '<input name="email" id="su-email" type="email" required dir="ltr" autocomplete="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false">')}
+        ${field('كلمة المرور', pw('password', 'su-pass', 'new-password'), '8 أحرف على الأقل، ولا تكون أرقاماً فقط. اكتبها بالإنجليزي واحفظها')}
+        ${field('تأكيد كلمة المرور', pw('password2', 'su-pass2', 'new-password'))}
       </fieldset>
       <fieldset><legend>رمزك السريع للكاشير</legend>
         <div class="grid-2">
@@ -165,7 +177,7 @@ function login(s) {
     <main class="acc-main"><form class="acc-form" data-form="login" data-keep>
       <div><h1>تسجيل الدخول</h1><p class="sub">ليس لديك حساب؟ <a href="${signupHref()}">أنشئ حساب مقهاك</a></p></div>
       ${DEMO() ? `<div class="demo-note">للتجربة: <b dir="ltr">${DEMO_ACCOUNT.email}</b> وكلمة المرور <b dir="ltr">${DEMO_ACCOUNT.password}</b></div>` : ''}
-      ${field('البريد الإلكتروني', '<input name="email" id="li-email" type="email" required dir="ltr" autocomplete="username" inputmode="email">')}
+      ${field('البريد الإلكتروني', '<input name="email" id="li-email" type="email" required dir="ltr" autocomplete="username" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false">')}
       ${field('كلمة المرور', pw('password', 'li-pass', 'current-password'))}
       <button class="btn primary lg block" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل الدخول</button>
       <a class="small" href="#/forgot" style="text-align:center">نسيت كلمة المرور؟</a>
@@ -235,6 +247,9 @@ function afterShopReady(cb) {
 }
 
 export function initAccount({ loadSession }) {
+  for (const t of ['input', 'keyup']) {
+    globalThis.document?.addEventListener(t, (e) => { if (e.target?.matches?.('.pw-wrap input')) pwHint(e.target, e); });
+  }
   on({
     'pw-toggle': (el) => {
       const input = document.getElementById(el.dataset.for);
@@ -246,6 +261,7 @@ export function initAccount({ loadSession }) {
     signup: (_el, _e, d) => busy(async () => {
       const missing = ['shopName', 'ownerName', 'email', 'password', 'pin'].find((k) => !String(d[k] ?? '').trim());
       if (missing) { toast('أكمل كل الحقول', 'bad'); document.querySelector(`[name="${missing}"]`)?.focus(); return; }
+      if (d.password !== d.password2) { toast('كلمتا المرور غير متطابقتين', 'bad'); document.getElementById('su-pass2')?.focus(); return; }
       if (latinDigits(d.pin) !== latinDigits(d.pin2)) { toast('الرمزان غير متطابقين', 'bad'); return; }
       const r = await post('/api/account/signup', { shopName: d.shopName, ownerName: d.ownerName, email: d.email, password: d.password, pin: d.pin, seed: d.seed });
       state.shop = r.shop;

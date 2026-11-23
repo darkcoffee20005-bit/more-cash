@@ -21,6 +21,28 @@ const MAX_CACHED_APPS = 300;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
 /** approval: كل حساب جديد ينتظر موافقة المزوّد واشتراكاً (يُفعَّل في الإنتاج من نقطة الدخول؛ معطّل في النسخة التجريبية والاختبارات) */
+/** كلمة المرور كما تُحفظ: بلا مسافات طرفية (لوحة مفاتيح الهاتف تضيفها) وبأرقام لاتينية وصيغة يونيكود موحّدة */
+export function normPass(v) {
+  if (typeof v !== 'string') return v;
+  return v.normalize('NFC').trim()
+    .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
+}
+const flipCase = (c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase());
+/** أخطاء الكتابة الشائعة على الهاتف والآيباد: الحرف الأول كبير تلقائياً، أو Caps Lock.
+ *  تُجرَّب فقط إن لم تطابق كما كُتبت، ولا تُحسب إلا محاولة خاطئة واحدة. */
+export function passVariants(v) {
+  if (typeof v !== 'string' || !v) return [v];
+  const n = normPass(v);
+  const out = [v, n];
+  if (n) out.push(flipCase(n[0]) + n.slice(1), [...n].map(flipCase).join(''));
+  return [...new Set(out)];
+}
+async function matchPassword(pass, hash) {
+  for (const v of passVariants(pass)) if (await verifyPassword(v, hash)) return true;
+  return false;
+}
+
 export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null, approval = false } = {}) {
   const adminSet = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const subs = createSubscriptions({ db, now, newId, admins: adminSet, enabled: approval });
@@ -72,6 +94,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     return e;
   }
   function password(v) {
+    v = normPass(v);
     if (typeof v !== 'string' || v.length < 8 || v.length > 128) throw bad('WEAK_PASSWORD');
     if (/^\d+$/.test(v) || new Set(v).size < 4) throw bad('WEAK_PASSWORD');
     return v;
@@ -164,7 +187,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     if (acc.lockedUntil && acc.lockedUntil > now()) {
       throw new AppError(429, 'ACCOUNT_LOCKED', String(Math.ceil((acc.lockedUntil - now()) / 60000)));
     }
-    if (!(await verifyPassword(pass, acc.passwordHash))) {
+    if (!(await matchPassword(pass, acc.passwordHash))) {
       failIp(ip);
       const fails = (acc.failedLogins ?? 0) + 1;
       const lock = fails >= MAX_FAILS;
@@ -181,7 +204,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
   async function changePassword(device, actor, body = {}) {
     if (!actor || actor.role !== 'owner') throw new AppError(403, 'FORBIDDEN', 'account.password');
     const acc = await db.collection('accounts').findOne({ _id: device.accountId });
-    if (!acc || !(await verifyPassword(String(body.current ?? ''), acc.passwordHash))) throw new AppError(400, 'WRONG_PASSWORD');
+    if (!acc || !(await matchPassword(String(body.current ?? ''), acc.passwordHash))) throw new AppError(400, 'WRONG_PASSWORD');
     const next = password(body.next);
     await db.collection('accounts').updateOne({ _id: acc._id }, { $set: {
       passwordHash: await hashPassword(next, passwordIterations ? { iterations: passwordIterations } : undefined), passwordChangedAt: now(), mustChangePassword: false,

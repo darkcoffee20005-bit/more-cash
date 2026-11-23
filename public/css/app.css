@@ -641,6 +641,8 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
 .pw-wrap { position: relative; }
 .pw-wrap input { padding-inline-end: 64px; }
 .pw-wrap button { position: absolute; inset-inline-end: 6px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--muted); font-size: .85rem; padding: 8px; }
+.pw-hint { margin: 4px 0 0; color: #9a5b00; background: #fff6e0; border-radius: 8px; padding: 6px 10px; }
+.pw-hint[hidden] { display: none; }
 .demo-note { background: var(--gold-soft); color: var(--gold-ink); border-radius: var(--r-md); padding: 12px 14px; font-size: .9rem; line-height: 1.7; }
 .demo-note b { font-variant-numeric: tabular-nums; }
 .shop-name { font-family: var(--font-brand); font-weight: 400; font-size: clamp(2.6rem, 5vw, 4.2rem); line-height: 1.05; color: #fff; text-wrap: balance; }

@@ -36,7 +36,7 @@ test('الصفحة الرئيسية، إنشاء حساب مقهى جديد، ث
   await go('#/login'); html = screen(); clean(html, 'الدخول'); assert.match(text(html), /تسجيل الدخول/);
   await go('#/signup'); html = screen(); clean(html, 'إنشاء حساب'); assert.match(text(html), /إنشاء الحساب وفتح المقهى/);
 
-  await runAction('signup', el(), {}, { shopName: 'قهوة دجلة', ownerName: 'زهراء', email: 'zahraa@dijla.iq', password: 'dijla-coffee-1', pin: '4826', pin2: '4826', seed: true });
+  await runAction('signup', el(), {}, { shopName: 'قهوة دجلة', ownerName: 'زهراء', email: 'zahraa@dijla.iq', password: 'dijla-coffee-1', password2: 'dijla-coffee-1', pin: '4826', pin2: '4826', seed: true });
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(state.shop.name, 'قهوة دجلة');
   assert.equal(state.employee.name, 'زهراء');

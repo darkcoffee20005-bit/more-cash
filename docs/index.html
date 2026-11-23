@@ -644,6 +644,8 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
 .pw-wrap { position: relative; }
 .pw-wrap input { padding-inline-end: 64px; }
 .pw-wrap button { position: absolute; inset-inline-end: 6px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--muted); font-size: .85rem; padding: 8px; }
+.pw-hint { margin: 4px 0 0; color: #9a5b00; background: #fff6e0; border-radius: 8px; padding: 6px 10px; }
+.pw-hint[hidden] { display: none; }
 .demo-note { background: var(--gold-soft); color: var(--gold-ink); border-radius: var(--r-md); padding: 12px 14px; font-size: .9rem; line-height: 1.7; }
 .demo-note b { font-variant-numeric: tabular-nums; }
 .shop-name { font-family: var(--font-brand); font-weight: 400; font-size: clamp(2.6rem, 5vw, 4.2rem); line-height: 1.05; color: #fff; text-wrap: balance; }
@@ -5490,6 +5492,28 @@ const MAX_CACHED_APPS = 300;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
 /** approval: كل حساب جديد ينتظر موافقة المزوّد واشتراكاً (يُفعَّل في الإنتاج من نقطة الدخول؛ معطّل في النسخة التجريبية والاختبارات) */
+/** كلمة المرور كما تُحفظ: بلا مسافات طرفية (لوحة مفاتيح الهاتف تضيفها) وبأرقام لاتينية وصيغة يونيكود موحّدة */
+function normPass(v) {
+  if (typeof v !== 'string') return v;
+  return v.normalize('NFC').trim()
+    .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
+}
+const flipCase = (c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase());
+/** أخطاء الكتابة الشائعة على الهاتف والآيباد: الحرف الأول كبير تلقائياً، أو Caps Lock.
+ *  تُجرَّب فقط إن لم تطابق كما كُتبت، ولا تُحسب إلا محاولة خاطئة واحدة. */
+function passVariants(v) {
+  if (typeof v !== 'string' || !v) return [v];
+  const n = normPass(v);
+  const out = [v, n];
+  if (n) out.push(flipCase(n[0]) + n.slice(1), [...n].map(flipCase).join(''));
+  return [...new Set(out)];
+}
+async function matchPassword(pass, hash) {
+  for (const v of passVariants(pass)) if (await verifyPassword(v, hash)) return true;
+  return false;
+}
+
 function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null, approval = false } = {}) {
   const adminSet = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const subs = createSubscriptions({ db, now, newId, admins: adminSet, enabled: approval });
@@ -5541,6 +5565,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     return e;
   }
   function password(v) {
+    v = normPass(v);
     if (typeof v !== 'string' || v.length < 8 || v.length > 128) throw bad('WEAK_PASSWORD');
     if (/^\d+$/.test(v) || new Set(v).size < 4) throw bad('WEAK_PASSWORD');
     return v;
@@ -5633,7 +5658,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     if (acc.lockedUntil && acc.lockedUntil > now()) {
       throw new AppError(429, 'ACCOUNT_LOCKED', String(Math.ceil((acc.lockedUntil - now()) / 60000)));
     }
-    if (!(await verifyPassword(pass, acc.passwordHash))) {
+    if (!(await matchPassword(pass, acc.passwordHash))) {
       failIp(ip);
       const fails = (acc.failedLogins ?? 0) + 1;
       const lock = fails >= MAX_FAILS;
@@ -5650,7 +5675,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
   async function changePassword(device, actor, body = {}) {
     if (!actor || actor.role !== 'owner') throw new AppError(403, 'FORBIDDEN', 'account.password');
     const acc = await db.collection('accounts').findOne({ _id: device.accountId });
-    if (!acc || !(await verifyPassword(String(body.current ?? ''), acc.passwordHash))) throw new AppError(400, 'WRONG_PASSWORD');
+    if (!acc || !(await matchPassword(String(body.current ?? ''), acc.passwordHash))) throw new AppError(400, 'WRONG_PASSWORD');
     const next = password(body.next);
     await db.collection('accounts').updateOne({ _id: acc._id }, { $set: {
       passwordHash: await hashPassword(next, passwordIterations ? { iterations: passwordIterations } : undefined), passwordChangedAt: now(), mustChangePassword: false,
@@ -5736,7 +5761,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
   return { handle, appFor };
 }
 
-return { createPlatform };
+return { normPass, passVariants, createPlatform };
 })();
 
 // ---- demo/backend.js
@@ -8092,7 +8117,18 @@ function landing() {
 }
 
 // ---------------------------------------------------------------- إنشاء حساب ودخول
-const pw = (name, id, auto) => `<div class="pw-wrap"><input name="${name}" id="${id}" type="password" required minlength="8" maxlength="128" autocomplete="${auto}"><button type="button" data-action="pw-toggle" data-for="${id}">إظهار</button></div>`;
+// بلا تصحيح ولا حرف كبير تلقائي: عند «إظهار» يصير الحقل نصاً فيغيّر الآيباد ما يُكتب
+const pw = (name, id, auto) => `<div class="pw-wrap"><input name="${name}" id="${id}" type="password" required minlength="8" maxlength="128" autocomplete="${auto}" autocapitalize="none" autocorrect="off" spellcheck="false"><button type="button" data-action="pw-toggle" data-for="${id}">إظهار</button></div><p class="pw-hint small" id="${id}-hint" hidden></p>`;
+/** تنبيه فوري: لوحة مفاتيح عربية أو Caps Lock — أشهر سببين لـ«كلمة المرور خطأ» */
+function pwHint(input, e) {
+  const hint = document.getElementById(`${input.id}-hint`);
+  if (!hint) return;
+  const msgs = [];
+  if (/[\u0600-\u06FF]/.test(input.value.replace(/[٠-٩۰-۹]/g, ''))) msgs.push('فيها حروف عربية — تأكد من لغة لوحة المفاتيح.');
+  if (e?.getModifierState?.('CapsLock')) msgs.push('زر الأحرف الكبيرة (Caps Lock) مفعّل.');
+  hint.textContent = msgs.join(' ');
+  hint.hidden = !msgs.length;
+}
 
 function side(title, lead, points) {
   return `<aside class="acc-side">${wordmark()}
@@ -8154,8 +8190,9 @@ function signup(s) {
         ${field('اسمك', '<input name="ownerName" id="su-owner" required minlength="2" maxlength="40" autocomplete="name">')}
       </fieldset>
       <fieldset><legend>الدخول للحساب</legend>
-        ${field('البريد الإلكتروني', '<input name="email" id="su-email" type="email" required dir="ltr" autocomplete="email" inputmode="email">')}
-        ${field('كلمة المرور', pw('password', 'su-pass', 'new-password'), '8 أحرف على الأقل، ولا تكون أرقاماً فقط')}
+        ${field('البريد الإلكتروني', '<input name="email" id="su-email" type="email" required dir="ltr" autocomplete="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false">')}
+        ${field('كلمة المرور', pw('password', 'su-pass', 'new-password'), '8 أحرف على الأقل، ولا تكون أرقاماً فقط. اكتبها بالإنجليزي واحفظها')}
+        ${field('تأكيد كلمة المرور', pw('password2', 'su-pass2', 'new-password'))}
       </fieldset>
       <fieldset><legend>رمزك السريع للكاشير</legend>
         <div class="grid-2">
@@ -8176,7 +8213,7 @@ function login(s) {
     <main class="acc-main"><form class="acc-form" data-form="login" data-keep>
       <div><h1>تسجيل الدخول</h1><p class="sub">ليس لديك حساب؟ <a href="${signupHref()}">أنشئ حساب مقهاك</a></p></div>
       ${DEMO() ? `<div class="demo-note">للتجربة: <b dir="ltr">${DEMO_ACCOUNT.email}</b> وكلمة المرور <b dir="ltr">${DEMO_ACCOUNT.password}</b></div>` : ''}
-      ${field('البريد الإلكتروني', '<input name="email" id="li-email" type="email" required dir="ltr" autocomplete="username" inputmode="email">')}
+      ${field('البريد الإلكتروني', '<input name="email" id="li-email" type="email" required dir="ltr" autocomplete="username" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false">')}
       ${field('كلمة المرور', pw('password', 'li-pass', 'current-password'))}
       <button class="btn primary lg block" type="submit" ${s.busy ? 'disabled' : ''}>تسجيل الدخول</button>
       <a class="small" href="#/forgot" style="text-align:center">نسيت كلمة المرور؟</a>
@@ -8246,6 +8283,9 @@ function afterShopReady(cb) {
 }
 
 function initAccount({ loadSession }) {
+  for (const t of ['input', 'keyup']) {
+    globalThis.document?.addEventListener(t, (e) => { if (e.target?.matches?.('.pw-wrap input')) pwHint(e.target, e); });
+  }
   on({
     'pw-toggle': (el) => {
       const input = document.getElementById(el.dataset.for);
@@ -8257,6 +8297,7 @@ function initAccount({ loadSession }) {
     signup: (_el, _e, d) => busy(async () => {
       const missing = ['shopName', 'ownerName', 'email', 'password', 'pin'].find((k) => !String(d[k] ?? '').trim());
       if (missing) { toast('أكمل كل الحقول', 'bad'); document.querySelector(`[name="${missing}"]`)?.focus(); return; }
+      if (d.password !== d.password2) { toast('كلمتا المرور غير متطابقتين', 'bad'); document.getElementById('su-pass2')?.focus(); return; }
       if (latinDigits(d.pin) !== latinDigits(d.pin2)) { toast('الرمزان غير متطابقين', 'bad'); return; }
       const r = await post('/api/account/signup', { shopName: d.shopName, ownerName: d.ownerName, email: d.email, password: d.password, pin: d.pin, seed: d.seed });
       state.shop = r.shop;

@@ -293,3 +293,15 @@ test('الفروع: فرع جديد بنسخة من القائمة، عزل ال
   assert.equal(shops.rows.find((r) => r.id === branch.id).email, 'ahmed@zaytoon.iq');
   assert.equal((await ok('new', 'POST', '/api/account/login', { email: SHOP_A.email, password: SHOP_A.password })).shop.name, 'مقهى الزيتون');
 });
+
+test('الدخول يتسامح مع أخطاء كتابة الهاتف فقط: حرف أول كبير، مسافة، أرقام عربية، Caps Lock', async () => {
+  const { ok, call } = await setup();
+  await ok('a', 'POST', '/api/account/signup', { ...SHOP_A, email: 'm@cafe.iq', password: 'qahwa2026 ' }); // تُحفظ بلا المسافة
+  const login = (password, dev) => call(dev, 'POST', '/api/account/login', { email: 'm@cafe.iq', password });
+  for (const [i, pw] of ['qahwa2026', 'qahwa2026 ', 'Qahwa2026', 'qahwa٢٠٢٦', 'QAHWA2026', ' Qahwa۲۰۲۶ '].entries()) {
+    assert.equal((await login(pw, `d${i}`)).status, 200, pw);
+  }
+  for (const [i, pw] of ['qahwa2025', 'qAhwa2026', 'ضشهصش2026'].entries()) {
+    assert.equal((await login(pw, `x${i}`)).body.error, 'BAD_CREDENTIALS', pw);
+  }
+});
