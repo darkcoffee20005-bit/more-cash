@@ -183,3 +183,41 @@ test('الرواتب: الخصومات لا تجعل الصافي سالباً،
   assert.equal(paid.rows[0].expenseId, null, 'لا مصروف بصفر');
   assert.equal((await ok('owner', 'GET', '/api/admin/expenses', null, { from: '2026-10-01', to: '2026-10-31' })).total, 0);
 });
+
+test('إلى أين ذهبت الفلوس: المصروفات والرواتب والسلف والمشتريات ونقص المخزون مرتبطة بمصادرها بلا تكرار', async () => {
+  const { ok, call } = await boot();
+  const emp = await ok('owner', 'POST', '/api/admin/employees', { name: 'نور', role: 'cashier', pin: '8642', salary: 300000 });
+  await ok('owner', 'POST', '/api/admin/expenses', { clientId: randomUUID(), amount: 25000, category: 'utilities', note: 'كهرباء' });
+  // مشتريات: 1,000 مل حليب بسعر 2.5 = 2,500، ثم تصحيح إلى 2,000 مل بنفس السعر (+2,500)
+  const inv = await ok('owner', 'GET', '/api/admin/inventory');
+  const milk = inv.rows.find((r) => r.name === 'حليب كامل');
+  await ok('owner', 'POST', '/api/admin/inventory/receive', { supplier: 'الألبان', lines: [{ id: randomUUID(), variantId: milk.variantId, qty: 1000, total: 2500 }] });
+  const rc = (await ok('owner', 'GET', '/api/admin/inventory/receipts')).find((x) => x.variantId === milk.variantId);
+  await ok('owner', 'POST', `/api/admin/inventory/receipts/${rc.id}/fix`, { clientId: randomUUID(), qty: 2000, cost: '2.5', note: 'الكمية الصحيحة' });
+  // هدر 400 مل بتكلفة الوحدة الحالية
+  const before = (await ok('owner', 'GET', '/api/admin/inventory')).rows.find((r) => r.variantId === milk.variantId);
+  await ok('owner', 'POST', '/api/admin/inventory/adjust', { clientId: randomUUID(), variantId: milk.variantId, type: 'loss', qty: 400, note: 'انسكب' });
+  const lossValue = Math.round((400 * before.costMilli) / 1000);
+  // حافز يدخل الراتب، وسلفة، وصرف الراتب
+  await ok('owner', 'POST', '/api/hr/adjustments', { clientId: randomUUID(), employeeId: emp.id, type: 'bonus', amount: 15000, reason: 'ممتاز' });
+  await ok('owner', 'POST', '/api/hr/advances', { clientId: randomUUID(), employeeId: emp.id, amount: 50000, installments: 1 });
+  const paid = await ok('owner', 'POST', '/api/hr/payroll/pay', { clientId: randomUUID(), month: '2026-10', employeeIds: [emp.id] });
+  const net = paid.rows[0].net;
+  assert.equal(net, paid.rows[0].gross - 50000, 'الحافز داخل الإجمالي، والسلفة مخصومة');
+
+  const sp = await ok('owner', 'GET', '/api/admin/expenses/summary', null, { from: '2026-10-14', to: '2026-10-14' });
+  assert.equal(sp.cash.operating, 25000);
+  assert.equal(sp.cash.byCategory.utilities, 25000);
+  assert.equal(sp.cash.salaries, net);
+  assert.equal(sp.cash.advances, 50000);
+  assert.equal(sp.cash.purchases, 5000, 'الاستلام 2,500 + التصحيح 2,500');
+  assert.equal(sp.cash.total, 25000 + net + 50000 + 5000);
+  assert.equal(sp.hr.bonuses, 15000, 'الحافز يظهر ولا يُضاف مرة ثانية للمصروفات');
+  assert.equal(sp.costs.stockLoss, lossValue);
+  // صافي الربح: المصروفات (تشغيل + رواتب + سلف) ونقص المخزون، وليس المشتريات (الربح يحسب تكلفة ما بيع)
+  const rep = await ok('owner', 'GET', '/api/admin/reports', null, { from: '2026-10-14', to: '2026-10-14' });
+  assert.equal(rep.summary.stockLoss, lossValue);
+  assert.equal(rep.summary.netProfit, rep.summary.profit - (25000 + net + 50000) - lossValue);
+  assert.equal(sp.profit.netProfit, rep.summary.netProfit);
+  assert.equal((await call('sara', 'GET', '/api/admin/expenses/summary', null, { from: '2026-10-14', to: '2026-10-14' })).status, 401);
+});

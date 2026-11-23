@@ -6,6 +6,12 @@ import { bad, getSettings, requirePerm } from './core.js';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** نقص المخزون في فترة (هدر مسجّل + فروقات جرد + تعديلات) بقيمته لحظة الحركة: موجب = خسارة تُطرح من صافي الربح */
+export async function stockLossBetween(db, fromDate, toDate) {
+  const moves = await db.collection('stock_moves').find({ at: { $gte: fromDate, $lt: toDate }, reason: { $in: ['loss', 'count', 'adjust'] } }).project({ value: 1 }).toArray();
+  return -moves.reduce((a, m) => a + (m.value ?? 0), 0) || 0;
+}
+
 export function createReports(ctx) {
   const { db, now } = ctx;
 
@@ -29,10 +35,48 @@ export function createReports(ctx) {
     const receipts = await receiptsIn(r.from, r.to);
     const rep = buildReport(receipts, { tzOffsetMin: r.settings.tzOffsetMin });
     const exp = await ctx.expenses.totalBetween(from, to);
-    // صافي الربح = الربح الإجمالي − المصروفات
+    // صافي الربح = الربح الإجمالي − المصروفات − نقص المخزون (هدر وفروقات جرد)
     rep.summary.expenses = exp.total;
-    rep.summary.netProfit = rep.summary.profit - exp.total;
+    rep.summary.stockLoss = await stockLossBetween(db, r.from, r.to);
+    rep.summary.netProfit = rep.summary.profit - exp.total - rep.summary.stockLoss;
     return { from, to, ...rep };
+  }
+
+  /**
+   * «إلى أين ذهبت فلوسك» في فترة: كل ما خرج نقداً (مصروفات، رواتب، سلف، مشتريات مخزون) وكل ما قلّل الربح بلا نقد
+   * (تكلفة المبيعات، هدر الإلغاء، نقص المخزون، الخصومات)، والحوافز والغرامات المسجّلة. ملخص مرتبط بمصادره، لا قيود مكررة:
+   * المشتريات لا تُحسب مصروفاً في صافي الربح (الربح يحسب تكلفة ما بيع فعلاً)، والحوافز تدخل الرواتب عند صرفها.
+   */
+  async function spending(actor, { from, to } = {}) {
+    requirePerm(actor, 'admin.reports');
+    const r = await range(from, to);
+    const rep = buildReport(await receiptsIn(r.from, r.to), { tzOffsetMin: r.settings.tzOffsetMin });
+    const exp = await db.collection('expenses').find({ day: { $gte: from, $lte: to } }).toArray();
+    const sum = (list, f = (x) => x.amount) => list.reduce((a, x) => a + f(x), 0);
+    const manual = exp.filter((e) => !e.ref);
+    const byCategory = {};
+    for (const e of manual) byCategory[e.category] = (byCategory[e.category] ?? 0) + e.amount;
+    const moves = await db.collection('stock_moves').find({ at: { $gte: r.from, $lt: r.to }, reason: { $in: ['receive', 'receive_fix'] } }).toArray();
+    let purchases = 0;
+    let noCost = 0;
+    for (const m of moves) {
+      if (m.reason === 'receive') { if (m.unitCostMilli === undefined || m.unitCostMilli === null) noCost += 1; else purchases += costOf(m.delta, m.unitCostMilli); }
+      else if (m.fixOf) purchases += costOf(m.fixOf.qty + m.delta, m.unitCostMilli) - costOf(m.fixOf.qty, m.fixOf.unitCostMilli ?? m.unitCostMilli);
+    }
+    const adj = await db.collection('hr_adjustments').find({ day: { $gte: from, $lte: to } }).toArray();
+    const salaries = sum(exp.filter((e) => e.ref === 'payroll'));
+    const advances = sum(exp.filter((e) => e.ref === 'advance'));
+    const operating = sum(manual);
+    const stockLoss = await stockLossBetween(db, r.from, r.to);
+    const S = rep.summary;
+    const expensesTotal = sum(exp);
+    return {
+      from, to,
+      cash: { operating, byCategory, salaries, advances, purchases, purchasesNoCost: noCost, total: operating + salaries + advances + purchases },
+      costs: { cogs: S.cogs, waste: S.wasteCost ?? 0, stockLoss, discounts: S.discounts },
+      hr: { bonuses: sum(adj.filter((a) => a.type === 'bonus')), fines: sum(adj.filter((a) => a.type === 'fine')) },
+      profit: { net: S.net, profit: S.profit, expenses: expensesTotal, stockLoss, netProfit: S.profit - expensesTotal - stockLoss },
+    };
   }
 
   /** تقرير يوم واحد للمشاركة أو الطباعة: المبيعات + الموارد المصروفة (من دفتر المخزون) + النواقص */
@@ -63,7 +107,8 @@ export function createReports(ctx) {
       .sort((a, b) => Number(b.ingredient) - Number(a.ingredient) || b.cost - a.cost || a.name.localeCompare(b.name, 'ar'));
     const exp = await ctx.expenses.totalBetween(date, date);
     rep.summary.expenses = exp.total;
-    rep.summary.netProfit = rep.summary.profit - exp.total;
+    rep.summary.stockLoss = await stockLossBetween(db, r.from, r.to);
+    rep.summary.netProfit = rep.summary.profit - exp.total - rep.summary.stockLoss;
     const cancelled = (await db.collection('receipts').find({ type: 'refund', cancel: true, createdAt: { $gte: r.from, $lt: r.to } }).sort({ createdAt: 1 }).toArray())
       .map((x) => ({ number: x.number, saleNumber: x.refundOfNumber, at: x.createdAt, total: x.totals.total, wasteCost: x.wasteCost ?? 0, reason: x.reason, by: x.employeeName,
         items: x.lines.map((l) => `${l.qty}× ${l.itemName}${l.variantName ? ` ${l.variantName}` : ''}`).join('، ') }));
@@ -124,7 +169,7 @@ export function createReports(ctx) {
     };
   }
 
-  return { report, daily, dashboard };
+  return { report, daily, dashboard, spending };
 }
 
 function fillDays(byDay, startDate, n) {

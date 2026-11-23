@@ -698,6 +698,8 @@ img.thumb { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; fl
 .sched-row input[type=time] { width: 120px; min-height: 40px; }
 .seg.wrap-seg { flex-wrap: wrap; }
 .tb-btn.warn { background: #f8ecd6; color: #9a5b0c; border-color: transparent; text-decoration: none; }
+/* روابط داخل أسطر الملخص (المصروفات): بلون الهوية لا بالأزرق الافتراضي */
+.r-line a { color: var(--olive-b, #687b1b); font-weight: 600; text-decoration: none; border-bottom: 1px dashed currentColor; }
 
 </style></head><body><div id="app"></div><div id="print-area" aria-hidden="true"></div><script type="module">
 // ---- server/db/memory.js
@@ -2400,12 +2402,12 @@ function createInventory(ctx) {
   const variants = () => db.collection('variants');
 
   /** يطبّق حركة مرة واحدة فقط. يعيد true إن طُبّقت الآن، false إن كانت مطبّقة سابقاً. */
-  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null }) {
+  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null, value = null }) {
     if (!Number.isSafeInteger(delta) || delta === 0) return false;
     // البيع لا ينزل بالرصيد تحت الصفر (بيع بلا إنترنت أو بيعان متزامنان على آخر قطعة): يُخصم المتوفر فقط
     if (reason === 'sale' && delta < 0) return applySaleMove({ key, variantId, delta, refId, by });
     try {
-      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}) });
+      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}), ...(value !== null ? { value } : {}) });
     } catch (e) {
       if (isDup(e)) return false;
       throw e;
@@ -2485,7 +2487,9 @@ function createInventory(ctx) {
       if (!note) throw bad('REQUIRED', 'note');
       if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     }
-    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli });
+    // هدر/جرد/تعديل: قيمة الحركة بتكلفة الوحدة لحظتها (دينار صحيح بإشارة) — النقص يُطرح من صافي الربح
+    const value = type === 'receive' || delta === 0 ? null : (delta < 0 ? -costOf(-delta, v.costMilli ?? 0) : costOf(delta, v.costMilli ?? 0));
+    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli, value });
     if (applied) await audit({ ...ctx, actor }, `inventory.${type}`, { variantId: v._id, delta, note });
     const after = await variants().findOne({ _id: v._id });
     return { applied, delta, stock: after.stock, costMilli: after.costMilli };
@@ -2792,6 +2796,12 @@ const { bad, getSettings, requirePerm } = __m_server_app_core_js;
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** نقص المخزون في فترة (هدر مسجّل + فروقات جرد + تعديلات) بقيمته لحظة الحركة: موجب = خسارة تُطرح من صافي الربح */
+async function stockLossBetween(db, fromDate, toDate) {
+  const moves = await db.collection('stock_moves').find({ at: { $gte: fromDate, $lt: toDate }, reason: { $in: ['loss', 'count', 'adjust'] } }).project({ value: 1 }).toArray();
+  return -moves.reduce((a, m) => a + (m.value ?? 0), 0) || 0;
+}
+
 function createReports(ctx) {
   const { db, now } = ctx;
 
@@ -2815,10 +2825,48 @@ function createReports(ctx) {
     const receipts = await receiptsIn(r.from, r.to);
     const rep = buildReport(receipts, { tzOffsetMin: r.settings.tzOffsetMin });
     const exp = await ctx.expenses.totalBetween(from, to);
-    // صافي الربح = الربح الإجمالي − المصروفات
+    // صافي الربح = الربح الإجمالي − المصروفات − نقص المخزون (هدر وفروقات جرد)
     rep.summary.expenses = exp.total;
-    rep.summary.netProfit = rep.summary.profit - exp.total;
+    rep.summary.stockLoss = await stockLossBetween(db, r.from, r.to);
+    rep.summary.netProfit = rep.summary.profit - exp.total - rep.summary.stockLoss;
     return { from, to, ...rep };
+  }
+
+  /**
+   * «إلى أين ذهبت فلوسك» في فترة: كل ما خرج نقداً (مصروفات، رواتب، سلف، مشتريات مخزون) وكل ما قلّل الربح بلا نقد
+   * (تكلفة المبيعات، هدر الإلغاء، نقص المخزون، الخصومات)، والحوافز والغرامات المسجّلة. ملخص مرتبط بمصادره، لا قيود مكررة:
+   * المشتريات لا تُحسب مصروفاً في صافي الربح (الربح يحسب تكلفة ما بيع فعلاً)، والحوافز تدخل الرواتب عند صرفها.
+   */
+  async function spending(actor, { from, to } = {}) {
+    requirePerm(actor, 'admin.reports');
+    const r = await range(from, to);
+    const rep = buildReport(await receiptsIn(r.from, r.to), { tzOffsetMin: r.settings.tzOffsetMin });
+    const exp = await db.collection('expenses').find({ day: { $gte: from, $lte: to } }).toArray();
+    const sum = (list, f = (x) => x.amount) => list.reduce((a, x) => a + f(x), 0);
+    const manual = exp.filter((e) => !e.ref);
+    const byCategory = {};
+    for (const e of manual) byCategory[e.category] = (byCategory[e.category] ?? 0) + e.amount;
+    const moves = await db.collection('stock_moves').find({ at: { $gte: r.from, $lt: r.to }, reason: { $in: ['receive', 'receive_fix'] } }).toArray();
+    let purchases = 0;
+    let noCost = 0;
+    for (const m of moves) {
+      if (m.reason === 'receive') { if (m.unitCostMilli === undefined || m.unitCostMilli === null) noCost += 1; else purchases += costOf(m.delta, m.unitCostMilli); }
+      else if (m.fixOf) purchases += costOf(m.fixOf.qty + m.delta, m.unitCostMilli) - costOf(m.fixOf.qty, m.fixOf.unitCostMilli ?? m.unitCostMilli);
+    }
+    const adj = await db.collection('hr_adjustments').find({ day: { $gte: from, $lte: to } }).toArray();
+    const salaries = sum(exp.filter((e) => e.ref === 'payroll'));
+    const advances = sum(exp.filter((e) => e.ref === 'advance'));
+    const operating = sum(manual);
+    const stockLoss = await stockLossBetween(db, r.from, r.to);
+    const S = rep.summary;
+    const expensesTotal = sum(exp);
+    return {
+      from, to,
+      cash: { operating, byCategory, salaries, advances, purchases, purchasesNoCost: noCost, total: operating + salaries + advances + purchases },
+      costs: { cogs: S.cogs, waste: S.wasteCost ?? 0, stockLoss, discounts: S.discounts },
+      hr: { bonuses: sum(adj.filter((a) => a.type === 'bonus')), fines: sum(adj.filter((a) => a.type === 'fine')) },
+      profit: { net: S.net, profit: S.profit, expenses: expensesTotal, stockLoss, netProfit: S.profit - expensesTotal - stockLoss },
+    };
   }
 
   /** تقرير يوم واحد للمشاركة أو الطباعة: المبيعات + الموارد المصروفة (من دفتر المخزون) + النواقص */
@@ -2849,7 +2897,8 @@ function createReports(ctx) {
       .sort((a, b) => Number(b.ingredient) - Number(a.ingredient) || b.cost - a.cost || a.name.localeCompare(b.name, 'ar'));
     const exp = await ctx.expenses.totalBetween(date, date);
     rep.summary.expenses = exp.total;
-    rep.summary.netProfit = rep.summary.profit - exp.total;
+    rep.summary.stockLoss = await stockLossBetween(db, r.from, r.to);
+    rep.summary.netProfit = rep.summary.profit - exp.total - rep.summary.stockLoss;
     const cancelled = (await db.collection('receipts').find({ type: 'refund', cancel: true, createdAt: { $gte: r.from, $lt: r.to } }).sort({ createdAt: 1 }).toArray())
       .map((x) => ({ number: x.number, saleNumber: x.refundOfNumber, at: x.createdAt, total: x.totals.total, wasteCost: x.wasteCost ?? 0, reason: x.reason, by: x.employeeName,
         items: x.lines.map((l) => `${l.qty}× ${l.itemName}${l.variantName ? ` ${l.variantName}` : ''}`).join('، ') }));
@@ -2910,7 +2959,7 @@ function createReports(ctx) {
     };
   }
 
-  return { report, daily, dashboard };
+  return { report, daily, dashboard, spending };
 }
 
 function fillDays(byDay, startDate, n) {
@@ -2923,7 +2972,7 @@ function fillDays(byDay, startDate, n) {
   return outDays;
 }
 
-return { createReports };
+return { stockLossBetween, createReports };
 })();
 
 // ---- server/app/expenses.js
@@ -4478,6 +4527,7 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['GET', '/api/admin/reports', (actor, req) => reports.report(actor, req.query)],
     ['GET', '/api/admin/reports/daily', (actor, req) => reports.daily(actor, req.query)],
     ['GET', '/api/admin/expenses', (actor, req) => ctx.expenses.list(actor, req.query)],
+    ['GET', '/api/admin/expenses/summary', (actor, req) => reports.spending(actor, req.query)],
     // الموارد البشرية
     ['POST', '/api/hr/clock', (actor, req) => ctx.hr.clock(actor, req.body)],
     ['POST', '/api/hr/leaves', (actor, req) => ctx.hr.requestLeave(actor, req.body)],
@@ -4816,6 +4866,7 @@ return { createPlatformAdmin };
 
 // ---- server/app/branches.js
 const __m_server_app_branches_js = await (async () => {
+const { stockLossBetween } = __m_server_app_reports_js;
 const { buildReport } = __m_shared_reports_js;
 const { dayRange } = __m_shared_format_js;
 const { AppError, bad, getSettings, id: checkId, str } = __m_server_app_core_js;
@@ -4824,6 +4875,7 @@ const { scopeDb } = __m_server_db_scoped_js;
 // الفروع: حساب مالك واحد يملك عدة مقاهٍ (كل فرع مقهى مستقل بموظفيه ومخزونه وإيصالاته).
 // إنشاء فرع (مع نسخ القائمة اختيارياً)، تبديل فرع الجهاز، وتقرير مجمّع لكل الفروع.
 // يعمل على مستوى المنصة لأنه يعبر بين المقاهي، لكنه لا يقرأ إلا فروع الحساب نفسه.
+
 
 
 
@@ -4856,8 +4908,9 @@ function createBranches({ db, now, newId, appFor, forgetApp }) {
     const rep = buildReport(receipts, { tzOffsetMin: settings.tzOffsetMin });
     const exp = await sdb.collection('expenses').find({ day: { $gte: from, $lte: to } }).project({ amount: 1 }).toArray();
     const expenses = exp.reduce((a, x) => a + x.amount, 0);
+    const stockLoss = await stockLossBetween(sdb, new Date(r.from), new Date(r.to));
     const s = rep.summary;
-    return { net: s.net, gross: s.gross, salesCount: s.salesCount, refunds: s.refunds, profit: s.profit, expenses, netProfit: s.profit - expenses, cashNet: s.cashNet, avgSale: s.avgSale };
+    return { net: s.net, gross: s.gross, salesCount: s.salesCount, refunds: s.refunds, profit: s.profit, expenses, stockLoss, netProfit: s.profit - expenses - stockLoss, cashNet: s.cashNet, avgSale: s.avgSale };
   }
 
   async function list(device, token) {
@@ -4913,7 +4966,7 @@ function createBranches({ db, now, newId, appFor, forgetApp }) {
       rows.push({ id, name: tenants.get(id).name, current: id === device.tenantId, ...(await summaryOf(id, from, to)) });
     }
     const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
-    const totals = { net: sum('net'), gross: sum('gross'), salesCount: sum('salesCount'), refunds: sum('refunds'), profit: sum('profit'), expenses: sum('expenses'), netProfit: sum('netProfit'), cashNet: sum('cashNet') };
+    const totals = { net: sum('net'), gross: sum('gross'), salesCount: sum('salesCount'), refunds: sum('refunds'), profit: sum('profit'), expenses: sum('expenses'), stockLoss: sum('stockLoss'), netProfit: sum('netProfit'), cashNet: sum('cashNet') };
     totals.avgSale = totals.salesCount ? Math.round(totals.net / totals.salesCount) : 0;
     return { from, to, rows, totals };
   }
@@ -8311,7 +8364,7 @@ const PAGES = {
       <div class="toolbar"><div class="seg">${presets.map(([k, l]) => `<button class="${a.expPreset === k ? 'on' : ''}" data-action="exp-preset" data-k="${k}">${l}</button>`).join('')}</div></div>`;
     if (!e) return `${head}<p class="muted">جارٍ التحميل…</p>`;
     const cats = Object.entries(e.byCategory).sort((x, y) => y[1] - x[1]);
-    return `${head}
+    return `${head}${spendingPanel(a.spending)}
       <div class="kpis"><div class="kpi lead"><span class="label">مجموع المصروفات</span><b>${money(e.total)}</b><span class="muted small">${e.rows.length} مصروف</span></div>
         ${cats.slice(0, 3).map(([k, v]) => `<div class="kpi"><span class="label">${esc(EXPENSE_NAMES[k] ?? k)}</span><b>${money(v)}</b></div>`).join('')}</div>
       <div class="table-wrap"><table><thead><tr><th>اليوم</th><th>البند</th><th>ملاحظة</th><th>بواسطة</th><th class="num">المبلغ</th><th></th></tr></thead>
@@ -8350,7 +8403,7 @@ const PAGES = {
         ${kpi('صافي المبيعات', money(sm.net), `${sm.salesCount} إيصال · متوسط ${money(sm.avgSale)}`)}
         ${kpi('الربح الإجمالي', money(sm.profit), `تكلفة الموارد ${money(d.consumptionCost)}`)}
         ${kpi('المصروفات', money(sm.expenses), d.expenses.length ? d.expenses.map((x) => esc(EXPENSE_NAMES[x.category] ?? x.category)).join('، ') : 'لا مصروفات')}
-        ${kpi('صافي الربح', `<span style="color:${sm.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sm.netProfit)}</span>`, 'بعد المصروفات')}
+        ${kpi('صافي الربح', `<span style="color:${sm.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sm.netProfit)}</span>`, sm.stockLoss ? `بعد المصروفات ونقص المخزون ${money(sm.stockLoss)}` : 'بعد المصروفات')}
       </div>
       <div class="grid-2" style="align-items:start">
         <section class="card pad stack"><h2>طرق الدفع</h2>
@@ -8429,7 +8482,8 @@ const PAGES = {
       <tr><td><b>صافي المبيعات</b></td><td class="num"><b>${money(sm.net)}</b></td><td>صافي النقد</td><td class="num">${money(sm.cashNet)}</td></tr>
       <tr><td>تكلفة البضاعة</td><td class="num">${neg(sm.cogs)}</td><td>الضريبة</td><td class="num">${money(sm.tax)}</td></tr>
       <tr><td><b>الربح الإجمالي</b></td><td class="num"><b>${money(sm.profit)}</b></td><td>هامش الربح</td><td class="num">${sm.net ? `${Math.round((sm.profit / sm.net) * 100)}%` : '—'}</td></tr>
-      <tr><td>المصروفات</td><td class="num">${neg(sm.expenses ?? 0)}</td><td><b>صافي الربح</b></td><td class="num"><b>${money(sm.netProfit ?? sm.profit)}</b></td></tr>
+      <tr><td>المصروفات</td><td class="num">${neg(sm.expenses ?? 0)}</td><td>نقص المخزون (هدر وجرد)</td><td class="num">${neg(sm.stockLoss ?? 0)}</td></tr>
+      <tr><td><b>صافي الربح</b></td><td class="num"><b>${money(sm.netProfit ?? sm.profit)}</b></td><td></td><td></td></tr>
     </tbody></table></div>`;
     const table = reportTable(tab, r);
     return `${head}${summary}
@@ -8593,13 +8647,33 @@ function auditDetails(x) {
 
 const qty = (n, unit) => `${Number(n).toLocaleString('en-US')} ${esc(unit ?? '')}`;
 
+// ---------------------------------------------------------------- إلى أين ذهبت الفلوس: ملخص مرتبط بمصادره (بلا قيود مكررة)
+function spendingPanel(sp) {
+  if (!sp) return '';
+  const line = (label, value, { href = null, note = '', neg = false } = {}) => `<div class="r-line"><span>${href ? `<a href="${href}">${label}</a>` : label}${note ? ` <span class="muted small">${note}</span>` : ''}</span>
+    <span class="num" style="${neg && value ? 'color:var(--bad)' : ''}">${neg && value ? '− ' : ''}${money(value)}</span></div>`;
+  const c = sp.cash;
+  return `<div class="grid-2" style="align-items:start">
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">خرج من المقهى</h2><b class="num">${money(c.total)}</b></div>
+      ${line('مصروفات التشغيل', c.operating, { note: Object.entries(c.byCategory).map(([k, v]) => `${EXPENSE_NAMES[k] ?? k} ${money(v)}`).join('، ') })}
+      ${line('رواتب مصروفة', c.salaries, { href: '#/admin/hr', note: 'تشمل الحوافز ناقص الغرامات' })}
+      ${line('سلف الموظفين', c.advances, { href: '#/admin/hr', note: 'تُسترد من الرواتب' })}
+      ${line('مشتريات المخزون', c.purchases, { href: '#/admin/inventory', note: c.purchasesNoCost ? `و${c.purchasesNoCost} استلام بلا سعر` : 'من الاستلام وتصحيحاته' })}</section>
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">من الربح</h2><b class="num" style="color:${sp.profit.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sp.profit.netProfit)}</b></div>
+      ${line('الربح الإجمالي', sp.profit.profit, { href: '#/admin/reports', note: `بعد تكلفة ما بيع ${money(sp.costs.cogs)}` })}
+      ${line('المصروفات والرواتب والسلف', sp.profit.expenses, { neg: true })}
+      ${line('نقص المخزون', sp.costs.stockLoss, { href: '#/admin/inventory', neg: true, note: 'هدر وفروقات جرد بتكلفتها' })}
+      <div class="r-line"><b>صافي الربح</b><b class="num">${money(sp.profit.netProfit)}</b></div>
+      <p class="muted small" style="margin:0">ومن غير نقد: خصومات للزبائن ${money(sp.costs.discounts)} (مطروحة من المبيعات)، هدر الطلبات الملغاة ${money(sp.costs.waste)} (ضمن التكلفة)، حوافز مسجّلة ${money(sp.hr.bonuses)} وغرامات ${money(sp.hr.fines)} (تدخل الرواتب عند الصرف). المشتريات لا تُطرح من الربح مرة ثانية: الربح يحسب تكلفة المكونات التي بيعت فعلاً.</p></section></div>`;
+}
+
 // ---------------------------------------------------------------- التقرير اليومي: نص للمشاركة وورقة للطباعة
 function dailyText(d) {
   const sm = d.summary;
   const lines = [
     `📊 التقرير اليومي — ${d.shopName}`, `📅 ${d.date}`, '',
     `صافي المبيعات: ${money(sm.net)}`, `عدد الإيصالات: ${sm.salesCount}`, `متوسط الفاتورة: ${money(sm.avgSale)}`, `الربح الإجمالي: ${money(sm.profit)}`,
-    ...(sm.expenses ? [`المصروفات: ${money(sm.expenses)}`] : []), `💰 صافي الربح: ${money(sm.netProfit)}`,
+    ...(sm.expenses ? [`المصروفات: ${money(sm.expenses)}`] : []), ...(sm.stockLoss ? [`نقص المخزون (هدر وجرد): ${money(sm.stockLoss)}`] : []), `💰 صافي الربح: ${money(sm.netProfit)}`,
     ...(sm.refundsCount ? [`المرتجعات: ${money(sm.refunds)} (${sm.refundsCount})`] : []),
     ...(sm.discounts ? [`الخصومات: ${money(sm.discounts)}`] : []),
     ...((d.cancelled ?? []).length ? ['', `❌ الإيصالات الملغاة (${d.cancelled.length})${sm.wasteCost ? ` — هدر ${money(sm.wasteCost)}` : ''}:`, ...d.cancelled.map((c) => `• #${c.saleNumber} ${c.items}: ${money(c.total)} — ${c.reason} (${c.by})`)] : []),
@@ -8621,7 +8695,7 @@ function dailyHtml(d) {
   return `<div class="paper80">
     <div class="c big">${esc(d.shopName)}</div><div class="c">التقرير اليومي · ${esc(d.date)}</div><hr>
     ${row('<b>صافي المبيعات د.ع</b>', `<b>${m(sm.net)}</b>`)}${row('الإيصالات', sm.salesCount)}${row('متوسط الفاتورة', m(sm.avgSale))}${row('الربح الإجمالي', m(sm.profit))}
-    ${sm.expenses ? row('المصروفات', `-${m(sm.expenses)}`) : ''}${row('<b>صافي الربح</b>', `<b>${m(sm.netProfit)}</b>`)}
+    ${sm.expenses ? row('المصروفات', `-${m(sm.expenses)}`) : ''}${sm.stockLoss ? row('نقص المخزون', `-${m(sm.stockLoss)}`) : ''}${row('<b>صافي الربح</b>', `<b>${m(sm.netProfit)}</b>`)}
     ${sm.refundsCount ? row(`المرتجعات (${sm.refundsCount})`, `-${m(sm.refunds)}`) : ''}${sm.discounts ? row('الخصومات', `-${m(sm.discounts)}`) : ''}
     ${(d.cancelled ?? []).length ? `<hr><b>الإيصالات الملغاة</b>${d.cancelled.map((c) => row(`#${c.saleNumber} ${esc(c.reason)}`, `-${m(c.total)}`)).join('')}${sm.wasteCost ? row('الهدر', m(sm.wasteCost)) : ''}` : ''}
     <hr><b>طرق الدفع</b>${d.byPayment.map((p) => row(`${esc(p.label)} (${p.count})`, m(p.net))).join('')}
@@ -8912,8 +8986,8 @@ async function loadSection(sub) {
     expenses: async () => {
       if (!a.expPreset) a.expPreset = 'month';
       const [from, to] = presetRange(a.expPreset);
-      a.expenses = null; render();
-      a.expenses = await get('/api/admin/expenses', { from, to });
+      a.expenses = null; a.spending = null; render();
+      [a.expenses, a.spending] = await Promise.all([get('/api/admin/expenses', { from, to }), get('/api/admin/expenses/summary', { from, to })]);
     },
     audit: async () => {
       if (!a.auditPreset) a.auditPreset = 'today';

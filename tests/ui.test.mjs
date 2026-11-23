@@ -252,7 +252,7 @@ test('المدير: استرجاع جزئي، إغلاق وردية، ولوحة
   assert.ok(daily.summary.salesCount > 0, 'مبيعات اليوم في التقرير');
   assert.ok(daily.consumption.some((c) => c.ingredient && c.used > 0), 'موارد مصروفة من الوصفات');
   assert.match(text(screen()), /الموارد المصروفة اليوم/);
-  assert.equal(daily.summary.netProfit, daily.summary.profit - daily.summary.expenses);
+  assert.equal(daily.summary.netProfit, daily.summary.profit - daily.summary.expenses - daily.summary.stockLoss, 'صافي الربح بعد المصروفات ونقص المخزون');
   assert.match(text(screen()), /صافي الربح/);
   await runAction('daily-print');
   assert.equal(state.modal.type, 'receipt-preview');

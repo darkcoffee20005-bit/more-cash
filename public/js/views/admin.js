@@ -115,7 +115,7 @@ const PAGES = {
       <div class="toolbar"><div class="seg">${presets.map(([k, l]) => `<button class="${a.expPreset === k ? 'on' : ''}" data-action="exp-preset" data-k="${k}">${l}</button>`).join('')}</div></div>`;
     if (!e) return `${head}<p class="muted">جارٍ التحميل…</p>`;
     const cats = Object.entries(e.byCategory).sort((x, y) => y[1] - x[1]);
-    return `${head}
+    return `${head}${spendingPanel(a.spending)}
       <div class="kpis"><div class="kpi lead"><span class="label">مجموع المصروفات</span><b>${money(e.total)}</b><span class="muted small">${e.rows.length} مصروف</span></div>
         ${cats.slice(0, 3).map(([k, v]) => `<div class="kpi"><span class="label">${esc(EXPENSE_NAMES[k] ?? k)}</span><b>${money(v)}</b></div>`).join('')}</div>
       <div class="table-wrap"><table><thead><tr><th>اليوم</th><th>البند</th><th>ملاحظة</th><th>بواسطة</th><th class="num">المبلغ</th><th></th></tr></thead>
@@ -154,7 +154,7 @@ const PAGES = {
         ${kpi('صافي المبيعات', money(sm.net), `${sm.salesCount} إيصال · متوسط ${money(sm.avgSale)}`)}
         ${kpi('الربح الإجمالي', money(sm.profit), `تكلفة الموارد ${money(d.consumptionCost)}`)}
         ${kpi('المصروفات', money(sm.expenses), d.expenses.length ? d.expenses.map((x) => esc(EXPENSE_NAMES[x.category] ?? x.category)).join('، ') : 'لا مصروفات')}
-        ${kpi('صافي الربح', `<span style="color:${sm.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sm.netProfit)}</span>`, 'بعد المصروفات')}
+        ${kpi('صافي الربح', `<span style="color:${sm.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sm.netProfit)}</span>`, sm.stockLoss ? `بعد المصروفات ونقص المخزون ${money(sm.stockLoss)}` : 'بعد المصروفات')}
       </div>
       <div class="grid-2" style="align-items:start">
         <section class="card pad stack"><h2>طرق الدفع</h2>
@@ -233,7 +233,8 @@ const PAGES = {
       <tr><td><b>صافي المبيعات</b></td><td class="num"><b>${money(sm.net)}</b></td><td>صافي النقد</td><td class="num">${money(sm.cashNet)}</td></tr>
       <tr><td>تكلفة البضاعة</td><td class="num">${neg(sm.cogs)}</td><td>الضريبة</td><td class="num">${money(sm.tax)}</td></tr>
       <tr><td><b>الربح الإجمالي</b></td><td class="num"><b>${money(sm.profit)}</b></td><td>هامش الربح</td><td class="num">${sm.net ? `${Math.round((sm.profit / sm.net) * 100)}%` : '—'}</td></tr>
-      <tr><td>المصروفات</td><td class="num">${neg(sm.expenses ?? 0)}</td><td><b>صافي الربح</b></td><td class="num"><b>${money(sm.netProfit ?? sm.profit)}</b></td></tr>
+      <tr><td>المصروفات</td><td class="num">${neg(sm.expenses ?? 0)}</td><td>نقص المخزون (هدر وجرد)</td><td class="num">${neg(sm.stockLoss ?? 0)}</td></tr>
+      <tr><td><b>صافي الربح</b></td><td class="num"><b>${money(sm.netProfit ?? sm.profit)}</b></td><td></td><td></td></tr>
     </tbody></table></div>`;
     const table = reportTable(tab, r);
     return `${head}${summary}
@@ -397,13 +398,33 @@ function auditDetails(x) {
 
 const qty = (n, unit) => `${Number(n).toLocaleString('en-US')} ${esc(unit ?? '')}`;
 
+// ---------------------------------------------------------------- إلى أين ذهبت الفلوس: ملخص مرتبط بمصادره (بلا قيود مكررة)
+function spendingPanel(sp) {
+  if (!sp) return '';
+  const line = (label, value, { href = null, note = '', neg = false } = {}) => `<div class="r-line"><span>${href ? `<a href="${href}">${label}</a>` : label}${note ? ` <span class="muted small">${note}</span>` : ''}</span>
+    <span class="num" style="${neg && value ? 'color:var(--bad)' : ''}">${neg && value ? '− ' : ''}${money(value)}</span></div>`;
+  const c = sp.cash;
+  return `<div class="grid-2" style="align-items:start">
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">خرج من المقهى</h2><b class="num">${money(c.total)}</b></div>
+      ${line('مصروفات التشغيل', c.operating, { note: Object.entries(c.byCategory).map(([k, v]) => `${EXPENSE_NAMES[k] ?? k} ${money(v)}`).join('، ') })}
+      ${line('رواتب مصروفة', c.salaries, { href: '#/admin/hr', note: 'تشمل الحوافز ناقص الغرامات' })}
+      ${line('سلف الموظفين', c.advances, { href: '#/admin/hr', note: 'تُسترد من الرواتب' })}
+      ${line('مشتريات المخزون', c.purchases, { href: '#/admin/inventory', note: c.purchasesNoCost ? `و${c.purchasesNoCost} استلام بلا سعر` : 'من الاستلام وتصحيحاته' })}</section>
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">من الربح</h2><b class="num" style="color:${sp.profit.netProfit < 0 ? 'var(--bad)' : 'inherit'}">${money(sp.profit.netProfit)}</b></div>
+      ${line('الربح الإجمالي', sp.profit.profit, { href: '#/admin/reports', note: `بعد تكلفة ما بيع ${money(sp.costs.cogs)}` })}
+      ${line('المصروفات والرواتب والسلف', sp.profit.expenses, { neg: true })}
+      ${line('نقص المخزون', sp.costs.stockLoss, { href: '#/admin/inventory', neg: true, note: 'هدر وفروقات جرد بتكلفتها' })}
+      <div class="r-line"><b>صافي الربح</b><b class="num">${money(sp.profit.netProfit)}</b></div>
+      <p class="muted small" style="margin:0">ومن غير نقد: خصومات للزبائن ${money(sp.costs.discounts)} (مطروحة من المبيعات)، هدر الطلبات الملغاة ${money(sp.costs.waste)} (ضمن التكلفة)، حوافز مسجّلة ${money(sp.hr.bonuses)} وغرامات ${money(sp.hr.fines)} (تدخل الرواتب عند الصرف). المشتريات لا تُطرح من الربح مرة ثانية: الربح يحسب تكلفة المكونات التي بيعت فعلاً.</p></section></div>`;
+}
+
 // ---------------------------------------------------------------- التقرير اليومي: نص للمشاركة وورقة للطباعة
 function dailyText(d) {
   const sm = d.summary;
   const lines = [
     `📊 التقرير اليومي — ${d.shopName}`, `📅 ${d.date}`, '',
     `صافي المبيعات: ${money(sm.net)}`, `عدد الإيصالات: ${sm.salesCount}`, `متوسط الفاتورة: ${money(sm.avgSale)}`, `الربح الإجمالي: ${money(sm.profit)}`,
-    ...(sm.expenses ? [`المصروفات: ${money(sm.expenses)}`] : []), `💰 صافي الربح: ${money(sm.netProfit)}`,
+    ...(sm.expenses ? [`المصروفات: ${money(sm.expenses)}`] : []), ...(sm.stockLoss ? [`نقص المخزون (هدر وجرد): ${money(sm.stockLoss)}`] : []), `💰 صافي الربح: ${money(sm.netProfit)}`,
     ...(sm.refundsCount ? [`المرتجعات: ${money(sm.refunds)} (${sm.refundsCount})`] : []),
     ...(sm.discounts ? [`الخصومات: ${money(sm.discounts)}`] : []),
     ...((d.cancelled ?? []).length ? ['', `❌ الإيصالات الملغاة (${d.cancelled.length})${sm.wasteCost ? ` — هدر ${money(sm.wasteCost)}` : ''}:`, ...d.cancelled.map((c) => `• #${c.saleNumber} ${c.items}: ${money(c.total)} — ${c.reason} (${c.by})`)] : []),
@@ -425,7 +446,7 @@ function dailyHtml(d) {
   return `<div class="paper80">
     <div class="c big">${esc(d.shopName)}</div><div class="c">التقرير اليومي · ${esc(d.date)}</div><hr>
     ${row('<b>صافي المبيعات د.ع</b>', `<b>${m(sm.net)}</b>`)}${row('الإيصالات', sm.salesCount)}${row('متوسط الفاتورة', m(sm.avgSale))}${row('الربح الإجمالي', m(sm.profit))}
-    ${sm.expenses ? row('المصروفات', `-${m(sm.expenses)}`) : ''}${row('<b>صافي الربح</b>', `<b>${m(sm.netProfit)}</b>`)}
+    ${sm.expenses ? row('المصروفات', `-${m(sm.expenses)}`) : ''}${sm.stockLoss ? row('نقص المخزون', `-${m(sm.stockLoss)}`) : ''}${row('<b>صافي الربح</b>', `<b>${m(sm.netProfit)}</b>`)}
     ${sm.refundsCount ? row(`المرتجعات (${sm.refundsCount})`, `-${m(sm.refunds)}`) : ''}${sm.discounts ? row('الخصومات', `-${m(sm.discounts)}`) : ''}
     ${(d.cancelled ?? []).length ? `<hr><b>الإيصالات الملغاة</b>${d.cancelled.map((c) => row(`#${c.saleNumber} ${esc(c.reason)}`, `-${m(c.total)}`)).join('')}${sm.wasteCost ? row('الهدر', m(sm.wasteCost)) : ''}` : ''}
     <hr><b>طرق الدفع</b>${d.byPayment.map((p) => row(`${esc(p.label)} (${p.count})`, m(p.net))).join('')}
@@ -716,8 +737,8 @@ async function loadSection(sub) {
     expenses: async () => {
       if (!a.expPreset) a.expPreset = 'month';
       const [from, to] = presetRange(a.expPreset);
-      a.expenses = null; render();
-      a.expenses = await get('/api/admin/expenses', { from, to });
+      a.expenses = null; a.spending = null; render();
+      [a.expenses, a.spending] = await Promise.all([get('/api/admin/expenses', { from, to }), get('/api/admin/expenses/summary', { from, to })]);
     },
     audit: async () => {
       if (!a.auditPreset) a.auditPreset = 'today';

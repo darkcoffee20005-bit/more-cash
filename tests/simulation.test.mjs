@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { MemoryDb } from '../server/db/memory.js';
 import { ensureIndexes } from '../server/db/indexes.js';
 import { createApp } from '../server/app/index.js';
-import { calculateTicket, unitPrice } from '../shared/calc.js';
+import { calculateTicket, costOf, unitPrice } from '../shared/calc.js';
 import { localDate } from '../shared/format.js';
 
 /** مولّد عشوائي ثابت البذرة حتى تتكرر أي مشكلة بنفس الخطوات */
@@ -70,6 +70,7 @@ async function simulate(seed, steps) {
   const sales = new Map(); // id → receipt
   const refundsOf = new Map(); // saleId → [refund receipts]
   const expenses = new Map(); // id → { amount, day }
+  const stockLoss = new Map(); // يوم → قيمة نقص المخزون (هدر وجرد) بتكلفة الوحدة لحظة الحركة
   const advances = new Map(); // id → { amount, expenseId }
   const payrolls = new Map(); // id → { net, expenseId }
   let shift = null; // { id, starting, cashIn, cashOut, payIn, payOut }
@@ -336,6 +337,13 @@ async function simulate(seed, steps) {
     if (kind === 'receive' && R.chance(0.7)) body.cost = `${R.int(0, 40)}.${R.int(0, 999)}`;
     const r = await call('owner', 'POST', '/api/admin/inventory/adjust', body);
     if (r.status !== 200) { reject(r.body.error); return; }
+    if (kind !== 'receive' && r.body.applied) {
+      // الدفتر المستقل: القيمة من رصيد وتكلفة المادة قبل الحركة كما رآها المستخدم في جدول المخزون
+      const delta = kind === 'loss' ? -body.qty : body.qty - row.stock;
+      assert.equal(r.body.delta, delta, 'فرق الجرد');
+      const loss = delta < 0 ? costOf(-delta, row.costMilli) : -costOf(delta, row.costMilli);
+      stockLoss.set(today(), (stockLoss.get(today()) ?? 0) + loss);
+    }
     if (R.chance(0.2)) { stats.replay += 1; assert.equal((await ok('owner', 'POST', '/api/admin/inventory/adjust', body)).applied, false); }
     stats[kind] += 1;
   }
@@ -425,7 +433,7 @@ async function simulate(seed, steps) {
   async function checkReports() {
     const all = await db.collection('receipts').find({}).toArray();
     const sorted = [...days].sort();
-    const agg = { net: 0, gross: 0, tax: 0, cogs: 0, profit: 0, expenses: 0, waste: 0 };
+    const agg = { net: 0, gross: 0, tax: 0, cogs: 0, profit: 0, expenses: 0, waste: 0, loss: 0 };
     for (const day of sorted) {
       const d = await ok('owner', 'GET', '/api/admin/reports/daily', null, { date: day });
       const inDay = all.filter((r) => localDate(r.createdAt, TZ) === day);
@@ -443,14 +451,16 @@ async function simulate(seed, steps) {
       assert.equal(S.cogs, cogs, `${day}: تكلفة البضاعة`);
       assert.equal(S.profit, net - incl - cogs, `${day}: الربح الإجمالي`);
       assert.equal(S.expenses, exp, `${day}: المصروفات`);
-      assert.equal(S.netProfit, S.profit - exp, `${day}: صافي الربح`);
+      const loss = stockLoss.get(day) ?? 0;
+      assert.equal(S.stockLoss, loss, `${day}: نقص المخزون`);
+      assert.equal(S.netProfit, S.profit - exp - loss, `${day}: صافي الربح`);
       assert.equal(S.wasteCost, waste, `${day}: الهدر`);
       assert.equal(S.gross - S.refunds - S.discounts, S.net, `${day}: إجمالي − مرتجعات − خصومات = صافي`);
       assert.equal(d.byPayment.reduce((a, p) => a + p.net, 0), total, `${day}: طرق الدفع = المحصّل`);
       assert.equal(d.byItem.reduce((a, i) => a + i.net, 0), net, `${day}: الأصناف = الصافي`);
       assert.equal(S.salesCount, inDay.filter((r) => r.type === 'sale').length, `${day}: عدد الإيصالات`);
       assert.equal(d.cancelled.length, inDay.filter((r) => r.type === 'refund' && r.cancel).length, `${day}: الإلغاءات`);
-      for (const k of Object.keys(agg)) agg[k] += { net, gross: S.gross, tax, cogs, profit: S.profit, expenses: exp, waste }[k];
+      for (const k of Object.keys(agg)) agg[k] += { net, gross: S.gross, tax, cogs, profit: S.profit, expenses: exp, waste, loss }[k];
     }
     // تقرير الفترة = مجموع الأيام
     const range = await ok('owner', 'GET', '/api/admin/reports', null, { from: sorted[0], to: sorted.at(-1) });
@@ -460,7 +470,13 @@ async function simulate(seed, steps) {
     assert.equal(range.summary.cogs, agg.cogs, 'الفترة: التكلفة');
     assert.equal(range.summary.profit, agg.profit, 'الفترة: الربح');
     assert.equal(range.summary.expenses, agg.expenses, 'الفترة: المصروفات');
-    assert.equal(range.summary.netProfit, agg.profit - agg.expenses, 'الفترة: صافي الربح');
+    assert.equal(range.summary.stockLoss, agg.loss, 'الفترة: نقص المخزون');
+    assert.equal(range.summary.netProfit, agg.profit - agg.expenses - agg.loss, 'الفترة: صافي الربح');
+    // ملخص «إلى أين ذهبت الفلوس» يطابق التقارير والمصروفات
+    const sp = await ok('owner', 'GET', '/api/admin/expenses/summary', null, { from: sorted[0], to: sorted.at(-1) });
+    assert.equal(sp.profit.netProfit, range.summary.netProfit, 'الملخص: صافي الربح = التقرير');
+    assert.equal(sp.costs.stockLoss, agg.loss);
+    assert.equal(sp.cash.operating + sp.cash.salaries + sp.cash.advances, agg.expenses, 'الملخص: المصروفات بأنواعها = مجموعها');
     assert.equal(range.summary.wasteCost, agg.waste, 'الفترة: الهدر');
     assert.equal(range.byCategory.reduce((a, c) => a + c.net, 0), agg.net, 'الفترة: التصنيفات = الصافي');
     assert.equal(range.byEmployee.reduce((a, c) => a + c.net, 0), agg.net, 'الفترة: الموظفون = الصافي');

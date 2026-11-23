@@ -1,6 +1,7 @@
 // الفروع: حساب مالك واحد يملك عدة مقاهٍ (كل فرع مقهى مستقل بموظفيه ومخزونه وإيصالاته).
 // إنشاء فرع (مع نسخ القائمة اختيارياً)، تبديل فرع الجهاز، وتقرير مجمّع لكل الفروع.
 // يعمل على مستوى المنصة لأنه يعبر بين المقاهي، لكنه لا يقرأ إلا فروع الحساب نفسه.
+import { stockLossBetween } from './reports.js';
 import { buildReport } from '../../shared/reports.js';
 import { dayRange } from '../../shared/format.js';
 import { AppError, bad, getSettings, id as checkId, str } from './core.js';
@@ -33,8 +34,9 @@ export function createBranches({ db, now, newId, appFor, forgetApp }) {
     const rep = buildReport(receipts, { tzOffsetMin: settings.tzOffsetMin });
     const exp = await sdb.collection('expenses').find({ day: { $gte: from, $lte: to } }).project({ amount: 1 }).toArray();
     const expenses = exp.reduce((a, x) => a + x.amount, 0);
+    const stockLoss = await stockLossBetween(sdb, new Date(r.from), new Date(r.to));
     const s = rep.summary;
-    return { net: s.net, gross: s.gross, salesCount: s.salesCount, refunds: s.refunds, profit: s.profit, expenses, netProfit: s.profit - expenses, cashNet: s.cashNet, avgSale: s.avgSale };
+    return { net: s.net, gross: s.gross, salesCount: s.salesCount, refunds: s.refunds, profit: s.profit, expenses, stockLoss, netProfit: s.profit - expenses - stockLoss, cashNet: s.cashNet, avgSale: s.avgSale };
   }
 
   async function list(device, token) {
@@ -90,7 +92,7 @@ export function createBranches({ db, now, newId, appFor, forgetApp }) {
       rows.push({ id, name: tenants.get(id).name, current: id === device.tenantId, ...(await summaryOf(id, from, to)) });
     }
     const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
-    const totals = { net: sum('net'), gross: sum('gross'), salesCount: sum('salesCount'), refunds: sum('refunds'), profit: sum('profit'), expenses: sum('expenses'), netProfit: sum('netProfit'), cashNet: sum('cashNet') };
+    const totals = { net: sum('net'), gross: sum('gross'), salesCount: sum('salesCount'), refunds: sum('refunds'), profit: sum('profit'), expenses: sum('expenses'), stockLoss: sum('stockLoss'), netProfit: sum('netProfit'), cashNet: sum('cashNet') };
     totals.avgSale = totals.salesCount ? Math.round(totals.net / totals.salesCount) : 0;
     return { from, to, rows, totals };
   }

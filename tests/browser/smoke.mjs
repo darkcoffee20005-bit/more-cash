@@ -217,6 +217,13 @@ try {
   await page.waitForSelector('.toast.ok:has-text("الإعدادات")');
   await page.click('[data-action="hr-tab"][data-k="late"]');
   await page.waitForSelector('h2:has-text("الغياب")');
+  // المصروفات: ملخص «خرج من المقهى» يربط الراتب المصروف والسلفة والمشتريات، والمصروف المرتبط لا يُحذف من هنا
+  await page.goto(`http://127.0.0.1:${PORT}/#/admin/expenses`);
+  await page.waitForSelector('h2:has-text("خرج من المقهى")');
+  await page.waitForSelector('a.pill:has-text("راتب")').catch(() => errors.push('payroll expense not marked as linked'));
+  await shot('11k-spending');
+  await page.goto(`http://127.0.0.1:${PORT}/#/admin/hr`);
+  await page.waitForSelector('[data-action="hr-tab"][data-k="team"]');
   await page.click('[data-action="hr-tab"][data-k="team"]');
   await page.goto(`http://127.0.0.1:${PORT}/#/admin/items`);
   await page.waitForSelector('tr.click');

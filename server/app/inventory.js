@@ -13,12 +13,12 @@ export function createInventory(ctx) {
   const variants = () => db.collection('variants');
 
   /** يطبّق حركة مرة واحدة فقط. يعيد true إن طُبّقت الآن، false إن كانت مطبّقة سابقاً. */
-  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null }) {
+  async function applyMove({ key, variantId, delta, reason, refId = null, by = null, costMilli = null, note = null, unitCostMilli = null, value = null }) {
     if (!Number.isSafeInteger(delta) || delta === 0) return false;
     // البيع لا ينزل بالرصيد تحت الصفر (بيع بلا إنترنت أو بيعان متزامنان على آخر قطعة): يُخصم المتوفر فقط
     if (reason === 'sale' && delta < 0) return applySaleMove({ key, variantId, delta, refId, by });
     try {
-      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}) });
+      await moves().insertOne({ _id: ctx.newId(), key, variantId, delta, reason, refId, note, by: by?.id ?? null, byName: by?.name ?? null, at: now(), costMilli, ...(unitCostMilli !== null ? { unitCostMilli } : {}), ...(value !== null ? { value } : {}) });
     } catch (e) {
       if (isDup(e)) return false;
       throw e;
@@ -98,7 +98,9 @@ export function createInventory(ctx) {
       if (!note) throw bad('REQUIRED', 'note');
       if (v.stock + delta < 0) throw bad('INSUFFICIENT_STOCK', String(v.stock));
     }
-    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli });
+    // هدر/جرد/تعديل: قيمة الحركة بتكلفة الوحدة لحظتها (دينار صحيح بإشارة) — النقص يُطرح من صافي الربح
+    const value = type === 'receive' || delta === 0 ? null : (delta < 0 ? -costOf(-delta, v.costMilli ?? 0) : costOf(delta, v.costMilli ?? 0));
+    const applied = delta === 0 ? false : await applyMove({ key: `adj:${clientId}`, variantId: v._id, delta, reason: type, by: actor, costMilli, note, unitCostMilli, value });
     if (applied) await audit({ ...ctx, actor }, `inventory.${type}`, { variantId: v._id, delta, note });
     const after = await variants().findOne({ _id: v._id });
     return { applied, delta, stock: after.stock, costMilli: after.costMilli };

@@ -68,6 +68,7 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['GET', '/api/admin/reports', (actor, req) => reports.report(actor, req.query)],
     ['GET', '/api/admin/reports/daily', (actor, req) => reports.daily(actor, req.query)],
     ['GET', '/api/admin/expenses', (actor, req) => ctx.expenses.list(actor, req.query)],
+    ['GET', '/api/admin/expenses/summary', (actor, req) => reports.spending(actor, req.query)],
     // الموارد البشرية
     ['POST', '/api/hr/clock', (actor, req) => ctx.hr.clock(actor, req.body)],
     ['POST', '/api/hr/leaves', (actor, req) => ctx.hr.requestLeave(actor, req.body)],
