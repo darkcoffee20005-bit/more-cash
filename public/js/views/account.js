@@ -1,15 +1,16 @@
 // الصفحة الرئيسية، إنشاء حساب المقهى، تسجيل الدخول، شاشة رمز الموظف، وإعدادات الحساب.
-import { esc, money } from '../../../shared/format.js';
+import { esc } from '../../../shared/format.js';
 import { get, post } from '../api.js';
 import { icon } from '../icons.js';
 import { mark, wordmark } from '../brand.js';
+import { bookView, siteView } from './site.js';
 import { busy, can, field, modalFrame, on, openModal, render, set, state, toast } from '../ui.js';
 
 const DEMO = () => !!globalThis.MORECASH_BACKEND;
 export const DEMO_ACCOUNT = { email: 'demo@morecash.app', password: 'morecash-demo' };
 // النسخة التجريبية تعمل في ذاكرة المتصفح فقط: أي حساب يُنشأ فيها يضيع عند التحديث،
 // لذا روابط "إنشاء حساب" فيها تذهب للموقع الحقيقي (نفس النطاق على Vercel، أو الرابط الكامل من GitHub Pages)
-const LIVE_URL = 'https://more-cash.onrender.com';
+const LIVE_URL = 'https://more-cashpro.vercel.app';
 const latinDigits = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const DEMO_PAGE = () => !!globalThis.MORECASH_DEMO_PAGE; // تضبطه صفحة التجربة المنشورة فقط (demo/main.js)
 const signupHref = () => {
@@ -17,68 +18,6 @@ const signupHref = () => {
   return globalThis.location?.hostname?.endsWith('vercel.app') ? '/#/signup' : `${LIVE_URL}/#/signup`;
 };
 const DEMO_PINS = [['المالك', '1234'], ['المدير', '2580'], ['الكاشير', '1470'], ['الباريستا', '3690']];
-
-// ---------------------------------------------------------------- الإيصال المطبوع (رمز الهوية)
-function receipt() {
-  const lines = [['لاتيه — وسط', 5000], ['حليب شوفان', 1000, true], ['شوت إضافي', 750, true], ['كرواسون زبدة', 3000]];
-  const total = lines.reduce((a, [, p]) => a + p, 0);
-  return `<div class="printer" aria-hidden="true"><div class="printer-slot"></div><div class="paper"><div class="receipt">
-    <div class="rc-shop">مقهى الزيتون</div>
-    <div class="rc-meta"><span>إيصال 1042</span><span>8:14 ص</span></div>
-    <div class="rc-rule"></div>
-    ${lines.map(([n, p, sub]) => `<div class="rc-line ${sub ? 'sub' : ''}"><span>${sub ? '+ ' : ''}${n}</span><span>${money(p, { symbol: false })}</span></div>`).join('')}
-    <div class="rc-rule"></div>
-    <div class="rc-line total"><span>المجموع</span><span>${money(total)}</span></div>
-    <div class="rc-line"><span>نقداً</span><span>${money(10000, { symbol: false })}</span></div>
-    <div class="rc-line"><span>الباقي</span><span>${money(10000 - total, { symbol: false })}</span></div>
-    <div class="rc-thanks">صحتين، ونشوفكم باچر</div>
-  </div></div></div>`;
-}
-
-// ---------------------------------------------------------------- الصفحة الرئيسية
-const DAY = [
-  ['الطلب', 'لاتيه وسط بحليب شوفان وشوت إضافي: لمستان، والسعر يُحسب وحده.'],
-  ['التحضير', 'الطلب يظهر على شاشة الباريستا مع الإضافات، ويُعلَّم جاهزاً بلمسة.'],
-  ['الدفع', 'نقد أو بطاقة أو محفظة، أو أكثر من طريقة في فاتورة واحدة، مع حساب الباقي.'],
-  ['المخزون', 'البن والحليب والأكواب تُخصم من الوصفة مع كل كوب، وتنبيه قبل أن تنفد.'],
-  ['إغلاق الوردية', 'المتوقع في الدرج مقابل الموجود، والفرق مسجّل باسم من أغلق.'],
-];
-
-function landing() {
-  const demoBtn = DEMO()
-    ? '<button class="btn on-dark lg" data-action="demo-enter">ادخل المقهى التجريبي</button>'
-    : '<a class="btn on-dark lg" href="/demo.html">جرّب المقهى التجريبي</a>';
-  return `<div class="lp">
-    <div class="lp-dark">
-      <header class="lp-top">${wordmark()}
-        <nav aria-label="الحساب"><a class="btn on-dark ghost" href="#/login">تسجيل الدخول</a><a class="btn brass hide-sm" href="${signupHref()}">إنشاء حساب</a></nav>
-      </header>
-      <section class="lp-hero">
-        <div class="lp-copy">
-          <h1>كاشير يعرف القهوة.</h1>
-          <p>اطلب، حضّر، اقبض، وأغلق الوردية من شاشة واحدة. مور كاش مصمم لإيقاع الكوفي شوب: الإضافات بلمسة، والمخزون يُخصم من الوصفة، والحساب بالدينار بلا كسور.</p>
-          <div class="row"><a class="btn brass lg" href="${signupHref()}">أنشئ حساب مقهاك</a>${demoBtn}</div>
-        </div>
-        ${receipt()}
-      </section>
-    </div>
-    <section class="lp-section" aria-labelledby="day-h">
-      <h2 id="day-h">يوم كامل في المقهى، من أول كوب لآخر دينار</h2>
-      <ol class="tape">${DAY.map(([t, d], i) => `<li><span class="n">${i + 1}</span><b>${t}</b><p>${d}</p></li>`).join('')}</ol>
-    </section>
-    <section class="lp-section" aria-labelledby="iq-h">
-      <h2 id="iq-h">مبني لمقاهي العراق</h2>
-      <dl class="iq">
-        <div><dt>الدينار كما هو</dt><dd>كل المبالغ أعداد صحيحة بالدينار العراقي، والخصومات والضريبة تُقرَّب بطريقة واحدة ثابتة.</dd></div>
-        <div><dt>زين كاش وFIB والبطاقة</dt><dd>أضف طرق الدفع التي يستخدمها زبائنك، والنقد وحده يدخل حساب الدرج.</dd></div>
-        <div><dt>لكل موظف رمزه</dt><dd>مالك ومدير وكاشير وباريستا. كل واحد يدخل برمز من أربعة أرقام ويرى ما يخصه فقط.</dd></div>
-        <div><dt>بيانات مقهاك لك وحدك</dt><dd>كل حساب معزول عن غيره. تدخل بالبريد وكلمة المرور مرة واحدة على كل جهاز، وبعدها يكفي رمز الموظف.</dd></div>
-      </dl>
-    </section>
-    <section class="lp-cta"><div><h2>جاهز تفتح الدرج؟</h2><a class="btn brass lg" href="${signupHref()}">أنشئ حساب مقهاك</a></div></section>
-    <footer class="lp-foot">${wordmark()}<span>كاشير وإدارة للكوفي شوب</span></footer>
-  </div>`;
-}
 
 // ---------------------------------------------------------------- إنشاء حساب ودخول
 // بلا تصحيح ولا حرف كبير تلقائي: عند «إظهار» يصير الحقل نصاً فيغيّر الآيباد ما يُكتب
@@ -214,7 +153,8 @@ export function gateView(s) {
   if (s.authPage === 'signup') return DEMO_PAGE() ? demoSignupNotice() : signup(s);
   if (s.authPage === 'login') return login(s);
   if (s.authPage === 'forgot') return forgot(s);
-  return landing();
+  if (s.authPage === 'book') return bookView(s);
+  return siteView(s);
 }
 
 // ---------------------------------------------------------------- إعدادات الحساب (للمالك)

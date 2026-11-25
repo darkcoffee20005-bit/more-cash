@@ -7,7 +7,7 @@ import { hashPassword, randomToken, sha256, verifyPassword } from './security.js
 const SESSION_HOURS = 4;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-export function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID(), admins = [], passwordIterations, checkIp, failIp, onTenantChange = () => {}, log = console, subs = null }) {
+export function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID(), admins = [], passwordIterations, checkIp, failIp, onTenantChange = () => {}, log = console, subs = null, leads = null }) {
   const allowed = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const sessions = () => db.collection('platform_sessions');
   const hashOpts = passwordIterations ? { iterations: passwordIterations } : undefined;
@@ -131,6 +131,14 @@ export function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID()
       const since = new Date(now().getTime() - 86400_000);
       const recent = await db.collection('platform_errors').find({}).sort({ at: -1 }).limit(30).toArray();
       return { status: 200, body: { count24h: await db.collection('platform_errors').countDocuments({ at: { $gte: since } }), recent: recent.map(({ _id, ...x }) => x) } };
+    }
+    // طلبات العرض المجاني ومحتوى الموقع التعريفي
+    if (leads) {
+      if (key === 'GET /api/platform/leads') return { status: 200, body: await leads.list(req.query ?? {}) };
+      if (key === 'GET /api/platform/site') return { status: 200, body: await leads.site() };
+      if (key === 'PUT /api/platform/site') return { status: 200, body: await leads.saveSite(admin, req.body) };
+      const ld = /^\/api\/platform\/leads\/([A-Za-z0-9_-]{1,64})$/.exec(req.path);
+      if (ld && req.method === 'POST') return { status: 200, body: await leads.update(admin, ld[1], req.body) };
     }
     // الاشتراكات: الطلبات، الموافقة/الرفض، التمديد من صف العميل، بيانات التحويل والتفاصيل، والسجل
     if (subs) {

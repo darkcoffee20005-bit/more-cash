@@ -45,14 +45,25 @@ try {
   const shot = async (name) => { lastStep = name; await page.waitForTimeout(260); await page.screenshot({ path: join(shots, `${name}.png`) }); };
 
   await page.goto(`http://127.0.0.1:${PORT}/`);
-  await page.waitForSelector('.lp-hero');
-  await page.waitForTimeout(3200); // الإيصال يُطبع
+  await page.waitForSelector('.st-hero');
+  await page.waitForTimeout(600);
   await shot('00-landing');
   await page.setViewportSize({ width: 390, height: 844 });
   await shot('00-landing-phone');
   if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) errors.push('landing overflow at 390px');
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.click('.lp-copy a[href="#/signup"]');
+  // احجز عرضك المجاني: الطلب يصل للخادم وتظهر رسالة الشكر
+  await page.click('.st-hero a[href="#/book"]');
+  await page.waitForSelector('form[data-form="st-lead"]');
+  await page.fill('#ld-name', 'علي حسن');
+  await page.fill('#ld-phone', '07701234567');
+  await page.fill('#ld-shop', 'كوفي الرصافة');
+  await page.click('form[data-form="st-lead"] button[type=submit]');
+  await page.waitForSelector('.st-done');
+  await shot('00-book-sent');
+  await page.goto(`http://127.0.0.1:${PORT}/#/`);
+  await page.waitForSelector('.st-hero');
+  await page.click('.st-foot-row a[href="#/signup"]');
   await page.waitForSelector('form[data-form="signup"]');
   await shot('01-signup');
   await page.fill('#su-shop', 'مقهى الزيتون');

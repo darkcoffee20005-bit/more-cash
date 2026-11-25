@@ -30,9 +30,11 @@ state.ready = true;
 
 test('الصفحة الرئيسية، إنشاء حساب مقهى جديد، ثم الدخول للمقهى التجريبي', async () => {
   let html = screen();
-  assert.match(text(html), /كاشير يعرف القهوة/);
+  assert.match(text(html), /بنظام واحد/);
   assert.match(html, /href="#\/signup"/);
   clean(html, 'الرئيسية');
+  for (const part of ['يثقون بمور كاش', 'وحدات المنصة', 'من داخل البرنامج', 'الباقات والأسعار', '50,000', 'الأسئلة الشائعة']) assert.match(text(html), new RegExp(part));
+  await go('#/book'); html = screen(); clean(html, 'احجز عرضك'); assert.match(html, /data-form="st-lead"/);
   await go('#/login'); html = screen(); clean(html, 'الدخول'); assert.match(text(html), /تسجيل الدخول/);
   await go('#/signup'); html = screen(); clean(html, 'إنشاء حساب'); assert.match(text(html), /إنشاء الحساب وفتح المقهى/);
 
@@ -51,7 +53,7 @@ test('الصفحة الرئيسية، إنشاء حساب مقهى جديد، ث
   clean(screen(), 'نافذة الخروج');
   await runAction('leave-confirm');
   assert.equal(state.shop, null);
-  assert.match(text(screen()), /كاشير يعرف القهوة/);
+  assert.match(text(screen()), /بنظام واحد/);
 
   await runAction('demo-enter');
   assert.equal(state.shop.name, 'مقهى مور');
@@ -64,7 +66,7 @@ test('النسخة التجريبية لا تنشئ حسابات تضيع: ال�
   Object.assign(state, { shop: null, authPage: 'signup' });
   const html = screen();
   assert.match(text(html), /نسخة تجريبية/);
-  assert.match(html, /href="https:\/\/more-cash\.onrender\.com\/#\/signup"/);
+  assert.match(html, /href="https:\/\/more-cashpro\.vercel\.app\/#\/signup"/);
   assert.doesNotMatch(html, /data-form="signup"/, 'لا نموذج تسجيل في التجربة');
   state.authPage = '';
   assert.doesNotMatch(screen(), /href="#\/signup"/, 'روابط الصفحة الرئيسية تذهب للموقع الحقيقي');

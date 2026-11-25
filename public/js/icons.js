@@ -35,6 +35,12 @@ const P = {
   expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   shrink: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4V8Z"/><circle cx="12" cy="13" r="3.5"/>',
+  table: '<path d="M3 9h18M5 9v10M19 9v10"/><path d="M7 5h10l2 4H5l2-4Z"/>',
+  wifi: '<path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1"/><path d="M3 3l18 18"/>',
+  chat: '<path d="M4 20l1.4-4.2A8 8 0 1 1 8.6 19L4 20Z"/><path d="M9 10.5c.5 2 2 3.5 4.5 4.5l1.3-1.3 2 .9"/>',
+  shield: '<path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6l8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+  branch: '<path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/>',
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
   bean: '<g transform="rotate(32 12 12)"><ellipse cx="12" cy="12" rx="6" ry="9"/><path d="M12 3.5l1.3 2-2.6 2 2.6 2-2.6 2 2.6 2-2.6 2 2.6 2-1.3 1"/></g>',
 };
 

@@ -17,6 +17,7 @@ export async function ensureIndexes(db) {
     ix('sub_requests', { status: 1, createdAt: -1 }, { name: 'by_status' }),
     ix('sub_requests', { accountId: 1, createdAt: -1 }, { name: 'by_account' }),
     ix('platform_audit', { at: -1 }, { name: 'by_date' }),
+    ix('leads', { status: 1, createdAt: -1 }, { name: 'by_status' }),
 
     // ---- بيانات كل مقهى
     ix('receipts', t({ number: 1 }), { unique: true, name: 'uniq_number' }),

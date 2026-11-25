@@ -15,7 +15,7 @@
       "destination": "/api/index"
     },
     {
-      "source": "/((?!api/|shared/|js/|css/|demo\\.html|sw\\.js|icon\\.svg|manifest\\.webmanifest).*)",
+      "source": "/((?!api/|shared/|js/|css/|img/|demo\\.html|sw\\.js|icon\\.svg|manifest\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ],

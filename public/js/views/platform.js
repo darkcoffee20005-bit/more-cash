@@ -25,7 +25,7 @@ const subPill = (s) => {
 };
 const ACTIONS = {
   'request.approve': 'موافقة على طلب', 'request.reject': 'رفض طلب', 'subscription.extend': 'تفعيل/تمديد', 'subscription.stop': 'إيقاف الاشتراك',
-  'config.update': 'تعديل بيانات التحويل', 'shop.disable': 'إيقاف المقهى', 'shop.enable': 'تفعيل المقهى', 'account.reset_password': 'كلمة مرور مؤقتة', 'backup.download': 'نسخة احتياطية',
+  'config.update': 'تعديل بيانات التحويل', 'lead.update': 'متابعة طلب عرض', 'site.update': 'تعديل محتوى الموقع', 'shop.disable': 'إيقاف المقهى', 'shop.enable': 'تفعيل المقهى', 'account.reset_password': 'كلمة مرور مؤقتة', 'backup.download': 'نسخة احتياطية',
 };
 
 export async function enterPlatform() {
@@ -38,6 +38,7 @@ export async function enterPlatform() {
         get('/api/platform/shops', { search: p.search || undefined }), get('/api/platform/errors'),
         get('/api/platform/requests', { status: 'all' }).catch(() => []), get('/api/platform/config').catch(() => null), get('/api/platform/audit').catch(() => []),
       ]);
+      [p.leads, p.site] = await Promise.all([get('/api/platform/leads').catch(() => null), get('/api/platform/site').catch(() => null)]);
     }
   } catch (e) { p.me = { email: null, enabled: false }; fail(e); }
   render();
@@ -71,7 +72,8 @@ export function platformView() {
   const l = p.list;
   const T = l?.totals ?? {};
   const pendingReqs = (p.requests ?? []).filter((r) => r.status === 'pending');
-  const TABS = [['requests', `طلبات الاشتراك${pendingReqs.length ? ` (${pendingReqs.length})` : ''}`], ['clients', 'العملاء'], ['log', 'السجل'], ['config', 'بيانات التحويل والتفاصيل'], ['errors', `أخطاء الخادم${p.errors?.count24h ? ` (${p.errors.count24h})` : ''}`]];
+  const newLeads = p.leads?.counts?.new ?? 0;
+  const TABS = [['requests', `طلبات الاشتراك${pendingReqs.length ? ` (${pendingReqs.length})` : ''}`], ['leads', `طلبات العرض${newLeads ? ` (${newLeads})` : ''}`], ['clients', 'العملاء'], ['log', 'السجل'], ['config', 'بيانات التحويل والتفاصيل'], ['site', 'محتوى الموقع'], ['errors', `أخطاء الخادم${p.errors?.count24h ? ` (${p.errors.count24h})` : ''}`]];
   const head = `<div class="page-head"><h1>لوحة المزوّد</h1><span class="muted small" dir="ltr">${esc(p.me.email)}</span>
       <span class="spacer"></span><button class="btn sm" data-action="platform-refresh">${icon('check', 'sm')} تحديث</button>
       <button class="btn sm ghost" data-action="platform-logout">${icon('lock', 'sm')} خروج</button></div>
@@ -105,6 +107,8 @@ export function platformView() {
           <button class="btn sm" data-action="pf-more" data-id="${r.id}">المزيد</button></div></td></tr>`).join('')
         : '<tr><td colspan="9" class="muted">لا نتائج</td></tr>'}</tbody></table></div>`;
     },
+    leads: () => leadsView(p),
+    site: () => siteForm(p),
     log: () => `<div class="table-wrap"><table><thead><tr><th>الوقت</th><th>العملية</th><th>المقهى</th><th>التفاصيل</th></tr></thead><tbody>
       ${(p.audit ?? []).map((x) => `<tr><td class="small">${dateTime(x.at, TZ)}</td><td>${ACTIONS[x.action] ?? esc(x.action)}</td>
         <td>${esc(x.shopName ?? l?.rows.find((r) => r.id === x.tenantId)?.name ?? '')}</td>
@@ -115,6 +119,48 @@ export function platformView() {
       ${p.errors.recent.length ? `<div class="table-wrap"><table><tbody>${p.errors.recent.map((x) => `<tr><td class="small">${dateTime(x.at, TZ)}</td><td class="small" dir="ltr">${esc(x.method ?? '')} ${esc(x.path ?? '')}</td><td class="small" dir="ltr">${esc(x.name)}: ${esc(x.message)}</td><td class="small">${esc(l?.rows.find((r) => r.id === x.tenantId)?.name ?? '')}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>` : ''}`,
   };
   return `<div class="page" style="max-width:1280px;height:100%;overflow:auto">${head}${(body[p.tab] ?? body.requests)()}</div>`;
+}
+
+// ---------------------------------------------------------------- طلبات «احجز عرضك المجاني» من الموقع
+const LEAD = { new: ['جديد', 'warn'], contacted: ['تم التواصل', 'olive'], won: ['اشترك', 'ok'], lost: ['لم يكمل', ''] };
+function leadsView(p) {
+  const d = p.leads;
+  if (!d) return '<p class="muted">جارٍ التحميل…</p>';
+  const f = p.leadFilter ?? 'new';
+  const rows = d.leads.filter((l) => f === 'all' || l.status === f);
+  const waText = (l) => encodeURIComponent(`مرحباً ${l.name}، معك فريق مور كاش بخصوص طلب العرض المجاني لـ${l.shop}.`);
+  return `<div class="toolbar"><div class="seg">${[['new', 'جديد'], ['contacted', 'تم التواصل'], ['won', 'اشترك'], ['lost', 'لم يكمل'], ['all', 'الكل']].map(([k, t]) =>
+      `<button class="${f === k ? 'on' : ''}" data-action="pf-lead-filter" data-k="${k}">${t}${k !== 'all' && d.counts[k] ? ` (${d.counts[k]})` : ''}</button>`).join('')}</div></div>
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الاسم</th><th>المحل</th><th>النوع</th><th class="num">فروع</th><th>المدينة</th><th>الهاتف</th><th>ملاحظة</th><th>الحالة</th></tr></thead><tbody>
+      ${rows.map((l) => `<tr><td class="small">${dateTime(l.createdAt, TZ)}</td><td><b>${esc(l.name)}</b></td><td>${esc(l.shop)}</td><td class="small">${esc(l.typeName)}</td>
+        <td class="num">${l.branches}</td><td class="small">${esc(l.city ?? '')}${l.when ? `<div class="muted">${esc(l.when)}</div>` : ''}</td>
+        <td><a href="https://wa.me/${esc(l.phone.replace(/^0/, '964'))}?text=${waText(l)}" target="_blank" rel="noopener" dir="ltr">${esc(l.phone)}</a></td>
+        <td class="small" style="max-width:220px">${esc(l.note ?? '')}${l.adminNote ? `<div class="muted">ملاحظتك: ${esc(l.adminNote)}</div>` : ''}</td>
+        <td><select data-change="pf-lead-status" data-id="${esc(l.id)}" aria-label="حالة الطلب">${Object.entries(LEAD).map(([k, [t]]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">لا طلبات هنا. الطلبات تصل من صفحة «احجز عرضك المجاني» في الموقع.</p>'}`;
+}
+
+// ---------------------------------------------------------------- «يثقون بمور كاش» وآراء العملاء في الموقع
+function siteForm(p) {
+  const c = p.siteDraft ?? (p.siteDraft = structuredClone(p.site ?? { trusted: [], testimonials: [] }));
+  return `<div class="grid-2" style="align-items:start">
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">يثقون بمور كاش</h2>
+      <button type="button" class="btn sm" data-action="pf-site-add" data-k="trusted">${icon('plus', 'sm')} مقهى</button></div>
+      <p class="muted small" style="margin:0">أسماء المقاهي التي تستخدم البرنامج (بموافقتها). بدونها تظهر مستطيلات «مقهاك هنا».</p>
+      ${c.trusted.map((t, i) => `<div class="row">${field('الاسم', `<input id="st-t-${i}" value="${esc(t.name ?? '')}" maxlength="40" data-input="pf-site" data-k="trusted" data-i="${i}" data-f="name">`)}
+        ${field('المدينة', `<input id="st-c-${i}" value="${esc(t.city ?? '')}" maxlength="30" data-input="pf-site" data-k="trusted" data-i="${i}" data-f="city">`)}
+        <button type="button" class="icon-btn" data-action="pf-site-del" data-k="trusted" data-i="${i}" aria-label="حذف">${icon('trash', 'sm')}</button></div>`).join('')}
+    </section>
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">آراء العملاء</h2>
+      <button type="button" class="btn sm" data-action="pf-site-add" data-k="testimonials">${icon('plus', 'sm')} رأي</button></div>
+      <p class="muted small" style="margin:0">آراء حقيقية فقط، بإذن أصحابها.</p>
+      ${c.testimonials.map((t, i) => `<div class="card pad stack" style="gap:8px;box-shadow:none"><div class="grid-2">
+        ${field('الاسم', `<input id="st-n-${i}" value="${esc(t.name ?? '')}" maxlength="40" data-input="pf-site" data-k="testimonials" data-i="${i}" data-f="name">`)}
+        ${field('المقهى والمدينة', `<input id="st-s-${i}" value="${esc(t.shop ?? '')}" maxlength="60" data-input="pf-site" data-k="testimonials" data-i="${i}" data-f="shop">`)}</div>
+        <div class="row">${field('الرأي', `<textarea id="st-q-${i}" rows="2" maxlength="300" data-input="pf-site" data-k="testimonials" data-i="${i}" data-f="quote">${esc(t.quote ?? '')}</textarea>`)}
+        <button type="button" class="icon-btn" data-action="pf-site-del" data-k="testimonials" data-i="${i}" aria-label="حذف">${icon('trash', 'sm')}</button></div></div>`).join('')}
+    </section>
+    <button class="btn primary lg" data-action="pf-site-save" ${state.busy ? 'disabled' : ''}>حفظ ونشر على الموقع</button></div>`;
 }
 
 function configForm(p) {
@@ -269,6 +315,25 @@ on({
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     toast('نُزّلت النسخة الاحتياطية', 'ok');
+  }),
+  'pf-lead-filter': (el) => { P().leadFilter = el.dataset.k; render(); },
+  'pf-lead-status': (el) => busy(async () => {
+    await post(`/api/platform/leads/${el.dataset.id}`, { status: el.value });
+    P().leads = await get('/api/platform/leads');
+    toast('حُدّثت حالة الطلب', 'ok');
+    render();
+  }),
+  'pf-site': (el) => { P().siteDraft[el.dataset.k][Number(el.dataset.i)][el.dataset.f] = el.value; },
+  'pf-site-add': (el) => { P().siteDraft[el.dataset.k].push({}); render(); },
+  'pf-site-del': (el) => { P().siteDraft[el.dataset.k].splice(Number(el.dataset.i), 1); render(); },
+  'pf-site-save': () => busy(async () => {
+    const c = P().siteDraft;
+    const trusted = c.trusted.filter((t) => t.name?.trim());
+    const testimonials = c.testimonials.filter((t) => t.name?.trim() || t.quote?.trim());
+    P().site = await put('/api/platform/site', { trusted, testimonials });
+    P().siteDraft = null;
+    toast('حُفظ محتوى الموقع', 'ok');
+    render();
   }),
   'pf-cfg': (el) => { P().cfgDraft[el.dataset.k] = el.value; },
   'pf-cfg-m': (el) => { P().cfgDraft.methods[Number(el.dataset.i)][el.dataset.k] = el.value; },

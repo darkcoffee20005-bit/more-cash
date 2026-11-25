@@ -11,6 +11,7 @@ import { scopeDb } from '../db/scoped.js';
 import { createPlatformAdmin } from './platform-admin.js';
 import { createBranches } from './branches.js';
 import { createSubscriptions } from './subscriptions.js';
+import { createLeads } from './leads.js';
 
 const DEVICE_DAYS = 90;
 const MAX_FAILS = 5;
@@ -46,6 +47,7 @@ async function matchPassword(pass, hash) {
 export function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null, approval = false, adminReset = null } = {}) {
   const adminSet = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const subs = createSubscriptions({ db, now, newId, admins: adminSet, enabled: approval });
+  const leads = createLeads({ db, now, audit: subs.audit });
   const apps = new Map(); // tenantId → {app, ready}
   // أخطاء الخادم غير المتوقعة تُحفظ (14 يوماً) لتظهر في لوحة المزوّد قبل أن يبلّغ عنها مقهى
   function recordError(e, where = {}) {
@@ -245,6 +247,9 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     try {
       if (req.path.startsWith('/api/platform/')) return await platformAdmin.handle({ ...req, ip });
       if (key === 'GET /api/support') return { status: 200, body: { whatsapp: support } };
+      // الموقع التعريفي: محتواه العام، وطلب «احجز عرضك المجاني» (بلا جهاز ولا حساب)
+      if (key === 'GET /api/site') return { status: 200, body: { whatsapp: support, ...(await leads.site()) } };
+      if (key === 'POST /api/leads') return { status: 200, body: await leads.submit(req.body, ip) };
       if (key === 'POST /api/account/signup') return await signup(req.body, ip);
       if (key === 'POST /api/account/login') return await login(req.body, ip);
 
@@ -305,7 +310,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
 
   // الإيقاف يسري فوراً على هذه النسخة من الخادم، وخلال 30 ثانية على غيرها
   const branches = createBranches({ db, now, newId, appFor, forgetApp: (id) => apps.delete(id) });
-  const platformAdmin = createPlatformAdmin({ db, now, newId, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log, subs });
+  const platformAdmin = createPlatformAdmin({ db, now, newId, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log, subs, leads });
 
   return { handle, appFor };
 }

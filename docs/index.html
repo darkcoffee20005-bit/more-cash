@@ -565,62 +565,6 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
 .btn.on-dark:hover:not(:disabled) { border-color: #fff; background: rgb(255 255 255 / 6%); }
 .btn.on-dark.ghost { border-color: transparent; }
 
-/* ---- الصفحة الرئيسية */
-.lp { min-height: 100%; overflow-x: hidden; }
-.lp-dark { background: var(--brand-900); color: #fff; }
-.lp-top { max-width: 1180px; margin: 0 auto; padding: 20px 24px; display: flex; align-items: center; gap: 10px; }
-.lp-top nav { margin-inline-start: auto; display: flex; gap: 8px; }
-.lp-hero { max-width: 1180px; margin: 0 auto; padding: 36px 24px 0; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: 48px; align-items: end; }
-.lp-copy { padding-bottom: 80px; }
-.lp-copy h1 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(3.2rem, 7.4vw, 6rem); line-height: 1.02; color: #fff; text-wrap: balance; }
-.lp-copy p { margin-top: 22px; font-size: 1.15rem; line-height: 1.8; color: var(--on-brand-muted); max-width: 46ch; }
-.lp-copy .row { margin-top: 32px; gap: 12px; flex-wrap: wrap; }
-
-/* الطابعة والإيصال: اللحظة المتحركة الوحيدة */
-.printer { width: min(330px, 100%); justify-self: center; }
-.printer-slot { height: 20px; border-radius: 12px 12px 0 0; background: #072a20; box-shadow: inset 0 -7px 0 #041b15; position: relative; z-index: 1; }
-.paper { overflow: hidden; margin: 0 16px; padding-bottom: 10px; }
-.receipt {
-  position: relative; background: #fff; color: #1c1c1c; padding: 22px 20px 26px; font-size: .92rem; line-height: 1.65;
-  animation: print 2.4s steps(24, end) .5s both;
-}
-.receipt::after {
-  content: ""; position: absolute; inset: 100% 0 auto; height: 9px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9'%3E%3Cpath d='M0 0h14L7 9z' fill='%23fff'/%3E%3C/svg%3E") repeat-x;
-}
-@keyframes print { from { transform: translateY(-100%); } }
-.rc-shop { font-family: var(--font-brand); font-size: 1.55rem; text-align: center; line-height: 1.2; }
-.rc-meta { display: flex; justify-content: space-between; color: #6b6b6b; font-size: .8rem; margin-top: 6px; }
-.rc-rule { border-top: 1.5px dashed #c4c4c4; margin: 12px 0; }
-.rc-line { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
-.rc-line.sub { color: #6b6b6b; font-size: .84rem; padding-inline-start: 12px; }
-.rc-line.total { font-weight: 700; font-size: 1.12rem; }
-.rc-thanks { text-align: center; margin-top: 14px; color: #555; font-size: .85rem; }
-
-.lp-section { max-width: 1180px; margin: 0 auto; padding: 96px 24px 0; }
-.lp-section h2 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(2.1rem, 4.2vw, 3rem); line-height: 1.15; max-width: 22ch; color: var(--heading); }
-.lp-section > p { color: var(--muted); margin-top: 12px; max-width: 60ch; line-height: 1.8; font-size: 1.05rem; }
-
-/* شريط يوم المقهى: تسلسل حقيقي من الطلب إلى إغلاق الوردية */
-.tape { list-style: none; margin: 44px 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 2px dashed var(--line-strong); }
-.tape li { position: relative; padding: 26px 0 0; padding-inline-end: 22px; }
-.tape li::before { content: ""; position: absolute; top: -9px; inset-inline-start: 0; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); border: 3px solid var(--brand-700); }
-.tape .n { font-family: var(--font-brand); color: var(--gold-ink); font-size: 1.25rem; line-height: 1; }
-.tape b { display: block; font-size: 1.1rem; color: var(--ink); margin-top: 8px; }
-.tape p { color: var(--muted); margin-top: 6px; font-size: .95rem; line-height: 1.7; }
-
-.iq { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 64px; margin: 32px 0 0; }
-.iq div { padding: 22px 0 24px; border-top: 1px solid var(--line-strong); }
-.iq dt { font-weight: 700; font-size: 1.1rem; }
-.iq dd { margin: 6px 0 0; color: var(--muted); line-height: 1.75; max-width: 52ch; }
-
-.lp-cta { max-width: 1180px; margin: 104px auto 0; padding: 0 24px; }
-.lp-cta > div { background: var(--brand-900); color: #fff; border-radius: 28px; padding: 44px 48px; display: flex; align-items: center; gap: 20px 32px; flex-wrap: wrap; }
-.lp-cta h2 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.15; margin-inline-end: auto; color: #fff; }
-.lp-foot { max-width: 1180px; margin: 0 auto; padding: 36px 24px 44px; color: var(--muted); font-size: .9rem; display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
-.lp-foot .wordmark { font-size: 1.3rem; color: var(--heading); }
-.lp-foot .wordmark .mark { width: 30px; height: 30px; }
-
 /* ---- شاشات الحساب ورمز الموظف */
 .acc { min-height: 100%; display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
 .acc-side { background: var(--brand-900); color: #fff; padding: 28px 48px 40px; display: flex; flex-direction: column; gap: 44px; }
@@ -653,31 +597,11 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
 .pin-card h1 { font-size: 1.5rem; }
 .account-card .grid-2 { align-items: end; }
 
-@media (prefers-reduced-motion: reduce) {
-  .receipt { animation: none; }
-}
 @media (max-width: 900px) {
-  .lp-hero { grid-template-columns: 1fr; gap: 8px; padding-top: 20px; }
-  .lp-copy { padding-bottom: 28px; }
-  .printer { width: min(300px, 100%); }
-  .tape { grid-template-columns: 1fr; border-top: 0; border-inline-start: 2px dashed var(--line-strong); margin-inline-start: 8px; }
-  .tape li { padding: 0 0 26px; padding-inline-start: 26px; }
-  .tape li::before { top: 2px; inset-inline-start: -9px; }
-  .iq { grid-template-columns: 1fr; }
   .acc { grid-template-columns: 1fr; }
   .acc-side { padding: 20px 16px 28px; gap: 22px; }
   .acc-side ul, .acc-side .lead { display: none; }
   .acc-main { padding: 28px 16px 40px; align-items: start; }
-}
-@media (max-width: 600px) {
-  .lp-top, .lp-hero, .lp-section, .lp-cta, .lp-foot { padding-left: 16px; padding-right: 16px; }
-  .lp-top .wordmark { font-size: 1.5rem; }
-  .lp-top .wordmark .mark { width: 36px; height: 36px; }
-  .lp-top nav .btn { padding: 0 12px; min-height: 42px; }
-  .lp-top nav .hide-sm { display: none; }
-  .lp-section { padding-top: 64px; }
-  .lp-cta > div { padding: 32px 20px; border-radius: 22px; }
-  .lp-cta { margin-top: 72px; }
 }
 
 /* صورة الصنف في المحرر والقائمة، وحد التنبيه القابل للتعديل */
@@ -761,6 +685,274 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 .main.has-banner { display: flex; flex-direction: column; }
 .main.has-banner > :last-child { flex: 1; min-height: 0; }
 .card a[href^="https://wa.me"] { color: var(--olive-b, #687b1b); font-weight: 600; }
+
+/* ================================================================ الموقع التعريفي (site.js) */
+.st {
+  --st-bg: #f6f3ea; --st-bg-2: #efebdf; --st-card: #fcfbf7; --st-line: #e4dfd1; --st-ink: #12302d; --st-soft: #55665f;
+  --st-brand: #073c3c; --st-brand-2: #0b4a4a; --st-olive: #687b1b; --st-lime: #b4c83d; --st-gold: #8a6d1d;
+  min-height: 100%; background: var(--st-bg); color: var(--st-ink); overflow-x: clip; font-size: 17px;
+  background-image: radial-gradient(1200px 600px at 85% -10%, rgb(180 200 61 / 14%), transparent 60%), radial-gradient(900px 500px at 0% 8%, rgb(11 74 74 / 8%), transparent 60%);
+}
+.st h1, .st h2, .st h3 { font-family: var(--font-display); color: var(--st-ink); text-wrap: balance; }
+.st p { margin: 0; }
+.st-wrap { width: min(1200px, 100% - 48px); margin-inline: auto; }
+.st-narrow { width: min(860px, 100% - 48px); }
+.st .spacer { flex: 1; }
+
+/* أزرار */
+.st-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 999px; padding: 12px 24px; font-weight: 700; font-size: 1rem;
+  border: 1px solid transparent; text-decoration: none; cursor: pointer; transition: transform .2s, box-shadow .2s, background .2s; white-space: nowrap; font-family: inherit; }
+.st-btn.lg { padding: 16px 32px; font-size: 1.08rem; }
+.st-btn.sm { padding: 9px 18px; font-size: .92rem; }
+.st-btn.block { width: 100%; }
+.st-btn.dark { background: var(--st-brand); color: #fff; box-shadow: 0 10px 24px rgb(7 60 60 / 22%); }
+.st-btn.dark:hover { transform: translateY(-2px); box-shadow: 0 16px 30px rgb(7 60 60 / 28%); background: var(--st-brand-2); }
+.st-btn.light { background: #fff; color: var(--st-ink); border-color: var(--st-line); box-shadow: 0 6px 18px rgb(18 48 45 / 6%); }
+.st-btn.light:hover { transform: translateY(-2px); border-color: #cfc8b4; }
+.st-btn.light svg { color: #1fa855; }
+.st-btn.ghost { background: transparent; color: var(--st-ink); }
+.st-btn.ghost:hover { background: rgb(18 48 45 / 6%); }
+.st-btn:disabled { opacity: .6; transform: none; cursor: wait; }
+
+/* الشريط العلوي */
+.st-nav { position: sticky; top: 0; z-index: 40; background: rgb(246 243 234 / 78%); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid rgb(228 223 209 / 70%); }
+.st-nav-in { display: flex; align-items: center; gap: 24px; height: 72px; }
+.st-logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--st-ink); font-family: var(--font-display); font-weight: 700; font-size: 1.25rem; }
+.st-logo .mark { width: 38px; height: 38px; }
+.st-links { display: flex; gap: 4px; margin-inline: auto; }
+.st-links button, .st-drawer button { background: none; border: 0; padding: 8px 14px; border-radius: 999px; color: var(--st-soft); font: 600 .95rem var(--font-body); cursor: pointer; }
+.st-links button:hover { color: var(--st-ink); background: rgb(18 48 45 / 5%); }
+.st-nav-cta { display: flex; align-items: center; gap: 8px; }
+.st-burger { display: none; background: #fff; border: 1px solid var(--st-line); width: 42px; height: 42px; border-radius: 12px; align-items: center; justify-content: center; color: var(--st-ink); }
+.st-drawer { display: none; }
+
+/* البطل */
+.st-hero { padding: 88px 0 40px; text-align: center; }
+.st-pill { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--st-line); padding: 7px 16px; border-radius: 999px; color: var(--st-olive); font-weight: 700; font-size: .9rem; box-shadow: 0 4px 14px rgb(18 48 45 / 5%); }
+.st-hero h1 { font-size: clamp(2.6rem, 6.6vw, 5.4rem); line-height: 1.12; font-weight: 700; margin: 26px auto 0; letter-spacing: -.01em; }
+.st-hero h1 em { font-style: normal; background: linear-gradient(120deg, #0b4a4a 10%, #687b1b 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.st-lead { max-width: 60ch; margin: 24px auto 0 !important; color: var(--st-soft); font-size: 1.15rem; line-height: 1.9; }
+.st-cta-row { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 34px; }
+.st-stats { display: flex; justify-content: center; gap: clamp(28px, 7vw, 96px); margin: 46px 0 0; flex-wrap: wrap; }
+.st-stats div { min-width: 150px; }
+.st-stats dt { font-family: var(--font-display); font-weight: 700; font-size: 1.9rem; color: var(--st-gold); line-height: 1.2; }
+.st-stats dd { margin: 4px 0 0; color: var(--st-soft); font-size: .92rem; }
+.st-device-wrap { position: relative; width: min(980px, 100%); margin: 60px auto 0; }
+.st-device { background: #10201f; padding: clamp(8px, 1.4vw, 16px); border-radius: clamp(18px, 2.6vw, 34px); box-shadow: 0 40px 90px rgb(7 40 40 / 26%), 0 0 0 1px rgb(255 255 255 / 6%) inset; }
+.st-device img { display: block; width: 100%; height: auto; border-radius: clamp(10px, 1.4vw, 20px); background: #eef4f2; aspect-ratio: 4 / 3; object-fit: cover; }
+.st-chip { position: absolute; display: flex; align-items: center; gap: 12px; text-align: start; background: rgb(255 255 255 / 92%); backdrop-filter: blur(10px); border: 1px solid var(--st-line); border-radius: 18px; padding: 12px 16px; box-shadow: 0 18px 40px rgb(18 48 45 / 14%); animation: st-float 6s ease-in-out infinite; }
+.st-chip b { display: block; font-size: .95rem; }
+.st-chip small { color: var(--st-soft); font-size: .8rem; }
+.st-chip .dot { width: 10px; height: 10px; border-radius: 50%; background: #2fb36b; box-shadow: 0 0 0 5px rgb(47 179 107 / 16%); }
+.st-chip .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: #fbecd2; color: #9a5b0c; }
+.st-chip .ic.olive { background: #eef3dd; color: var(--st-olive); }
+.st-chip.c1 { top: 14%; inset-inline-start: -5%; }
+.st-chip.c2 { top: 48%; inset-inline-end: -6%; animation-delay: -2s; }
+.st-chip.c3 { bottom: -5%; inset-inline-start: 12%; animation-delay: -4s; }
+@keyframes st-float { 50% { transform: translateY(-10px); } }
+
+/* يثقون بنا */
+.st-trusted { padding: 70px 0 20px; text-align: center; }
+.st-eyebrow { display: inline-flex; align-items: center; gap: 12px; color: var(--st-gold); font-weight: 700; font-size: .92rem; letter-spacing: .02em; }
+.st-eyebrow span { width: 26px; height: 1px; background: currentColor; opacity: .5; }
+.st-logos { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 22px; }
+.st-logo-card { background: var(--st-card); border: 1px solid var(--st-line); border-radius: 18px; padding: 22px 16px; min-height: 96px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.st-logo-card b { font-family: var(--font-display); font-size: 1.15rem; letter-spacing: .02em; }
+.st-logo-card small { color: var(--st-soft); font-size: .82rem; }
+.st-logo-card.empty { border-style: dashed; border-color: #d6cfbb; background: transparent; }
+.st-logo-card.empty b { color: #9a917b; }
+.st-logo-card.empty small { color: #aaa28c; }
+
+/* الأقسام */
+.st-sec { padding: clamp(72px, 10vw, 120px) 0; scroll-margin-top: 72px; }
+.st-sec.alt { background: linear-gradient(180deg, rgb(239 235 223 / 0%), var(--st-bg-2) 18%, var(--st-bg-2) 82%, rgb(239 235 223 / 0%)); }
+.st-head { text-align: center; max-width: 760px; margin: 0 auto 48px; }
+.st-head h2 { font-size: clamp(2rem, 4.2vw, 3.1rem); line-height: 1.2; margin-top: 12px; font-weight: 700; }
+.st-head p { color: var(--st-soft); margin-top: 14px !important; font-size: 1.08rem; line-height: 1.85; }
+.st-mod-ic { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: #eef3dd; color: var(--st-olive); border: 1px solid #dfe7bd; }
+
+/* التحدي */
+.st-pains { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 900px; margin: 0 auto; }
+.st-pain { display: flex; align-items: center; gap: 14px; background: var(--st-card); border: 1px solid var(--st-line); border-radius: 16px; padding: 18px 20px; font-weight: 600; color: var(--st-ink); }
+.st-pain span { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #f8e3df; color: #b03a2e; }
+.st-solution { max-width: 900px; margin: 22px auto 0; display: flex; align-items: center; gap: 24px; justify-content: space-between; flex-wrap: wrap;
+  background: linear-gradient(135deg, #073c3c, #0d5551); color: #fff; border-radius: 24px; padding: 30px 34px; box-shadow: 0 24px 50px rgb(7 60 60 / 22%); }
+.st-solution h3 { color: #fff; font-size: 1.5rem; }
+.st-solution p { color: #c9dcd6; margin-top: 6px !important; max-width: 52ch; line-height: 1.8; }
+.st-solution .st-btn.dark { background: var(--st-lime); color: #0a2c27; box-shadow: none; }
+
+/* وحدات المنصة */
+.st-mods { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.st-mod { background: var(--st-card); border: 1px solid var(--st-line); border-radius: 20px; transition: box-shadow .25s, transform .25s, border-color .25s; }
+.st-mod:hover { transform: translateY(-3px); box-shadow: 0 20px 40px rgb(18 48 45 / 9%); border-color: #d5cdb7; }
+.st-mod summary { list-style: none; cursor: pointer; padding: 24px 22px 20px; display: flex; flex-direction: column; gap: 10px; }
+.st-mod summary::-webkit-details-marker { display: none; }
+.st-mod h3 { font-size: 1.18rem; margin-top: 8px; }
+.st-mod p { color: var(--st-soft); font-size: .95rem; line-height: 1.7; }
+.st-more { margin-top: 4px; color: var(--st-olive); font-weight: 700; font-size: .88rem; display: inline-flex; align-items: center; gap: 6px; }
+.st-more i { font-style: normal; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #eef3dd; transition: transform .25s; }
+.st-mod[open] .st-more i { transform: rotate(45deg); }
+.st-mod ul, .st-aud-card ul, .st-plan ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.st-mod ul { padding: 0 22px 22px; border-top: 1px dashed var(--st-line); padding-top: 16px; margin: 0 22px; padding-inline: 0; }
+.st-mod li, .st-aud-card li, .st-plan li { display: flex; gap: 10px; align-items: flex-start; font-size: .94rem; line-height: 1.6; color: var(--st-ink); }
+.st-mod li svg, .st-aud-card li svg, .st-plan li svg { flex: none; color: var(--st-olive); margin-top: 3px; }
+
+/* من داخل البرنامج */
+.st-tabs { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; background: #fff; border: 1px solid var(--st-line); border-radius: 999px; padding: 6px; width: fit-content; max-width: 100%; margin: 0 auto 34px; }
+.st-tabs button { border: 0; background: none; padding: 9px 18px; border-radius: 999px; font: 600 .93rem var(--font-body); color: var(--st-soft); cursor: pointer; transition: background .2s, color .2s; }
+.st-tabs button.on { background: var(--st-brand); color: #fff; }
+.st-shot { margin: 0 auto; width: min(1000px, 100%); }
+.st-device.big img { animation: st-fade .45s ease both; }
+@keyframes st-fade { from { opacity: 0; transform: scale(.985); } }
+.st-shot figcaption { text-align: center; margin-top: 22px; display: flex; flex-direction: column; gap: 4px; }
+.st-shot figcaption b { font-family: var(--font-display); font-size: 1.25rem; }
+.st-shot figcaption span { color: var(--st-soft); }
+
+/* إبراز */
+.st-split { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
+.st-split.flip .st-split-text { order: 2; }
+.st-split-text h2 { font-size: clamp(1.9rem, 3.6vw, 2.8rem); line-height: 1.2; margin-top: 12px; font-weight: 700; }
+.st-split-text > p { color: var(--st-soft); margin-top: 14px !important; line-height: 1.85; font-size: 1.06rem; }
+.st-checks { list-style: none; margin: 26px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.st-checks li { display: flex; gap: 14px; align-items: flex-start; background: var(--st-card); border: 1px solid var(--st-line); border-radius: 16px; padding: 14px 16px; }
+.st-checks li > span { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--st-brand); color: var(--st-lime); }
+.st-checks b { display: block; }
+.st-checks small { color: var(--st-soft); font-size: .9rem; }
+
+/* لمن */
+.st-aud { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.st-aud-card { background: var(--st-card); border: 1px solid var(--st-line); border-radius: 22px; padding: 26px 22px; display: flex; flex-direction: column; gap: 14px; }
+.st-aud-card h3 { font-size: 1.2rem; }
+
+/* لماذا */
+.st-why { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.st-why article { position: relative; background: var(--st-card); border: 1px solid var(--st-line); border-radius: 22px; padding: 26px 20px; display: flex; flex-direction: column; gap: 10px; }
+.st-why .n { position: absolute; top: 18px; inset-inline-end: 20px; font-family: var(--font-display); font-weight: 700; color: #d9d2bd; font-size: 1.4rem; }
+.st-why h3 { font-size: 1.1rem; margin-top: 6px; }
+.st-why p { color: var(--st-soft); font-size: .92rem; line-height: 1.7; }
+.st-why-foot { text-align: center; margin-top: 26px !important; color: var(--st-olive); font-weight: 700; display: flex; justify-content: center; gap: 8px; align-items: center; }
+
+/* آراء العملاء */
+.st-quotes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.st-quote { margin: 0; background: var(--st-card); border: 1px solid var(--st-line); border-radius: 22px; padding: 26px 24px; display: flex; flex-direction: column; gap: 18px; min-height: 220px; }
+.st-quote .q { font-family: Georgia, serif; font-size: 3.4rem; line-height: .6; color: var(--st-lime); height: 22px; }
+.st-quote blockquote { margin: 0; font-size: 1.04rem; line-height: 1.85; color: var(--st-ink); flex: 1; }
+.st-quote figcaption { display: flex; align-items: center; gap: 12px; }
+.st-quote .av { width: 42px; height: 42px; border-radius: 50%; background: var(--st-brand); color: #fff; display: grid; place-items: center; font-weight: 700; }
+.st-quote small { display: block; color: var(--st-soft); font-size: .85rem; }
+.st-quote.empty { border-style: dashed; border-color: #d6cfbb; background: transparent; }
+.st-quote.empty blockquote, .st-quote.empty b, .st-quote.empty small { color: #a69e88; }
+.st-quote.empty .av { background: #e6e0cf; }
+
+/* الأسعار */
+.st-seg-row { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-bottom: 34px; }
+.st-seg, .st-bill { display: inline-flex; background: #fff; border: 1px solid var(--st-line); border-radius: 999px; padding: 5px; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.st-seg button, .st-bill button { border: 0; background: none; padding: 9px 20px; border-radius: 999px; font: 600 .95rem var(--font-body); color: var(--st-soft); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.st-seg button.on { background: var(--st-brand); color: #fff; }
+.st-bill button.on { background: var(--st-bg-2); color: var(--st-ink); }
+.st-bill .save { background: #f3e7c6; color: var(--st-gold); font-size: .76rem; padding: 2px 8px; border-radius: 999px; }
+.st-plans { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 18px; max-width: 900px; margin: 0 auto; align-items: stretch; }
+.st-plan { position: relative; background: var(--st-card); border: 1px solid var(--st-line); border-radius: 26px; padding: 32px 30px; display: flex; flex-direction: column; gap: 10px; }
+.st-plan.main { background: #fff; border: 2px solid var(--st-brand); box-shadow: 0 30px 60px rgb(7 60 60 / 14%); }
+.st-plan h3 { font-size: 1.4rem; }
+.st-plan .muted { color: var(--st-soft); font-size: .92rem; }
+.st-badge { position: absolute; top: -14px; inset-inline-start: 28px; background: var(--st-lime); color: #0a2c27; font-weight: 700; font-size: .8rem; padding: 5px 14px; border-radius: 999px; }
+.st-price { display: flex; align-items: baseline; gap: 10px; margin-top: 10px !important; flex-wrap: wrap; }
+.st-price b { font-family: var(--font-display); font-size: clamp(2.4rem, 5vw, 3.2rem); line-height: 1; color: var(--st-brand); font-variant-numeric: tabular-nums; }
+.st-price b.custom { font-size: 2rem; color: var(--st-gold); }
+.st-price span { color: var(--st-soft); font-weight: 600; }
+.st-price-note { color: var(--st-olive); font-size: .9rem; font-weight: 600; min-height: 1.4em; }
+.st-plan ul { margin: 14px 0 22px; flex: 1; }
+
+/* الأسئلة */
+.st-faq { display: flex; flex-direction: column; gap: 10px; }
+.st-faq details { background: var(--st-card); border: 1px solid var(--st-line); border-radius: 18px; transition: border-color .2s, box-shadow .2s; }
+.st-faq details[open] { border-color: #cdc5ad; box-shadow: 0 12px 28px rgb(18 48 45 / 6%); }
+.st-faq summary { list-style: none; cursor: pointer; padding: 20px 22px; font-weight: 700; font-size: 1.05rem; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.st-faq summary::-webkit-details-marker { display: none; }
+.st-faq summary i { font-style: normal; flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--st-bg-2); color: var(--st-ink); transition: transform .25s, background .25s; }
+.st-faq details[open] summary i { transform: rotate(45deg); background: var(--st-brand); color: #fff; }
+.st-faq details p { padding: 0 22px 20px; color: var(--st-soft); line-height: 1.9; }
+
+/* الخاتمة والتذييل */
+.st-foot { padding: 40px 0 30px; }
+.st-final { text-align: center; background: radial-gradient(700px 300px at 50% 0%, rgb(180 200 61 / 22%), transparent 70%), linear-gradient(160deg, #073c3c, #0a2c27); color: #fff; border-radius: 32px; padding: clamp(48px, 7vw, 80px) 24px; }
+.st-final-mark { display: flex; justify-content: center; }
+.st-final-mark .mark { width: 56px; height: 56px; display: block; }
+.st-final h2 { color: #fff; font-size: clamp(2rem, 4.4vw, 3.2rem); margin-top: 16px; }
+.st-final p { color: #c9dcd6; margin-top: 10px !important; font-size: 1.08rem; }
+.st-final .st-btn.dark { background: var(--st-lime); color: #0a2c27; }
+.st-foot-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 30px 4px 0; color: var(--st-soft); font-size: .92rem; }
+.st-foot-row a { color: var(--st-soft); text-decoration: none; font-weight: 600; }
+.st-foot-row a:hover { color: var(--st-ink); }
+.st-foot-row .st-logo { color: var(--st-ink); font-size: 1.1rem; }
+.st-foot-row .st-logo .mark { width: 30px; height: 30px; }
+.st-copy { width: 100%; text-align: center; color: #9a917b; font-size: .82rem; padding-top: 14px; border-top: 1px solid var(--st-line); }
+
+/* زر واتساب العائم */
+.st-wa { position: fixed; z-index: 50; bottom: 22px; inset-inline-end: 22px; width: 58px; height: 58px; border-radius: 50%; background: #25d366; color: #fff; display: grid; place-items: center; box-shadow: 0 14px 30px rgb(37 211 102 / 38%); transition: transform .2s; }
+.st-wa:hover { transform: scale(1.06); }
+.st-wa svg { width: 28px; height: 28px; }
+
+/* صفحة الحجز */
+.st-book-in { padding: clamp(40px, 7vw, 90px) 0 90px; }
+.st-book-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(28px, 6vw, 72px); align-items: start; }
+.st-book-side h1 { font-size: clamp(2.2rem, 4.6vw, 3.4rem); line-height: 1.15; margin-top: 12px; font-weight: 700; }
+.st-book-side > p { color: var(--st-soft); margin-top: 14px !important; line-height: 1.9; font-size: 1.08rem; }
+.st-book-card { background: #fff; border: 1px solid var(--st-line); border-radius: 28px; padding: clamp(22px, 4vw, 36px); box-shadow: 0 30px 70px rgb(18 48 45 / 10%); }
+.st-form { display: flex; flex-direction: column; gap: 16px; }
+.st-form input, .st-form select, .st-form textarea { background: var(--st-card); }
+.st-form textarea { resize: vertical; }
+.st-hp { position: absolute; inset-inline-start: -9999px; width: 1px; height: 1px; opacity: 0; }
+.st-form-note { color: var(--st-soft); font-size: .85rem; display: flex; gap: 6px; align-items: center; justify-content: center; }
+.st-done { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 28px 0; }
+.st-done > svg { width: 56px; height: 56px; padding: 14px; border-radius: 50%; background: #e1f1e6; color: #2b7a4b; box-sizing: content-box; }
+.st-done h1 { font-size: 1.9rem; }
+.st-done p { color: var(--st-soft); line-height: 1.8; }
+
+/* ظهور ناعم عند التمرير (حيث يدعمه المتصفح) */
+@supports (animation-timeline: view()) {
+  .st-mod, .st-aud-card, .st-why article, .st-quote, .st-pain, .st-plan, .st-checks li, .st-faq details { animation: st-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 40%; }
+  @keyframes st-rise { from { opacity: 0; transform: translateY(26px); } }
+}
+@media (prefers-reduced-motion: reduce) { .st *, .st *::before { animation: none !important; transition: none !important; } }
+
+@media (max-width: 1100px) {
+  .st-links { display: none; }
+  .st-burger { display: inline-flex; }
+  .st-nav-cta { margin-inline-start: auto; }
+  .st-nav.open .st-drawer { display: flex; flex-direction: column; padding: 8px 20px 18px; gap: 2px; border-top: 1px solid var(--st-line); }
+  .st-drawer a, .st-drawer button { text-align: start; padding: 12px 8px; color: var(--st-ink); font: 600 1rem var(--font-body); text-decoration: none; }
+  .st-mods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .st-why { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .st-aud { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .st-mods { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .st-split, .st-book-grid, .st-plans { grid-template-columns: 1fr; }
+  .st-split.flip .st-split-text { order: 0; }
+  .st-quotes { grid-template-columns: 1fr; }
+  .st-pains { grid-template-columns: 1fr; }
+  .st-why { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .st-chip { display: none; }
+  .st-chip.c1 { display: flex; top: auto; bottom: -22px; inset-inline-start: 50%; transform: translateX(50%); animation: none; }
+}
+@media (max-width: 560px) {
+  .st { font-size: 16px; }
+  .st-wrap, .st-narrow { width: calc(100% - 32px); }
+  .hide-xs { display: none; }
+  .st-hero { padding-top: 48px; }
+  .st-mods, .st-aud, .st-why { grid-template-columns: 1fr; }
+  .st-stats { gap: 18px; }
+  .st-stats div { min-width: 0; flex: 1 1 40%; }
+  .st-stats dt { font-size: 1.4rem; }
+  .st-tabs { border-radius: 20px; }
+  .st-tabs button { padding: 8px 12px; font-size: .88rem; }
+  .st-cta-row .st-btn { width: 100%; }
+  .st-plan { padding: 28px 20px; }
+  .st-wa { width: 52px; height: 52px; bottom: 16px; inset-inline-end: 16px; }
+  .st-nav-cta .st-btn.dark { padding: 8px 14px; }
+}
 
 </style></head><body><div id="app"></div><div id="print-area" aria-hidden="true"></div><script type="module">
 // ---- server/db/memory.js
@@ -1185,6 +1377,7 @@ async function ensureIndexes(db) {
     ix('sub_requests', { status: 1, createdAt: -1 }, { name: 'by_status' }),
     ix('sub_requests', { accountId: 1, createdAt: -1 }, { name: 'by_account' }),
     ix('platform_audit', { at: -1 }, { name: 'by_date' }),
+    ix('leads', { status: 1, createdAt: -1 }, { name: 'by_status' }),
 
     // ---- بيانات كل مقهى
     ix('receipts', t({ number: 1 }), { unique: true, name: 'uniq_number' }),
@@ -4936,7 +5129,7 @@ const { hashPassword, randomToken, sha256, verifyPassword } = __m_server_app_sec
 const SESSION_HOURS = 4;
 const DUMMY_HASH = 'pbkdf2$210000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000';
 
-function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID(), admins = [], passwordIterations, checkIp, failIp, onTenantChange = () => {}, log = console, subs = null }) {
+function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID(), admins = [], passwordIterations, checkIp, failIp, onTenantChange = () => {}, log = console, subs = null, leads = null }) {
   const allowed = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const sessions = () => db.collection('platform_sessions');
   const hashOpts = passwordIterations ? { iterations: passwordIterations } : undefined;
@@ -5060,6 +5253,14 @@ function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID(), admin
       const since = new Date(now().getTime() - 86400_000);
       const recent = await db.collection('platform_errors').find({}).sort({ at: -1 }).limit(30).toArray();
       return { status: 200, body: { count24h: await db.collection('platform_errors').countDocuments({ at: { $gte: since } }), recent: recent.map(({ _id, ...x }) => x) } };
+    }
+    // طلبات العرض المجاني ومحتوى الموقع التعريفي
+    if (leads) {
+      if (key === 'GET /api/platform/leads') return { status: 200, body: await leads.list(req.query ?? {}) };
+      if (key === 'GET /api/platform/site') return { status: 200, body: await leads.site() };
+      if (key === 'PUT /api/platform/site') return { status: 200, body: await leads.saveSite(admin, req.body) };
+      const ld = /^\/api\/platform\/leads\/([A-Za-z0-9_-]{1,64})$/.exec(req.path);
+      if (ld && req.method === 'POST') return { status: 200, body: await leads.update(admin, ld[1], req.body) };
     }
     // الاشتراكات: الطلبات، الموافقة/الرفض، التمديد من صف العميل، بيانات التحويل والتفاصيل، والسجل
     if (subs) {
@@ -5460,6 +5661,110 @@ function createSubscriptions({ db, now, newId, admins = new Set(), enabled = fal
 return { addMonths, createSubscriptions };
 })();
 
+// ---- server/app/leads.js
+const __m_server_app_leads_js = await (async () => {
+const { AppError, bad, id: checkId, int, isDup, oneOf, str } = __m_server_app_core_js;
+// طلبات «احجز عرضك المجاني» من الموقع التعريفي، ومحتوى الموقع الذي يتحكم به المزوّد (من يثق بمور كاش، وآراء العملاء).
+// الطلبات على مستوى المنصة (بلا مقهى): يقرأها المزوّد من لوحته ويتابعها (جديد ← تواصلنا ← اشترك/لم يكمل).
+
+
+const LEAD_TYPES = { cafe: 'كافيه / كوفي شوب', restaurant: 'مطعم', quick: 'خدمة سريعة', bakery: 'مخبز / حلويات', other: 'غير ذلك' };
+const LEAD_STATUS = ['new', 'contacted', 'won', 'lost'];
+const PER_IP = 5; // طلبات لكل عنوان في الساعة
+const WINDOW = 3600_000;
+
+const latin = (v) => String(v ?? '').replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
+
+/** رقم عراقي أو دولي: 07xxxxxxxxx أو 9647xxxxxxxxx أو +… — يُحفظ أرقاماً فقط */
+function normPhone(v) {
+  const d = latin(v).replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '');
+  if (!/^\d{8,15}$/.test(d)) throw bad('INVALID_PHONE', 'phone');
+  return d;
+}
+
+function createLeads({ db, now, audit = async () => {} }) {
+  const LEADS = () => db.collection('leads');
+  const CONFIG = () => db.collection('platform_config');
+  const hits = new Map(); // ip → {count, since}
+
+  function limit(ip) {
+    const t = Date.now();
+    const h = hits.get(ip);
+    if (!h || t - h.since >= WINDOW) { hits.set(ip, { count: 1, since: t }); if (hits.size > 5000) hits.clear(); return; }
+    if (h.count >= PER_IP) throw new AppError(429, 'TOO_MANY_ATTEMPTS');
+    h.count += 1;
+  }
+
+  /** طلب عرض من الزائر: معرّف العميل يجعل إعادة الإرسال آمنة، وحقل «الموقع» المخفي فخ للروبوتات */
+  async function submit(body = {}, ip) {
+    const clientId = checkId(body.clientId, 'clientId');
+    if (body.website) return { ok: true }; // روبوت: نقبل بصمت ولا نحفظ
+    const lead = {
+      _id: clientId,
+      name: str(body.name, { field: 'name', min: 2, max: 60 }),
+      shop: str(body.shop, { field: 'shop', min: 2, max: 80 }),
+      type: oneOf(body.type ?? 'cafe', Object.keys(LEAD_TYPES), 'type'),
+      branches: int(body.branches ?? 1, { field: 'branches', min: 1, max: 500 }),
+      phone: normPhone(body.phone),
+      city: str(body.city, { field: 'city', max: 40, optional: true }),
+      when: str(body.when, { field: 'when', max: 60, optional: true }),
+      note: str(body.note, { field: 'note', max: 500, optional: true }),
+      status: 'new', createdAt: now(), ip: ip ?? null,
+    };
+    if (await LEADS().findOne({ _id: clientId }, { projection: { _id: 1 } })) return { ok: true };
+    limit(ip ?? 'unknown');
+    try { await LEADS().insertOne(lead); } catch (e) { if (!isDup(e)) throw e; }
+    return { ok: true };
+  }
+
+  const view = ({ ip, ...l }) => ({ ...l, id: l._id, _id: undefined, typeName: LEAD_TYPES[l.type] ?? l.type });
+
+  async function list({ status } = {}) {
+    const q = LEAD_STATUS.includes(status) ? { status } : {};
+    const rows = await LEADS().find(q).sort({ createdAt: -1 }).limit(500).toArray();
+    const all = await LEADS().find({}).project({ status: 1 }).limit(5000).toArray();
+    const counts = Object.fromEntries(LEAD_STATUS.map((s) => [s, all.filter((r) => r.status === s).length]));
+    return { counts, leads: rows.map(view) };
+  }
+
+  async function update(admin, leadId, body = {}) {
+    const lid = checkId(leadId);
+    const $set = { updatedAt: now(), updatedBy: admin.email };
+    if (body.status !== undefined) $set.status = oneOf(body.status, LEAD_STATUS, 'status');
+    if (body.adminNote !== undefined) $set.adminNote = str(body.adminNote, { field: 'adminNote', max: 500, optional: true });
+    const r = await LEADS().updateOne({ _id: lid }, { $set });
+    if (!r.matchedCount) throw new AppError(404, 'NOT_FOUND');
+    await audit(admin, 'lead.update', { leadId: lid, status: $set.status ?? null });
+    return view(await LEADS().findOne({ _id: lid }));
+  }
+
+  // ---------------------------------------------------------------- محتوى الموقع
+  async function site() {
+    const c = await CONFIG().findOne({ _id: 'site' });
+    return { trusted: c?.trusted ?? [], testimonials: c?.testimonials ?? [] };
+  }
+
+  async function saveSite(admin, body = {}) {
+    const trusted = (Array.isArray(body.trusted) ? body.trusted : []).slice(0, 12).map((t) => ({
+      name: str(t?.name, { field: 'trusted.name', min: 1, max: 40 }),
+      city: str(t?.city, { field: 'trusted.city', max: 30, optional: true }),
+    }));
+    const testimonials = (Array.isArray(body.testimonials) ? body.testimonials : []).slice(0, 9).map((t) => ({
+      name: str(t?.name, { field: 'testimonials.name', min: 2, max: 40 }),
+      shop: str(t?.shop, { field: 'testimonials.shop', max: 60, optional: true }),
+      quote: str(t?.quote, { field: 'testimonials.quote', min: 5, max: 300 }),
+    }));
+    await CONFIG().updateOne({ _id: 'site' }, { $set: { trusted, testimonials, updatedAt: now(), updatedBy: admin.email } }, { upsert: true });
+    await audit(admin, 'site.update', { trusted: trusted.length, testimonials: testimonials.length });
+    return site();
+  }
+
+  return { submit, list, update, site, saveSite };
+}
+
+return { LEAD_TYPES, LEAD_STATUS, normPhone, createLeads };
+})();
+
 // ---- server/app/platform.js
 const __m_server_app_platform_js = await (async () => {
 const { createApp } = __m_server_app_index_js;
@@ -5469,12 +5774,14 @@ const { scopeDb } = __m_server_db_scoped_js;
 const { createPlatformAdmin } = __m_server_app_platform_admin_js;
 const { createBranches } = __m_server_app_branches_js;
 const { createSubscriptions } = __m_server_app_subscriptions_js;
+const { createLeads } = __m_server_app_leads_js;
 // المنصة: حسابات المقاهي، ربط الجهاز بمقهى، وتوجيه كل طلب إلى تطبيق ذلك المقهى فقط.
 //
 // طبقتا دخول:
 //   1) حساب المقهى (بريد + كلمة مرور) — مرة واحدة على كل جهاز. ينشئ "جلسة جهاز" طويلة (كوكي mc_device).
 //   2) رمز الموظف (PIN) — سريع، لكل وردية/موظف، داخل المقهى المرتبط بالجهاز فقط (كوكي mc_session).
 // لذلك لا يمكن تجربة رموز PIN إلا من جهاز سجّل صاحبه الدخول بكلمة المرور.
+
 
 
 
@@ -5514,9 +5821,10 @@ async function matchPassword(pass, hash) {
   return false;
 }
 
-function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null, approval = false } = {}) {
+function createPlatform({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, passwordIterations, readInvoice = null, admins = [], support = null, approval = false, adminReset = null } = {}) {
   const adminSet = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const subs = createSubscriptions({ db, now, newId, admins: adminSet, enabled: approval });
+  const leads = createLeads({ db, now, audit: subs.audit });
   const apps = new Map(); // tenantId → {app, ready}
   // أخطاء الخادم غير المتوقعة تُحفظ (14 يوماً) لتظهر في لوحة المزوّد قبل أن يبلّغ عنها مقهى
   function recordError(e, where = {}) {
@@ -5690,12 +5998,35 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
    * @param {{method, path, query?, body?, token?, deviceToken?, ip?}} req
    * @returns {Promise<{status, body, setToken?, setDevice?}>}
    */
+  /** إعادة تعيين كلمة مرور المزوّد عند نسيانها: متغير PLATFORM_RESET_PASSWORD بصيغة «البريد:كلمة مؤقتة».
+   *  للبريد في PLATFORM_ADMINS فقط، تُطبَّق مرة واحدة لكل قيمة (بصمتها في platform_resets)، وتلزم تغيير كلمة المرور بعد الدخول. */
+  let resetDone = null;
+  async function applyAdminReset() {
+    if (typeof adminReset !== 'string' || !adminReset.includes(':')) return;
+    const i = adminReset.indexOf(':');
+    const mail = adminReset.slice(0, i).trim().toLowerCase();
+    const temp = normPass(adminReset.slice(i + 1));
+    if (!adminSet.has(mail) || temp.length < 8) { log.warn?.('PLATFORM_RESET_PASSWORD ignored'); return; }
+    const mark = await sha256(`reset:${adminReset}`);
+    if (await db.collection('platform_resets').findOne({ _id: mark })) return;
+    const r = await db.collection('accounts').updateOne({ email: mail }, { $set: {
+      passwordHash: await hashPassword(temp, passwordIterations ? { iterations: passwordIterations } : undefined),
+      mustChangePassword: true, failedLogins: 0, lockedUntil: null, passwordResetAt: now(), passwordResetBy: 'env',
+    } });
+    await db.collection('platform_resets').insertOne({ _id: mark, email: mail, at: now(), matched: r.matchedCount });
+    log.warn?.(`platform password reset applied for ${mail} (matched ${r.matchedCount})`);
+  }
+
   async function handle(req) {
+    await (resetDone ??= applyAdminReset().catch((e) => { log.error?.('admin reset failed', e?.message); }));
     const ip = req.ip ?? 'local';
     const key = `${req.method} ${req.path}`;
     try {
       if (req.path.startsWith('/api/platform/')) return await platformAdmin.handle({ ...req, ip });
       if (key === 'GET /api/support') return { status: 200, body: { whatsapp: support } };
+      // الموقع التعريفي: محتواه العام، وطلب «احجز عرضك المجاني» (بلا جهاز ولا حساب)
+      if (key === 'GET /api/site') return { status: 200, body: { whatsapp: support, ...(await leads.site()) } };
+      if (key === 'POST /api/leads') return { status: 200, body: await leads.submit(req.body, ip) };
       if (key === 'POST /api/account/signup') return await signup(req.body, ip);
       if (key === 'POST /api/account/login') return await login(req.body, ip);
 
@@ -5756,7 +6087,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
 
   // الإيقاف يسري فوراً على هذه النسخة من الخادم، وخلال 30 ثانية على غيرها
   const branches = createBranches({ db, now, newId, appFor, forgetApp: (id) => apps.delete(id) });
-  const platformAdmin = createPlatformAdmin({ db, now, newId, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log, subs });
+  const platformAdmin = createPlatformAdmin({ db, now, newId, admins, passwordIterations, checkIp, failIp, onTenantChange: (id) => disabledCache.delete(id), log, subs, leads });
 
   return { handle, appFor };
 }
@@ -6055,6 +6386,12 @@ const P = {
   expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   shrink: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4V8Z"/><circle cx="12" cy="13" r="3.5"/>',
+  table: '<path d="M3 9h18M5 9v10M19 9v10"/><path d="M7 5h10l2 4H5l2-4Z"/>',
+  wifi: '<path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1"/><path d="M3 3l18 18"/>',
+  chat: '<path d="M4 20l1.4-4.2A8 8 0 1 1 8.6 19L4 20Z"/><path d="M9 10.5c.5 2 2 3.5 4.5 4.5l1.3-1.3 2 .9"/>',
+  shield: '<path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6l8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+  branch: '<path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/>',
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
   bean: '<g transform="rotate(32 12 12)"><ellipse cx="12" cy="12" rx="6" ry="9"/><path d="M12 3.5l1.3 2-2.6 2 2.6 2-2.6 2 2.6 2-2.6 2 2.6 2-1.3 1"/></g>',
 };
 
@@ -8027,14 +8364,394 @@ on({
 return { routes, shiftReportText, modals, enter };
 })();
 
+// ---- public/js/views/site.js
+const __m_public_js_views_site_js = await (async () => {
+const { esc } = __m_shared_format_js;
+const { get, post } = __m_public_js_api_js;
+const { icon } = __m_public_js_icons_js;
+const { mark } = __m_public_js_brand_js;
+const { busy, field, on, render, state } = __m_public_js_ui_js;
+// الموقع التعريفي لمور كاش (الصفحة الرئيسية لمن لم يربط جهازه بمقهى) وصفحة «احجز عرضك المجاني».
+// المحتوى حقيقي من البرنامج: اللقطات من النسخة التجريبية، والميزات الموجودة فعلاً فقط.
+// «يثقون بمور كاش» وآراء العملاء يحررها المزوّد من لوحته (GET /api/site)، وتظهر مستطيلات فارغة حتى يضيفها.
+
+
+
+
+
+
+const LIVE_URL = 'https://more-cashpro.vercel.app';
+const DEMO_PAGE = () => !!globalThis.MORECASH_DEMO_PAGE;
+const SAME_ORIGIN = () => !DEMO_PAGE() || globalThis.location?.hostname?.endsWith('vercel.app');
+const BASE = () => (SAME_ORIGIN() ? '' : LIVE_URL);
+const img = (name) => `${BASE()}/img/site/${name}.webp`;
+const href = (route) => (SAME_ORIGIN() ? `#/${route}` : `${LIVE_URL}/#/${route}`);
+const PRICE = { month: 50_000, year: 500_000 };
+const num = (n) => n.toLocaleString('en-US');
+
+const S = () => state.site ?? (state.site = { info: undefined, shot: 'pos', bill: 'month', kind: 'cafe', menu: false, sent: false, clientId: null });
+
+async function loadSite() {
+  const s = S();
+  if (s.info !== undefined || s.loading) return;
+  s.loading = true;
+  try { s.info = await get('/api/site'); } catch { s.info = null; }
+  s.loading = false;
+  render();
+}
+const wa = (text) => {
+  const n = S().info?.whatsapp;
+  return n ? `https://wa.me/${n}?text=${encodeURIComponent(text)}` : null;
+};
+const WA_HELLO = 'مرحباً، أريد أعرف أكثر عن مور كاش لمقهاي.';
+
+// ---------------------------------------------------------------- المحتوى
+const MODULES = [
+  ['sale', 'نقاط البيع', 'كاشير سريع على الآيباد', ['أصناف بصورها أو إيموجي بلونها', 'الحجم والإضافات بلمسة، والسعر يُحسب وحده', 'دفع نقد أو كي أو الاثنين بنفس الطلب', 'خصومات ونقاط للزبائن']],
+  ['table', 'الطاولات', 'خريطة صالتك كما هي', ['ترسم الطاولات وأماكنها بالسحب', 'المشغولة تبين بمبلغها، والفارغة تنختار بلمسة', 'تذكرة مفتوحة لكل طاولة لحد الدفع']],
+  ['cup', 'شاشة التحضير', 'الطلب يوصل للباريستا لحظة الدفع', ['الطلبات بالترتيب ومع وقت الانتظار', 'الإلغاء بسبب واضح وباسم الموظف', 'ما انحضّر وانلغى ينحسب هدراً']],
+  ['box', 'المخزون والوصفات', 'تعرف شكد عندك قبل لا يخلص', ['كل بيعة تخصم مكونات وصفتها تلقائياً', 'تنبيه قبل النفاد بحد لكل مادة', 'جرد وهدر، والرصيد ما ينزل تحت الصفر']],
+  ['camera', 'المشتريات', 'استلام البضاعة بدقة', ['استلام يدوي أو بتصوير فاتورة المورد', 'الدفع من درج الوردية أو من خارجه', 'تصحيح الغلط بحركة واضحة، بلا حذف']],
+  ['cash', 'الورديات والدرج', 'الدرج يطابق آخر اليوم', ['المتوقع بالدرج مقابل الموجود', 'كل سحب وإدخال بسببه واسم صاحبه', 'إغلاق الوردية بتقرير جاهز']],
+  ['clock', 'الحضور والدوام', 'شاشة حضور على جهاز الكاشير', ['الموظف يدوس اسمه ويكتب رمزه', 'جدول دوام: التأخير والغياب والإضافي تلقائياً', 'إجازات برصيد سنوي وموافقة المدير']],
+  ['wallet', 'الرواتب', 'راتب كل شهر بلا نقاش', ['قسيمة مفصّلة تنطبع أو تنرسل واتساب', 'السحب من الراتب ينخصم بنهاية الشهر', 'الصرف ينسجل مصروفاً ويقفل الشهر']],
+  ['chart', 'التقارير وصافي الربح', 'ربحك الحقيقي كل يوم', ['صافي الربح بعد التكلفة والمصاريف والرواتب', '«وين راحت فلوسك؟» بصفحة وحدة', 'تقرير يومي للطباعة 80 مم أو واتساب']],
+  ['star', 'العملاء والولاء', 'زبونك معروف برقمه', ['سجل كل زبون ومشترياته', 'نقاط تنجمع مع كل طلب وتنصرف خصماً', 'خصومات جاهزة بلمسة']],
+  ['branch', 'الفروع', 'أكثر من مقهى بحساب واحد', ['كل فرع بمخزونه وموظفيه', 'تبديل الفرع على الجهاز للمالك', 'تقرير مجمّع لكل الفروع']],
+  ['wifi', 'بلا إنترنت', 'البيع ما يوقف أبداً', ['المبيعات تنحفظ على الجهاز', 'تنرسل وحدها أول ما يرجع الاتصال', 'وكل بيعة تنحسب لورديتها الصحيحة']],
+];
+
+const AUDIENCE = [
+  ['cup', 'الكافيهات والكوفي شوب', ['إضافات الحليب والشوتات بلمسة', 'الوصفة تخصم البن والحليب والكوب', 'نقاط تخلي الزبون يرجع']],
+  ['table', 'المطاعم', ['خريطة طاولات وتذكرة لكل طاولة', 'شاشة تحضير للمطبخ بالترتيب', 'تقسيم الدفع بين نقد وكي']],
+  ['bolt', 'الخدمة السريعة', ['طلب ودفع بثواني، والطابور يمشي', 'الصنف الخلصان يطلع «نفد» ويمنع بيعه', 'تقرير الساعات الأكثر زحمة']],
+  ['bean', 'المخابز والحلويات', ['مخزون المكونات والهدر اليومي', 'استلام البضاعة وتكلفتها الحقيقية', 'ربح كل صنف بعد تكلفته']],
+];
+
+const SHOTS = [
+  ['pos', 'البيع', 'شاشة البيع', 'أصناف مربعة واضحة ونافذة طلب بأسطر فيها − و +، مصممة للآيباد بلا تمرير.'],
+  ['floor', 'الطاولات', 'خريطة الطاولات', 'احفظ الطلب على طاولته: المشغولة تبين بمبلغها، والفارغة تختارها بلمسة.'],
+  ['kds', 'التحضير', 'شاشة التحضير', 'الباريستا يشوف الطلبات بالترتيب ومن شكد دقيقة تنتظر، ويبدأ التحضير بلمسة.'],
+  ['inventory', 'المخزون', 'المخزون', 'قيمة المخزون، والمواد تحت حد التنبيه، والرصيد والتكلفة لكل مادة.'],
+  ['dashboard', 'المتابعة', 'لوحة المتابعة', 'صافي المبيعات والربح، والمبيعات حسب الساعة، وأفضل أيام العمل.'],
+  ['hr-team', 'الموظفون', 'الموظفون والأداء', 'الساعات والأيام والتأخير والإضافي والمبيعات لكل موظف.'],
+  ['hr-payroll', 'الرواتب', 'كشف الرواتب', 'المستحق والخصومات والسحوبات لكل موظف، وصرف بلمسة يقفل الشهر.'],
+  ['daily', 'التقرير اليومي', 'التقرير اليومي', 'مبيعات اليوم والموارد المصروفة والإلغاءات، للطباعة أو المشاركة.'],
+];
+
+const PAINS = [
+  'فرق بنقد الدرج آخر اليوم، وما تعرف وين راح',
+  'الحليب والبن يخلصون بنص الدوام بلا إنذار',
+  'الحضور والسحوبات بالدفتر، والراتب كل شهر فيه نقاش',
+  'تبيع كل يوم… بس ما تعرف ربحك الحقيقي',
+];
+
+const WHY = [
+  ['bolt', 'سرعة بكل طلب', 'مصمم لإيقاع الكوفي شوب: الطلب بلمستين والدفع بلمسة.'],
+  ['shield', 'حسابات مضمونة', 'كل تحديث يمر بفحوصات آلية ومحاكاة أيام عمل كاملة قبل ما يوصلك.'],
+  ['chart', 'أرقام تفهمها', 'صافي ربحك ووين راحت فلوسك، بالدينار وبدون كسور.'],
+  ['wifi', 'يشتغل بلا إنترنت', 'انقطاع الإنترنت ما يوقف البيع، وكل شي يتزامن وحده.'],
+  ['lock', 'بياناتك إلك وحدك', 'كل مقهى معزول تماماً، ولكل موظف رمزه وصلاحياته.'],
+];
+
+const KINDS = { cafe: 'الكافيهات', restaurant: 'المطاعم', quick: 'الخدمة السريعة' };
+const PLAN_FEATURES = {
+  cafe: ['نقاط البيع والإضافات', 'المخزون والوصفات', 'العملاء والنقاط', 'الموظفون والحضور والرواتب', 'التقارير وصافي الربح', 'العمل بلا إنترنت'],
+  restaurant: ['نقاط البيع وخريطة الطاولات', 'شاشة التحضير للمطبخ', 'المخزون والوصفات والمشتريات', 'الموظفون والحضور والرواتب', 'التقارير وصافي الربح', 'العمل بلا إنترنت'],
+  quick: ['كاشير سريع ودفع مقسّم', 'شاشة التحضير', 'منع بيع الصنف الخلصان', 'الورديات والدرج', 'التقارير حسب الساعة', 'العمل بلا إنترنت'],
+};
+
+const FAQ = [
+  ['شنو الأجهزة اللي أحتاجها؟', 'آيباد أو أي تابلت أو حاسبة بمتصفح حديث. طابعة الإيصالات 80 مم اختيارية، والتقرير اليومي ينرسل واتساب حتى بدون طابعة.'],
+  ['إذا انقطع الإنترنت، شيصير؟', 'البيع يستمر عادي. المبيعات تنحفظ على الجهاز وتنرسل وحدها أول ما يرجع الاتصال، وكل بيعة تنحسب لورديتها الصحيحة.'],
+  ['شلون أدفع الاشتراك؟', 'بالتحويل أو نقداً. بعد ما تسوي حسابك ترسل طلب الاشتراك من داخل البرنامج، ونفعّله لك أول ما نأكد الدفع.'],
+  ['هل أكو عقد أو التزام طويل؟', 'لا. تختار شهري أو سنوي، وتجدد وقت ما تريد. وإذا انتهى الاشتراك تبقى بياناتك وتقاريرك محفوظة.'],
+  ['عندي أكثر من فرع، يجمعها البرنامج؟', 'إي. كل فرع بمخزونه وموظفيه، والمالك يبدّل بين الفروع ويشوف تقرير مجمّع لكلها.'],
+  ['بياناتي آمنة؟', 'كل مقهى معزول تماماً عن غيره، والدخول من جهاز جديد يحتاج بريد المالك وكلمة مروره، ولكل موظف رمزه وصلاحياته، وكل عملية حساسة تنسجل.'],
+  ['شكد ياخذ التشغيل؟', 'تسوي الحساب وتضيف أصنافك وتبدي تبيع بنفس اليوم. وإذا تحب، نساعدك بالإعداد بعرض مجاني.'],
+  ['أقدر أجرّب قبل ما أشترك؟', 'إي. احجز عرضك المجاني ونوريك البرنامج على مقهاك، أو جرّب النسخة التجريبية بنفسك.'],
+  ['شلون الدعم الفني؟', 'دعم بالعربي على واتساب، وتحديثات مستمرة بدون كلفة إضافية.'],
+];
+
+// ---------------------------------------------------------------- أجزاء مشتركة
+function nav(s) {
+  const links = [['modules', 'المنصة'], ['inside', 'من داخل البرنامج'], ['audience', 'لمن مور كاش'], ['pricing', 'الأسعار'], ['faq', 'الأسئلة']];
+  return `<header class="st-nav ${s.menu ? 'open' : ''}"><div class="st-wrap st-nav-in">
+    <a class="st-logo" href="#/" aria-label="مور كاش — الرئيسية">${mark()}<span>مور كاش</span></a>
+    <nav class="st-links" aria-label="أقسام الموقع">${links.map(([id, t]) => `<button type="button" data-action="st-go" data-to="${id}">${t}</button>`).join('')}</nav>
+    <div class="st-nav-cta">
+      <a class="st-btn ghost sm hide-xs" href="${href('login')}">تسجيل الدخول</a>
+      <a class="st-btn dark sm" href="${href('book')}">احجز عرضك</a>
+      <button type="button" class="st-burger" data-action="st-menu" aria-label="القائمة" aria-expanded="${s.menu}">${icon(s.menu ? 'x' : 'list')}</button>
+    </div></div>
+    <div class="st-drawer">${links.map(([id, t]) => `<button type="button" data-action="st-go" data-to="${id}">${t}</button>`).join('')}<a href="${href('login')}">تسجيل الدخول</a></div>
+  </header>`;
+}
+
+const eyebrow = (t) => `<p class="st-eyebrow"><span></span>${t}<span></span></p>`;
+const head = (eb, h, p = '') => `<div class="st-head">${eyebrow(eb)}<h2>${h}</h2>${p ? `<p>${p}</p>` : ''}</div>`;
+
+function waFloat() {
+  const link = wa(WA_HELLO);
+  return link ? `<a class="st-wa" href="${link}" target="_blank" rel="noopener" aria-label="تواصل واتساب">${icon('chat')}</a>` : '';
+}
+
+function footer() {
+  const link = wa(WA_HELLO);
+  return `<footer class="st-foot"><div class="st-wrap">
+    <div class="st-final">
+      <span class="st-final-mark">${mark()}</span>
+      <h2>جاهز تفتح الدرج؟</h2>
+      <p>احجز عرضك المجاني، ونوريك مور كاش على مقهاك.</p>
+      <div class="st-cta-row"><a class="st-btn dark lg" href="${href('book')}">احجز عرضك المجاني</a>${link ? `<a class="st-btn light lg" href="${link}" target="_blank" rel="noopener">${icon('chat', 'sm')} تواصل واتساب</a>` : ''}</div>
+    </div>
+    <div class="st-foot-row">
+      <a class="st-logo" href="#/">${mark()}<span>مور كاش</span></a>
+      <span class="st-foot-tag">كاشير وإدارة للمقاهي والمطاعم</span>
+      <span class="spacer"></span>
+      <a href="${href('login')}">تسجيل الدخول</a><a href="${href('signup')}">إنشاء حساب</a><a href="${href('book')}">احجز عرضك</a>
+      <span class="st-copy">© ${new Date().getFullYear()} مور كاش</span>
+    </div>
+  </div></footer>`;
+}
+
+// ---------------------------------------------------------------- الصفحة الرئيسية
+function hero() {
+  const link = wa(WA_HELLO);
+  // النسخة التجريبية (المقهى يعمل داخل المتصفح): الزر الثاني يدخل المقهى التجريبي مباشرة
+  const second = globalThis.MORECASH_BACKEND ? '<button type="button" class="st-btn light lg" data-action="demo-enter">ادخل المقهى التجريبي</button>'
+    : link ? `<a class="st-btn light lg" href="${link}" target="_blank" rel="noopener">${icon('chat', 'sm')} تواصل واتساب</a>`
+      : `<a class="st-btn light lg" href="${SAME_ORIGIN() ? '/demo.html' : `${LIVE_URL}/demo.html`}">جرّب النسخة التجريبية</a>`;
+  return `<section class="st-hero"><div class="st-wrap">
+    <p class="st-pill">${icon('bean', 'sm')} نظام كاشير وإدارة للمقاهي والمطاعم في العراق</p>
+    <h1>كل يوم بمقهاك…<br><em>بنظام واحد</em></h1>
+    <p class="st-lead">مور كاش يجمع الكاشير، والطاولات، وشاشة التحضير، والمخزون، والموظفين والرواتب، والتقارير. بالعربي، على الآيباد، وبالدينار بلا كسور.</p>
+    <div class="st-cta-row"><a class="st-btn dark lg" href="${href('book')}">احجز عرضك المجاني</a>${second}</div>
+    <dl class="st-stats">
+      <div><dt>بلمستين</dt><dd>من اختيار الصنف للطلب</dd></div>
+      <div><dt>0</dt><dd>فروقات بين الدرج والمخزون والتقارير</dd></div>
+      <div><dt>بلا إنترنت</dt><dd>البيع ما يوقف أبداً</dd></div>
+    </dl>
+    <div class="st-device-wrap">
+      <div class="st-device"><img src="${img('pos')}" alt="شاشة البيع في مور كاش: أصناف مربعة ونافذة طلب" width="1600" height="1199"></div>
+      <div class="st-chip c1"><span class="dot ok"></span><div><b>طاولة 6</b><small>مشغولة · 12,500 د.ع</small></div></div>
+      <div class="st-chip c2"><span class="ic">${icon('alert', 'sm')}</span><div><b>تنبيه المخزون</b><small>الحليب قارب ينفد</small></div></div>
+      <div class="st-chip c3"><span class="ic olive">${icon('chart', 'sm')}</span><div><b>صافي ربح اليوم</b><small>محسوب بعد التكلفة والمصاريف</small></div></div>
+    </div>
+  </div></section>`;
+}
+
+function trusted(info) {
+  const list = info?.trusted ?? [];
+  const cells = list.length
+    ? list.map((t) => `<div class="st-logo-card"><b>${esc(t.name)}</b>${t.city ? `<small>${esc(t.city)}</small>` : ''}</div>`).join('')
+    : Array.from({ length: 4 }, () => '<div class="st-logo-card empty"><b>مقهاك هنا</b><small>كن من أوائل المشتركين</small></div>').join('');
+  return `<section class="st-trusted"><div class="st-wrap">${eyebrow('يثقون بمور كاش')}<div class="st-logos">${cells}</div></div></section>`;
+}
+
+function challenge() {
+  return `<section class="st-sec" id="challenge"><div class="st-wrap">
+    ${head('التحدي والحل', 'دفتر وذاكرة… والفلوس تضيع بالنص', 'المقهى يشتغل كل يوم، بس الحسابات مبعثرة بين الدرج والدفتر وراس صاحب المحل.')}
+    <div class="st-pains">${PAINS.map((p) => `<div class="st-pain"><span>${icon('x', 'sm')}</span>${p}</div>`).join('')}</div>
+    <div class="st-solution"><div><h3>الحل؟ نظام واحد يربط كل شي</h3><p>البيع يخصم المخزون، والرواتب تدخل المصروفات، وكل دينار يطلع بصافي الربح. بلا إدخال مرتين.</p></div>
+      <button type="button" class="st-btn dark" data-action="st-go" data-to="modules">شوف وحدات المنصة ${icon('arrow', 'sm')}</button></div>
+  </div></section>`;
+}
+
+function modules() {
+  return `<section class="st-sec alt" id="modules"><div class="st-wrap">
+    ${head('وحدات المنصة', 'كل شي متصل… بنظام واحد', 'اثنا عشر وحدة تشتغل سوا من أول طلب لحد صرف الرواتب، وكلها مشمولة بالاشتراك.')}
+    <div class="st-mods">${MODULES.map(([ic, t, d, more]) => `<details class="st-mod"><summary>
+        <span class="st-mod-ic">${icon(ic)}</span><h3>${t}</h3><p>${d}</p><span class="st-more">اعرف أكثر <i>+</i></span></summary>
+        <ul>${more.map((m) => `<li>${icon('check', 'sm')}${m}</li>`).join('')}</ul></details>`).join('')}</div>
+  </div></section>`;
+}
+
+function inside(s) {
+  const cur = SHOTS.find(([k]) => k === s.shot) ?? SHOTS[0];
+  return `<section class="st-sec" id="inside"><div class="st-wrap">
+    ${head('من داخل البرنامج', 'شاشات حقيقية، مو تصاميم', 'هذي لقطات من مور كاش نفسه على الآيباد. اختار الشاشة وشوف.')}
+    <div class="st-tabs" role="tablist">${SHOTS.map(([k, t]) => `<button type="button" role="tab" aria-selected="${k === cur[0]}" class="${k === cur[0] ? 'on' : ''}" data-action="st-shot" data-k="${k}">${t}</button>`).join('')}</div>
+    <figure class="st-shot">
+      <div class="st-device big"><img src="${img(cur[0])}" alt="${esc(cur[2])}" width="1600" height="1199" loading="lazy"></div>
+      <figcaption><b>${cur[2]}</b><span>${cur[3]}</span></figcaption>
+    </figure>
+  </div></section>`;
+}
+
+function spotlight(id, eb, h, p, points, image, alt, flip = false) {
+  return `<section class="st-sec ${flip ? 'alt' : ''}" id="${id}"><div class="st-wrap st-split ${flip ? 'flip' : ''}">
+    <div class="st-split-text">${eyebrow(eb)}<h2>${h}</h2><p>${p}</p>
+      <ul class="st-checks">${points.map(([t, d]) => `<li><span>${icon('check', 'sm')}</span><div><b>${t}</b><small>${d}</small></div></li>`).join('')}</ul></div>
+    <div class="st-device"><img src="${img(image)}" alt="${alt}" width="1600" height="1199" loading="lazy"></div>
+  </div></section>`;
+}
+
+function audience() {
+  return `<section class="st-sec alt" id="audience"><div class="st-wrap">
+    ${head('لمن مور كاش؟', 'مصمم لكل أنواع المحلات', 'من الكوفي شوب الصغير لسلسلة الفروع، مور كاش يدير يوم العمل كامل.')}
+    <div class="st-aud">${AUDIENCE.map(([ic, t, pts]) => `<article class="st-aud-card"><span class="st-mod-ic">${icon(ic)}</span><h3>${t}</h3>
+      <ul>${pts.map((p) => `<li>${icon('check', 'sm')}${p}</li>`).join('')}</ul></article>`).join('')}</div>
+  </div></section>`;
+}
+
+function why() {
+  return `<section class="st-sec" id="why"><div class="st-wrap">
+    ${head('لماذا مور كاش', 'خمسة أسباب تخليه الخيار الأول')}
+    <div class="st-why">${WHY.map(([ic, t, d], i) => `<article><span class="n">0${i + 1}</span><span class="st-mod-ic">${icon(ic)}</span><h3>${t}</h3><p>${d}</p></article>`).join('')}</div>
+    <p class="st-why-foot">${icon('chat', 'sm')} ودعم عربي محلي يفهمك ويرد بسرعة</p>
+  </div></section>`;
+}
+
+function testimonials(info) {
+  const list = info?.testimonials ?? [];
+  const cards = list.length
+    ? list.map((t) => `<figure class="st-quote"><span class="q">”</span><blockquote>${esc(t.quote)}</blockquote>
+        <figcaption><span class="av">${esc([...t.name][0] ?? '')}</span><div><b>${esc(t.name)}</b>${t.shop ? `<small>${esc(t.shop)}</small>` : ''}</div></figcaption></figure>`).join('')
+    : Array.from({ length: 3 }, () => `<figure class="st-quote empty"><span class="q">”</span><blockquote>مساحة لرأي أحد عملائنا</blockquote>
+        <figcaption><span class="av"></span><div><b>اسم صاحب المقهى</b><small>اسم المقهى · المدينة</small></div></figcaption></figure>`).join('');
+  return `<section class="st-sec alt" id="voices"><div class="st-wrap">
+    ${head('آراء العملاء', 'اللي يشتغلون بمور كاش')}
+    <div class="st-quotes">${cards}</div>
+  </div></section>`;
+}
+
+function pricing(s) {
+  const yearly = s.bill === 'year';
+  const link = wa('مرحباً، عندي أكثر من فرع وأريد سعر مور كاش للسلسلة.');
+  return `<section class="st-sec" id="pricing"><div class="st-wrap">
+    ${head('الباقات والأسعار', 'سعر واضح… كل شي مشمول', 'كل الوحدات · تحديثات مستمرة · دعم بالعربي')}
+    <div class="st-seg-row">
+      <div class="st-seg" role="tablist">${Object.entries(KINDS).map(([k, t]) => `<button type="button" class="${s.kind === k ? 'on' : ''}" data-action="st-kind" data-k="${k}">${t}</button>`).join('')}</div>
+      <div class="st-bill"><button type="button" class="${!yearly ? 'on' : ''}" data-action="st-bill" data-k="month">شهري</button>
+        <button type="button" class="${yearly ? 'on' : ''}" data-action="st-bill" data-k="year">سنوي <span class="save">وفّر شهرين</span></button></div>
+    </div>
+    <div class="st-plans">
+      <article class="st-plan main">
+        <span class="st-badge">الأكثر طلباً</span>
+        <h3>مور كاش الكامل</h3><p class="muted">لـ${KINDS[s.kind]} · لكل فرع</p>
+        <p class="st-price"><b>${num(yearly ? PRICE.year : PRICE.month)}</b><span>د.ع / ${yearly ? 'سنوياً' : 'شهرياً'}</span></p>
+        <p class="st-price-note">${yearly ? `بدل ${num(PRICE.month * 12)} د.ع — توفّر ${num(PRICE.month * 12 - PRICE.year)} د.ع` : `أو ${num(PRICE.year)} د.ع سنوياً وتوفّر شهرين`}</p>
+        <ul>${PLAN_FEATURES[s.kind].map((f) => `<li>${icon('check', 'sm')}${f}</li>`).join('')}</ul>
+        <a class="st-btn dark block" href="${href('book')}">احجز عرضك المجاني</a>
+      </article>
+      <article class="st-plan">
+        <h3>السلاسل والفروع</h3><p class="muted">أكثر من 3 فروع</p>
+        <p class="st-price"><b class="custom">سعر خاص</b></p>
+        <p class="st-price-note">حسب عدد الفروع والأجهزة</p>
+        <ul><li>${icon('check', 'sm')}كل ما في «مور كاش الكامل»</li><li>${icon('check', 'sm')}تقرير مجمّع لكل الفروع</li><li>${icon('check', 'sm')}مساعدة بالإعداد ونقل القائمة</li><li>${icon('check', 'sm')}متابعة مباشرة على واتساب</li></ul>
+        ${link ? `<a class="st-btn light block" href="${link}" target="_blank" rel="noopener">${icon('chat', 'sm')} تواصل واتساب</a>` : `<a class="st-btn light block" href="${href('book')}">اطلب عرض سعر</a>`}
+      </article>
+    </div>
+  </div></section>`;
+}
+
+function faq() {
+  return `<section class="st-sec alt" id="faq"><div class="st-wrap st-narrow">
+    ${head('الأسئلة الشائعة', 'كل اللي تحتاج تعرفه قبل ما تبدي')}
+    <div class="st-faq">${FAQ.map(([q, a], i) => `<details ${i === 0 ? 'open' : ''}><summary>${q}<i>+</i></summary><p>${a}</p></details>`).join('')}</div>
+  </div></section>`;
+}
+
+function siteView(s) {
+  const st = S();
+  loadSite();
+  return `<div class="st" id="st-top">${nav(st)}${hero()}${trusted(st.info)}${challenge()}${modules()}${inside(st)}
+    ${spotlight('floor', 'المبيعات والصالة', 'كاشير أسرع… وصالة مرتبة', 'من الطاولة للتحضير للدفع، تدفق واحد واضح بلا أوراق.',
+      [['خريطة الطاولات', 'المشغولة بمبلغها والفارغة بلمسة'], ['من الطاولة للباريستا', 'الطلب يوصل لشاشة التحضير لحظة الدفع'], ['دفع مقسّم', 'نقد وكي بنفس الطلب، والباقي محسوب']], 'floor', 'خريطة الطاولات عند حفظ الطلب')}
+    ${spotlight('team', 'الموظفون والرواتب', 'رواتب تنحسب وحدها', 'الحضور من جهاز الكاشير، والتأخير والإضافي والسحوبات تنحسب تلقائياً لحد القسيمة.',
+      [['حضور برمز الموظف', 'شاشة وحدة على الكاشير لكل الموظفين'], ['سحب من الراتب', 'ينخصم من راتب نفس الشهر بنهايته'], ['قسيمة مفصّلة', 'تنطبع أو تنرسل واتساب، والصرف يقفل الشهر']], 'hr-payroll', 'كشف الرواتب في مور كاش', true)}
+    ${audience()}${why()}${testimonials(st.info)}${pricing(st)}${faq()}${footer()}${waFloat()}</div>`;
+}
+
+// ---------------------------------------------------------------- صفحة «احجز عرضك المجاني»
+function bookView() {
+  const st = S();
+  loadSite();
+  st.clientId ??= crypto.randomUUID();
+  const link = wa('مرحباً، أريد أحجز عرض مجاني لمور كاش.');
+  const body = st.sent
+    ? `<div class="st-done">${icon('check')}<h1>وصل طلبك، شكراً!</h1><p>نتواصل وياك قريباً على رقمك حتى نحدد موعد العرض.</p>
+        <div class="st-cta-row">${link ? `<a class="st-btn light lg" href="${link}" target="_blank" rel="noopener">${icon('chat', 'sm')} أو راسلنا واتساب هسه</a>` : ''}<a class="st-btn dark lg" href="#/">الرجوع للرئيسية</a></div></div>`
+    : DEMO_PAGE() && !SAME_ORIGIN()
+      ? `<div class="st-done"><h1>احجز عرضك المجاني</h1><p>الحجز يتم من موقع مور كاش.</p><a class="st-btn dark lg" href="${href('book')}">افتح صفحة الحجز</a></div>`
+      : `<form class="st-form" data-form="st-lead" data-keep novalidate>
+        <div class="grid-2">
+          ${field('اسمك', '<input name="name" id="ld-name" required minlength="2" maxlength="60" autocomplete="name">')}
+          ${field('رقم الهاتف (واتساب)', '<input name="phone" id="ld-phone" required inputmode="tel" dir="ltr" maxlength="20" placeholder="07xxxxxxxxx" autocomplete="tel">')}
+        </div>
+        ${field('اسم المقهى أو المطعم', '<input name="shop" id="ld-shop" required minlength="2" maxlength="80" autocomplete="organization">')}
+        <div class="grid-2">
+          ${field('نوع المحل', `<select name="type" id="ld-type">${[['cafe', 'كافيه / كوفي شوب'], ['restaurant', 'مطعم'], ['quick', 'خدمة سريعة'], ['bakery', 'مخبز / حلويات'], ['other', 'غير ذلك']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`)}
+          ${field('عدد الفروع', '<select name="branches" id="ld-branches"><option value="1">فرع واحد</option><option value="2">2</option><option value="3">3</option><option value="5">4 – 5</option><option value="10">أكثر من 5</option></select>')}
+        </div>
+        <div class="grid-2">
+          ${field('المدينة', '<input name="city" id="ld-city" maxlength="40" placeholder="بغداد، البصرة، أربيل…">')}
+          ${field('الوقت المناسب للتواصل', '<select name="when" id="ld-when"><option value="">أي وقت</option><option>الصبح</option><option>الظهر</option><option>المساء</option></select>')}
+        </div>
+        ${field('ملاحظة (اختياري)', '<textarea name="note" id="ld-note" rows="3" maxlength="500" placeholder="شنو أكثر شي تحتاجه بمحلك؟"></textarea>')}
+        <input type="text" name="website" tabindex="-1" autocomplete="off" class="st-hp" aria-hidden="true">
+        <button class="st-btn dark lg block" type="submit" ${state.busy ? 'disabled' : ''}>أرسل الطلب</button>
+        ${link ? `<a class="st-btn light block" href="${link}" target="_blank" rel="noopener">${icon('chat', 'sm')} أو احجز على واتساب مباشرة</a>` : ''}
+        <p class="st-form-note">${icon('lock', 'sm')} نستخدم رقمك فقط للتواصل بخصوص العرض.</p>
+      </form>`;
+  return `<div class="st st-book">${nav(st)}
+    <section class="st-book-in"><div class="st-wrap st-book-grid">
+      <div class="st-book-side">${eyebrow('عرض تجريبي مجاني')}<h1>شوف مور كاش على مقهاك</h1>
+        <p>عبّي بياناتك ونتواصل وياك نحدد موعد. نوريك البرنامج على أصنافك وطريقة شغلك، بدون أي التزام.</p>
+        <ul class="st-checks">${[['عرض على مقهاك', 'بأصنافك وأسعارك، مو عرض عام'], ['مساعدة بالإعداد', 'نضيف قائمتك ونجهز الأجهزة وياك'], ['بدون التزام', 'تقرر بعد ما تشوف بنفسك']].map(([t, d]) => `<li><span>${icon('check', 'sm')}</span><div><b>${t}</b><small>${d}</small></div></li>`).join('')}</ul>
+      </div>
+      <div class="st-book-card">${body}</div>
+    </div></section>${waFloat()}</div>`;
+}
+
+// ---------------------------------------------------------------- التفاعل
+function scrollToSection(id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+on({
+  'st-go': (el) => {
+    const id = el.dataset.to;
+    S().menu = false;
+    if (location.hash && location.hash !== '#/' && location.hash !== '#') {
+      location.hash = '#/';
+      setTimeout(() => scrollToSection(id), 120);
+      return;
+    }
+    render();
+    requestAnimationFrame(() => scrollToSection(id));
+  },
+  'st-menu': () => { S().menu = !S().menu; render(); },
+  'st-shot': (el) => { S().shot = el.dataset.k; render(); },
+  'st-bill': (el) => { S().bill = el.dataset.k; render(); },
+  'st-kind': (el) => { S().kind = el.dataset.k; render(); },
+  'st-lead': (_el, _e, d) => busy(async () => {
+    const st = S();
+    await post('/api/leads', {
+      clientId: st.clientId, name: d.name, shop: d.shop, type: d.type, branches: Number(d.branches) || 1,
+      phone: d.phone, city: d.city || null, when: d.when || null, note: d.note || null, website: d.website || '',
+    });
+    st.sent = true;
+    st.clientId = null;
+    document.getElementById('app')?.scrollTo({ top: 0, behavior: 'smooth' });
+  }),
+});
+
+return { siteView, bookView };
+})();
+
 // ---- public/js/views/account.js
 const __m_public_js_views_account_js = await (async () => {
-const { esc, money } = __m_shared_format_js;
+const { esc } = __m_shared_format_js;
 const { get, post } = __m_public_js_api_js;
 const { icon } = __m_public_js_icons_js;
 const { mark, wordmark } = __m_public_js_brand_js;
+const { bookView, siteView } = __m_public_js_views_site_js;
 const { busy, can, field, modalFrame, on, openModal, render, set, state, toast } = __m_public_js_ui_js;
 // الصفحة الرئيسية، إنشاء حساب المقهى، تسجيل الدخول، شاشة رمز الموظف، وإعدادات الحساب.
+
 
 
 
@@ -8045,7 +8762,7 @@ const DEMO = () => !!globalThis.MORECASH_BACKEND;
 const DEMO_ACCOUNT = { email: 'demo@morecash.app', password: 'morecash-demo' };
 // النسخة التجريبية تعمل في ذاكرة المتصفح فقط: أي حساب يُنشأ فيها يضيع عند التحديث،
 // لذا روابط "إنشاء حساب" فيها تذهب للموقع الحقيقي (نفس النطاق على Vercel، أو الرابط الكامل من GitHub Pages)
-const LIVE_URL = 'https://more-cash.onrender.com';
+const LIVE_URL = 'https://more-cashpro.vercel.app';
 const latinDigits = (v) => String(v ?? '').trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
 const DEMO_PAGE = () => !!globalThis.MORECASH_DEMO_PAGE; // تضبطه صفحة التجربة المنشورة فقط (demo/main.js)
 const signupHref = () => {
@@ -8053,68 +8770,6 @@ const signupHref = () => {
   return globalThis.location?.hostname?.endsWith('vercel.app') ? '/#/signup' : `${LIVE_URL}/#/signup`;
 };
 const DEMO_PINS = [['المالك', '1234'], ['المدير', '2580'], ['الكاشير', '1470'], ['الباريستا', '3690']];
-
-// ---------------------------------------------------------------- الإيصال المطبوع (رمز الهوية)
-function receipt() {
-  const lines = [['لاتيه — وسط', 5000], ['حليب شوفان', 1000, true], ['شوت إضافي', 750, true], ['كرواسون زبدة', 3000]];
-  const total = lines.reduce((a, [, p]) => a + p, 0);
-  return `<div class="printer" aria-hidden="true"><div class="printer-slot"></div><div class="paper"><div class="receipt">
-    <div class="rc-shop">مقهى الزيتون</div>
-    <div class="rc-meta"><span>إيصال 1042</span><span>8:14 ص</span></div>
-    <div class="rc-rule"></div>
-    ${lines.map(([n, p, sub]) => `<div class="rc-line ${sub ? 'sub' : ''}"><span>${sub ? '+ ' : ''}${n}</span><span>${money(p, { symbol: false })}</span></div>`).join('')}
-    <div class="rc-rule"></div>
-    <div class="rc-line total"><span>المجموع</span><span>${money(total)}</span></div>
-    <div class="rc-line"><span>نقداً</span><span>${money(10000, { symbol: false })}</span></div>
-    <div class="rc-line"><span>الباقي</span><span>${money(10000 - total, { symbol: false })}</span></div>
-    <div class="rc-thanks">صحتين، ونشوفكم باچر</div>
-  </div></div></div>`;
-}
-
-// ---------------------------------------------------------------- الصفحة الرئيسية
-const DAY = [
-  ['الطلب', 'لاتيه وسط بحليب شوفان وشوت إضافي: لمستان، والسعر يُحسب وحده.'],
-  ['التحضير', 'الطلب يظهر على شاشة الباريستا مع الإضافات، ويُعلَّم جاهزاً بلمسة.'],
-  ['الدفع', 'نقد أو بطاقة أو محفظة، أو أكثر من طريقة في فاتورة واحدة، مع حساب الباقي.'],
-  ['المخزون', 'البن والحليب والأكواب تُخصم من الوصفة مع كل كوب، وتنبيه قبل أن تنفد.'],
-  ['إغلاق الوردية', 'المتوقع في الدرج مقابل الموجود، والفرق مسجّل باسم من أغلق.'],
-];
-
-function landing() {
-  const demoBtn = DEMO()
-    ? '<button class="btn on-dark lg" data-action="demo-enter">ادخل المقهى التجريبي</button>'
-    : '<a class="btn on-dark lg" href="/demo.html">جرّب المقهى التجريبي</a>';
-  return `<div class="lp">
-    <div class="lp-dark">
-      <header class="lp-top">${wordmark()}
-        <nav aria-label="الحساب"><a class="btn on-dark ghost" href="#/login">تسجيل الدخول</a><a class="btn brass hide-sm" href="${signupHref()}">إنشاء حساب</a></nav>
-      </header>
-      <section class="lp-hero">
-        <div class="lp-copy">
-          <h1>كاشير يعرف القهوة.</h1>
-          <p>اطلب، حضّر، اقبض، وأغلق الوردية من شاشة واحدة. مور كاش مصمم لإيقاع الكوفي شوب: الإضافات بلمسة، والمخزون يُخصم من الوصفة، والحساب بالدينار بلا كسور.</p>
-          <div class="row"><a class="btn brass lg" href="${signupHref()}">أنشئ حساب مقهاك</a>${demoBtn}</div>
-        </div>
-        ${receipt()}
-      </section>
-    </div>
-    <section class="lp-section" aria-labelledby="day-h">
-      <h2 id="day-h">يوم كامل في المقهى، من أول كوب لآخر دينار</h2>
-      <ol class="tape">${DAY.map(([t, d], i) => `<li><span class="n">${i + 1}</span><b>${t}</b><p>${d}</p></li>`).join('')}</ol>
-    </section>
-    <section class="lp-section" aria-labelledby="iq-h">
-      <h2 id="iq-h">مبني لمقاهي العراق</h2>
-      <dl class="iq">
-        <div><dt>الدينار كما هو</dt><dd>كل المبالغ أعداد صحيحة بالدينار العراقي، والخصومات والضريبة تُقرَّب بطريقة واحدة ثابتة.</dd></div>
-        <div><dt>زين كاش وFIB والبطاقة</dt><dd>أضف طرق الدفع التي يستخدمها زبائنك، والنقد وحده يدخل حساب الدرج.</dd></div>
-        <div><dt>لكل موظف رمزه</dt><dd>مالك ومدير وكاشير وباريستا. كل واحد يدخل برمز من أربعة أرقام ويرى ما يخصه فقط.</dd></div>
-        <div><dt>بيانات مقهاك لك وحدك</dt><dd>كل حساب معزول عن غيره. تدخل بالبريد وكلمة المرور مرة واحدة على كل جهاز، وبعدها يكفي رمز الموظف.</dd></div>
-      </dl>
-    </section>
-    <section class="lp-cta"><div><h2>جاهز تفتح الدرج؟</h2><a class="btn brass lg" href="${signupHref()}">أنشئ حساب مقهاك</a></div></section>
-    <footer class="lp-foot">${wordmark()}<span>كاشير وإدارة للكوفي شوب</span></footer>
-  </div>`;
-}
 
 // ---------------------------------------------------------------- إنشاء حساب ودخول
 // بلا تصحيح ولا حرف كبير تلقائي: عند «إظهار» يصير الحقل نصاً فيغيّر الآيباد ما يُكتب
@@ -8250,7 +8905,8 @@ function gateView(s) {
   if (s.authPage === 'signup') return DEMO_PAGE() ? demoSignupNotice() : signup(s);
   if (s.authPage === 'login') return login(s);
   if (s.authPage === 'forgot') return forgot(s);
-  return landing();
+  if (s.authPage === 'book') return bookView(s);
+  return siteView(s);
 }
 
 // ---------------------------------------------------------------- إعدادات الحساب (للمالك)
@@ -10155,7 +10811,7 @@ const subPill = (s) => {
 };
 const ACTIONS = {
   'request.approve': 'موافقة على طلب', 'request.reject': 'رفض طلب', 'subscription.extend': 'تفعيل/تمديد', 'subscription.stop': 'إيقاف الاشتراك',
-  'config.update': 'تعديل بيانات التحويل', 'shop.disable': 'إيقاف المقهى', 'shop.enable': 'تفعيل المقهى', 'account.reset_password': 'كلمة مرور مؤقتة', 'backup.download': 'نسخة احتياطية',
+  'config.update': 'تعديل بيانات التحويل', 'lead.update': 'متابعة طلب عرض', 'site.update': 'تعديل محتوى الموقع', 'shop.disable': 'إيقاف المقهى', 'shop.enable': 'تفعيل المقهى', 'account.reset_password': 'كلمة مرور مؤقتة', 'backup.download': 'نسخة احتياطية',
 };
 
 async function enterPlatform() {
@@ -10168,6 +10824,7 @@ async function enterPlatform() {
         get('/api/platform/shops', { search: p.search || undefined }), get('/api/platform/errors'),
         get('/api/platform/requests', { status: 'all' }).catch(() => []), get('/api/platform/config').catch(() => null), get('/api/platform/audit').catch(() => []),
       ]);
+      [p.leads, p.site] = await Promise.all([get('/api/platform/leads').catch(() => null), get('/api/platform/site').catch(() => null)]);
     }
   } catch (e) { p.me = { email: null, enabled: false }; fail(e); }
   render();
@@ -10201,7 +10858,8 @@ function platformView() {
   const l = p.list;
   const T = l?.totals ?? {};
   const pendingReqs = (p.requests ?? []).filter((r) => r.status === 'pending');
-  const TABS = [['requests', `طلبات الاشتراك${pendingReqs.length ? ` (${pendingReqs.length})` : ''}`], ['clients', 'العملاء'], ['log', 'السجل'], ['config', 'بيانات التحويل والتفاصيل'], ['errors', `أخطاء الخادم${p.errors?.count24h ? ` (${p.errors.count24h})` : ''}`]];
+  const newLeads = p.leads?.counts?.new ?? 0;
+  const TABS = [['requests', `طلبات الاشتراك${pendingReqs.length ? ` (${pendingReqs.length})` : ''}`], ['leads', `طلبات العرض${newLeads ? ` (${newLeads})` : ''}`], ['clients', 'العملاء'], ['log', 'السجل'], ['config', 'بيانات التحويل والتفاصيل'], ['site', 'محتوى الموقع'], ['errors', `أخطاء الخادم${p.errors?.count24h ? ` (${p.errors.count24h})` : ''}`]];
   const head = `<div class="page-head"><h1>لوحة المزوّد</h1><span class="muted small" dir="ltr">${esc(p.me.email)}</span>
       <span class="spacer"></span><button class="btn sm" data-action="platform-refresh">${icon('check', 'sm')} تحديث</button>
       <button class="btn sm ghost" data-action="platform-logout">${icon('lock', 'sm')} خروج</button></div>
@@ -10235,6 +10893,8 @@ function platformView() {
           <button class="btn sm" data-action="pf-more" data-id="${r.id}">المزيد</button></div></td></tr>`).join('')
         : '<tr><td colspan="9" class="muted">لا نتائج</td></tr>'}</tbody></table></div>`;
     },
+    leads: () => leadsView(p),
+    site: () => siteForm(p),
     log: () => `<div class="table-wrap"><table><thead><tr><th>الوقت</th><th>العملية</th><th>المقهى</th><th>التفاصيل</th></tr></thead><tbody>
       ${(p.audit ?? []).map((x) => `<tr><td class="small">${dateTime(x.at, TZ)}</td><td>${ACTIONS[x.action] ?? esc(x.action)}</td>
         <td>${esc(x.shopName ?? l?.rows.find((r) => r.id === x.tenantId)?.name ?? '')}</td>
@@ -10245,6 +10905,48 @@ function platformView() {
       ${p.errors.recent.length ? `<div class="table-wrap"><table><tbody>${p.errors.recent.map((x) => `<tr><td class="small">${dateTime(x.at, TZ)}</td><td class="small" dir="ltr">${esc(x.method ?? '')} ${esc(x.path ?? '')}</td><td class="small" dir="ltr">${esc(x.name)}: ${esc(x.message)}</td><td class="small">${esc(l?.rows.find((r) => r.id === x.tenantId)?.name ?? '')}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>` : ''}`,
   };
   return `<div class="page" style="max-width:1280px;height:100%;overflow:auto">${head}${(body[p.tab] ?? body.requests)()}</div>`;
+}
+
+// ---------------------------------------------------------------- طلبات «احجز عرضك المجاني» من الموقع
+const LEAD = { new: ['جديد', 'warn'], contacted: ['تم التواصل', 'olive'], won: ['اشترك', 'ok'], lost: ['لم يكمل', ''] };
+function leadsView(p) {
+  const d = p.leads;
+  if (!d) return '<p class="muted">جارٍ التحميل…</p>';
+  const f = p.leadFilter ?? 'new';
+  const rows = d.leads.filter((l) => f === 'all' || l.status === f);
+  const waText = (l) => encodeURIComponent(`مرحباً ${l.name}، معك فريق مور كاش بخصوص طلب العرض المجاني لـ${l.shop}.`);
+  return `<div class="toolbar"><div class="seg">${[['new', 'جديد'], ['contacted', 'تم التواصل'], ['won', 'اشترك'], ['lost', 'لم يكمل'], ['all', 'الكل']].map(([k, t]) =>
+      `<button class="${f === k ? 'on' : ''}" data-action="pf-lead-filter" data-k="${k}">${t}${k !== 'all' && d.counts[k] ? ` (${d.counts[k]})` : ''}</button>`).join('')}</div></div>
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الاسم</th><th>المحل</th><th>النوع</th><th class="num">فروع</th><th>المدينة</th><th>الهاتف</th><th>ملاحظة</th><th>الحالة</th></tr></thead><tbody>
+      ${rows.map((l) => `<tr><td class="small">${dateTime(l.createdAt, TZ)}</td><td><b>${esc(l.name)}</b></td><td>${esc(l.shop)}</td><td class="small">${esc(l.typeName)}</td>
+        <td class="num">${l.branches}</td><td class="small">${esc(l.city ?? '')}${l.when ? `<div class="muted">${esc(l.when)}</div>` : ''}</td>
+        <td><a href="https://wa.me/${esc(l.phone.replace(/^0/, '964'))}?text=${waText(l)}" target="_blank" rel="noopener" dir="ltr">${esc(l.phone)}</a></td>
+        <td class="small" style="max-width:220px">${esc(l.note ?? '')}${l.adminNote ? `<div class="muted">ملاحظتك: ${esc(l.adminNote)}</div>` : ''}</td>
+        <td><select data-change="pf-lead-status" data-id="${esc(l.id)}" aria-label="حالة الطلب">${Object.entries(LEAD).map(([k, [t]]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">لا طلبات هنا. الطلبات تصل من صفحة «احجز عرضك المجاني» في الموقع.</p>'}`;
+}
+
+// ---------------------------------------------------------------- «يثقون بمور كاش» وآراء العملاء في الموقع
+function siteForm(p) {
+  const c = p.siteDraft ?? (p.siteDraft = structuredClone(p.site ?? { trusted: [], testimonials: [] }));
+  return `<div class="grid-2" style="align-items:start">
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">يثقون بمور كاش</h2>
+      <button type="button" class="btn sm" data-action="pf-site-add" data-k="trusted">${icon('plus', 'sm')} مقهى</button></div>
+      <p class="muted small" style="margin:0">أسماء المقاهي التي تستخدم البرنامج (بموافقتها). بدونها تظهر مستطيلات «مقهاك هنا».</p>
+      ${c.trusted.map((t, i) => `<div class="row">${field('الاسم', `<input id="st-t-${i}" value="${esc(t.name ?? '')}" maxlength="40" data-input="pf-site" data-k="trusted" data-i="${i}" data-f="name">`)}
+        ${field('المدينة', `<input id="st-c-${i}" value="${esc(t.city ?? '')}" maxlength="30" data-input="pf-site" data-k="trusted" data-i="${i}" data-f="city">`)}
+        <button type="button" class="icon-btn" data-action="pf-site-del" data-k="trusted" data-i="${i}" aria-label="حذف">${icon('trash', 'sm')}</button></div>`).join('')}
+    </section>
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">آراء العملاء</h2>
+      <button type="button" class="btn sm" data-action="pf-site-add" data-k="testimonials">${icon('plus', 'sm')} رأي</button></div>
+      <p class="muted small" style="margin:0">آراء حقيقية فقط، بإذن أصحابها.</p>
+      ${c.testimonials.map((t, i) => `<div class="card pad stack" style="gap:8px;box-shadow:none"><div class="grid-2">
+        ${field('الاسم', `<input id="st-n-${i}" value="${esc(t.name ?? '')}" maxlength="40" data-input="pf-site" data-k="testimonials" data-i="${i}" data-f="name">`)}
+        ${field('المقهى والمدينة', `<input id="st-s-${i}" value="${esc(t.shop ?? '')}" maxlength="60" data-input="pf-site" data-k="testimonials" data-i="${i}" data-f="shop">`)}</div>
+        <div class="row">${field('الرأي', `<textarea id="st-q-${i}" rows="2" maxlength="300" data-input="pf-site" data-k="testimonials" data-i="${i}" data-f="quote">${esc(t.quote ?? '')}</textarea>`)}
+        <button type="button" class="icon-btn" data-action="pf-site-del" data-k="testimonials" data-i="${i}" aria-label="حذف">${icon('trash', 'sm')}</button></div></div>`).join('')}
+    </section>
+    <button class="btn primary lg" data-action="pf-site-save" ${state.busy ? 'disabled' : ''}>حفظ ونشر على الموقع</button></div>`;
 }
 
 function configForm(p) {
@@ -10399,6 +11101,25 @@ on({
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     toast('نُزّلت النسخة الاحتياطية', 'ok');
+  }),
+  'pf-lead-filter': (el) => { P().leadFilter = el.dataset.k; render(); },
+  'pf-lead-status': (el) => busy(async () => {
+    await post(`/api/platform/leads/${el.dataset.id}`, { status: el.value });
+    P().leads = await get('/api/platform/leads');
+    toast('حُدّثت حالة الطلب', 'ok');
+    render();
+  }),
+  'pf-site': (el) => { P().siteDraft[el.dataset.k][Number(el.dataset.i)][el.dataset.f] = el.value; },
+  'pf-site-add': (el) => { P().siteDraft[el.dataset.k].push({}); render(); },
+  'pf-site-del': (el) => { P().siteDraft[el.dataset.k].splice(Number(el.dataset.i), 1); render(); },
+  'pf-site-save': () => busy(async () => {
+    const c = P().siteDraft;
+    const trusted = c.trusted.filter((t) => t.name?.trim());
+    const testimonials = c.testimonials.filter((t) => t.name?.trim() || t.quote?.trim());
+    P().site = await put('/api/platform/site', { trusted, testimonials });
+    P().siteDraft = null;
+    toast('حُفظ محتوى الموقع', 'ok');
+    render();
   }),
   'pf-cfg': (el) => { P().cfgDraft[el.dataset.k] = el.value; },
   'pf-cfg-m': (el) => { P().cfgDraft.methods[Number(el.dataset.i)][el.dataset.k] = el.value; },
