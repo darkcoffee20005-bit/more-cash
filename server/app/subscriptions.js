@@ -3,7 +3,7 @@
 // الحساب الجديد «بانتظار الموافقة» ولا يعمل فيه شيء إلا صفحة الاشتراك: يقرأ التفاصيل وبيانات التحويل (يتحكم بها المزوّد)،
 // ويرسل طلباً (تحويل برقم ووصل، أو نقد). المزوّد يوافق بمدة (أشهر أو أيام، مدفوع أو مجاني) فينفتح البرنامج حتى تاريخ الانتهاء.
 // بعد الانتهاء: القراءة (التقارير) مسموحة والكتابة (البيع…) موقوفة حتى التجديد. الفروع تتبع اشتراك حساب المالك.
-import { AppError, bad, id as checkId, str } from './core.js';
+import { AppError, bad, id as checkId, int, str } from './core.js';
 
 const MAX_IMAGE = 600_000; // base64 لوصل التحويل (يصغّره المتصفح قبل الرفع)
 const DEFAULT_CONFIG = {
@@ -11,6 +11,7 @@ const DEFAULT_CONFIG = {
   details: 'اشتراك شهري في مور كاش: البيع، المخزون، الموظفون والرواتب، والتقارير، مع الدعم.',
   methods: [],
   whatsapp: null,
+  plans: { month: 50_000, year: 500_000 }, // الأسعار الموحّدة: الموقع التعريفي وصفحة الاشتراك (دينار)
 };
 
 /** إضافة أشهر تقويمية (31 كانون الثاني + شهر = آخر شباط) */
@@ -195,7 +196,12 @@ export function createSubscriptions({ db, now, newId, admins = new Set(), enable
       holder: str(m?.holder, { field: 'methods.holder', max: 60, optional: true }),
     })) : [];
     const whatsapp = body.whatsapp ? str(body.whatsapp, { field: 'whatsapp', max: 20 }).replace(/\D/g, '') : null;
-    const c = { price: str(body.price, { field: 'price', max: 80, optional: true }) ?? '', details: str(body.details, { field: 'details', max: 1200, optional: true }) ?? '', methods, whatsapp, updatedAt: now(), updatedBy: admin.email };
+    const cur = await config();
+    const plans = body.plans === undefined ? cur.plans : {
+      month: int(body.plans?.month, { field: 'plans.month', min: 1000, max: 100_000_000 }),
+      year: int(body.plans?.year, { field: 'plans.year', min: 1000, max: 1_000_000_000 }),
+    };
+    const c = { plans, price: str(body.price, { field: 'price', max: 80, optional: true }) ?? '', details: str(body.details, { field: 'details', max: 1200, optional: true }) ?? '', methods, whatsapp, updatedAt: now(), updatedBy: admin.email };
     await CONFIG().updateOne({ _id: 'main' }, { $set: c }, { upsert: true });
     await audit(admin, 'config.update', { methods: methods.length });
     return config();

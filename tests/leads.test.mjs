@@ -57,9 +57,34 @@ test('المزوّد يتابع الطلبات ويحرر محتوى الموق�
   assert.equal(u.body.status, 'contacted');
   assert.equal((await call('a', 'POST', '/api/platform/leads/lead-1', { status: 'maybe' })).body.error, 'INVALID_CHOICE');
 
-  assert.deepEqual((await call('v', 'GET', '/api/site')).body, { whatsapp: '9647700000000', trusted: [], testimonials: [] });
+  assert.deepEqual((await call('v', 'GET', '/api/site')).body, { whatsapp: '9647700000000', trusted: [], testimonials: [], plans: { month: 50000, year: 500000 } });
   await call('a', 'PUT', '/api/platform/site', { trusted: [{ name: 'كوفي النخلة', city: 'البصرة' }], testimonials: [{ name: 'سارة', shop: 'كوفي النخلة', quote: 'الدرج صار يطابق كل يوم.' }] });
   const site = (await call('v', 'GET', '/api/site')).body;
   assert.equal(site.trusted[0].name, 'كوفي النخلة');
   assert.equal(site.testimonials[0].quote, 'الدرج صار يطابق كل يوم.');
+});
+
+test('الأسعار وواتساب موحّدة بين الموقع وصفحة الاشتراك، وربط طلب العرض بمقهى العميل', async () => {
+  const { call } = await setup();
+  await call('a', 'POST', '/api/account/signup', { shopName: 'مقهى المزوّد', ownerName: 'يوسف', email: 'boss@cafe.iq', password: 'qahwa-2026!', pin: '1357' });
+  await call('a', 'POST', '/api/platform/login', { email: 'boss@cafe.iq', password: 'qahwa-2026!' });
+  const cfg = (await call('a', 'PUT', '/api/platform/config', { price: '', details: 'كل شي مشمول', methods: [], whatsapp: '9647711111111', plans: { month: 60000, year: 600000 } })).body;
+  assert.deepEqual(cfg.plans, { month: 60000, year: 600000 });
+  const site = (await call('v', 'GET', '/api/site')).body;
+  assert.deepEqual(site.plans, { month: 60000, year: 600000 }, 'الموقع يقرأ سعر لوحة المزوّد');
+  assert.equal(site.whatsapp, '9647711111111', 'واتساب اللوحة يتقدّم على متغير البيئة');
+  assert.equal((await call('v', 'GET', '/api/support')).body.whatsapp, '9647711111111');
+  assert.equal((await call('a', 'PUT', '/api/platform/config', { methods: [], plans: { month: 5, year: 600000 } })).body.error, 'INVALID_NUMBER');
+  // حفظ بلا أسعار يبقي الأسعار السابقة
+  assert.deepEqual((await call('a', 'PUT', '/api/platform/config', { methods: [], details: 'x' })).body.plans, { month: 60000, year: 600000 });
+
+  // عميل جديد من الموقع يشترك: نربط طلبه بمقهاه
+  await call('v', 'POST', '/api/leads', { ...LEAD, clientId: 'lead-9' });
+  await call('c', 'POST', '/api/account/signup', { shopName: 'كوفي الرصافة', ownerName: 'علي', email: 'ali@rusafa.iq', password: 'rusafa-2026!', pin: '2468' });
+  const shop = (await call('a', 'GET', '/api/platform/shops')).body.rows.find((r) => r.name === 'كوفي الرصافة');
+  const linked = (await call('a', 'POST', '/api/platform/leads/lead-9', { tenantId: shop.id, adminNote: 'اشترك سنوي' })).body;
+  assert.equal(linked.status, 'won', 'الربط بمقهى يعني اشترك');
+  assert.equal((await call('a', 'GET', '/api/platform/leads')).body.leads.find((l) => l.id === 'lead-9').shopName, 'كوفي الرصافة');
+  assert.equal((await call('a', 'POST', '/api/platform/leads/lead-9', { tenantId: 'no-such-shop' })).status, 404);
+  assert.equal((await call('a', 'POST', '/api/platform/leads/lead-9', { tenantId: null })).body.tenantId, null, 'فك الربط');
 });

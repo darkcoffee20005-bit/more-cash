@@ -246,9 +246,9 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
     const key = `${req.method} ${req.path}`;
     try {
       if (req.path.startsWith('/api/platform/')) return await platformAdmin.handle({ ...req, ip });
-      if (key === 'GET /api/support') return { status: 200, body: { whatsapp: support } };
+      if (key === 'GET /api/support') return { status: 200, body: { whatsapp: (await leads.site()).whatsapp || support } };
       // الموقع التعريفي: محتواه العام، وطلب «احجز عرضك المجاني» (بلا جهاز ولا حساب)
-      if (key === 'GET /api/site') return { status: 200, body: { whatsapp: support, ...(await leads.site()) } };
+      if (key === 'GET /api/site') { const st = await leads.site(); return { status: 200, body: { ...st, whatsapp: st.whatsapp || support } }; }
       if (key === 'POST /api/leads') return { status: 200, body: await leads.submit(req.body, ip) };
       if (key === 'POST /api/account/signup') return await signup(req.body, ip);
       if (key === 'POST /api/account/login') return await login(req.body, ip);

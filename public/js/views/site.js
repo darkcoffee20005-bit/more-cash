@@ -16,6 +16,8 @@ const img = (name) => `${BASE()}/img/site/${name}.webp`;
 const href = (route) => (SAME_ORIGIN() ? `#/${route}` : `${LIVE_URL}/#/${route}`);
 const PRICE = { month: 50_000, year: 500_000 };
 const num = (n) => n.toLocaleString('en-US');
+// السعر من إعدادات المزوّد (نفس صفحة الاشتراك)، والقيم الثابتة احتياط قبل التحميل
+const plans = () => S().info?.plans ?? PRICE;
 
 const S = () => state.site ?? (state.site = { info: undefined, shot: 'pos', bill: 'month', kind: 'cafe', menu: false, sent: false, clientId: null });
 
@@ -246,20 +248,23 @@ function testimonials(info) {
 
 function pricing(s) {
   const yearly = s.bill === 'year';
+  const P = plans();
+  const save = P.month * 12 - P.year;
+  const months = Math.floor(save / P.month);
   const link = wa('مرحباً، عندي أكثر من فرع وأريد سعر مور كاش للسلسلة.');
   return `<section class="st-sec" id="pricing"><div class="st-wrap">
     ${head('الباقات والأسعار', 'سعر واضح… كل شي مشمول', 'كل الوحدات · تحديثات مستمرة · دعم بالعربي')}
     <div class="st-seg-row">
       <div class="st-seg" role="tablist">${Object.entries(KINDS).map(([k, t]) => `<button type="button" class="${s.kind === k ? 'on' : ''}" data-action="st-kind" data-k="${k}">${t}</button>`).join('')}</div>
       <div class="st-bill"><button type="button" class="${!yearly ? 'on' : ''}" data-action="st-bill" data-k="month">شهري</button>
-        <button type="button" class="${yearly ? 'on' : ''}" data-action="st-bill" data-k="year">سنوي <span class="save">وفّر شهرين</span></button></div>
+        <button type="button" class="${yearly ? 'on' : ''}" data-action="st-bill" data-k="year">سنوي${months > 0 ? ` <span class="save">وفّر ${months === 1 ? 'شهر' : months === 2 ? 'شهرين' : `${months} أشهر`}</span>` : ''}</button></div>
     </div>
     <div class="st-plans">
       <article class="st-plan main">
         <span class="st-badge">الأكثر طلباً</span>
         <h3>مور كاش الكامل</h3><p class="muted">لـ${KINDS[s.kind]} · لكل فرع</p>
-        <p class="st-price"><b>${num(yearly ? PRICE.year : PRICE.month)}</b><span>د.ع / ${yearly ? 'سنوياً' : 'شهرياً'}</span></p>
-        <p class="st-price-note">${yearly ? `بدل ${num(PRICE.month * 12)} د.ع — توفّر ${num(PRICE.month * 12 - PRICE.year)} د.ع` : `أو ${num(PRICE.year)} د.ع سنوياً وتوفّر شهرين`}</p>
+        <p class="st-price"><b>${num(yearly ? P.year : P.month)}</b><span>د.ع / ${yearly ? 'سنوياً' : 'شهرياً'}</span></p>
+        <p class="st-price-note">${yearly ? (save > 0 ? `بدل ${num(P.month * 12)} د.ع — توفّر ${num(save)} د.ع` : '') : (save > 0 ? `أو ${num(P.year)} د.ع سنوياً وتوفّر ${num(save)} د.ع` : `أو ${num(P.year)} د.ع سنوياً`)}</p>
         <ul>${PLAN_FEATURES[s.kind].map((f) => `<li>${icon('check', 'sm')}${f}</li>`).join('')}</ul>
         <a class="st-btn dark block" href="${href('book')}">احجز عرضك المجاني</a>
       </article>
@@ -343,8 +348,8 @@ on({
   'st-go': (el) => {
     const id = el.dataset.to;
     S().menu = false;
-    if (location.hash && location.hash !== '#/' && location.hash !== '#') {
-      location.hash = '#/';
+    if (location.hash && !['#/', '#', '#/site'].includes(location.hash)) {
+      location.hash = state.shop ? '#/site' : '#/';
       setTimeout(() => scrollToSection(id), 120);
       return;
     }

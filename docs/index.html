@@ -532,7 +532,9 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
   .ticket { margin: 0; border-radius: 0; }
   .ticket.is-empty .lines, .ticket.is-empty .totals { display: none; }
   .rail > a:not(.rail-brand) { flex: 1; min-width: 60px; }
-  .kpis, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpi { padding: 12px 14px; }
   .tiles { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
@@ -956,6 +958,18 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
   .st-wa { width: 52px; height: 52px; bottom: 16px; inset-inline-end: 16px; }
   .st-nav-cta .st-btn.dark { padding: 8px 14px; }
 }
+
+/* لوحة المزوّد: نظرة عامة */
+.pf-todo { display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 14px; cursor: pointer; color: var(--ink); font: inherit; }
+.pf-todo:hover { border-color: var(--line-strong); background: var(--surface); }
+.pf-todo > svg:first-child { color: var(--warn); flex: none; }
+.pf-todo span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pf-todo small { color: var(--muted); }
+.pf-funnel { display: grid; grid-template-columns: 9.5em 1fr 3em; align-items: center; gap: 10px; }
+.pf-funnel .bar { height: 12px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.pf-funnel .bar i { display: block; height: 100%; border-radius: inherit; background: var(--olive-grad); min-width: 4px; }
+.pf-funnel b { text-align: end; font-variant-numeric: tabular-nums; }
+.pf-todo > svg:last-child { transform: scaleX(-1); color: var(--muted); flex: none; }
 
 </style></head><body><div id="app"></div><div id="print-area" aria-hidden="true"></div><script type="module">
 // ---- server/db/memory.js
@@ -5450,7 +5464,7 @@ return { branchIds, createBranches };
 
 // ---- server/app/subscriptions.js
 const __m_server_app_subscriptions_js = await (async () => {
-const { AppError, bad, id: checkId, str } = __m_server_app_core_js;
+const { AppError, bad, id: checkId, int, str } = __m_server_app_core_js;
 // الاشتراكات اليدوية (تحويل أو نقد) وموافقة المزوّد على كل حساب.
 //
 // الحساب الجديد «بانتظار الموافقة» ولا يعمل فيه شيء إلا صفحة الاشتراك: يقرأ التفاصيل وبيانات التحويل (يتحكم بها المزوّد)،
@@ -5464,6 +5478,7 @@ const DEFAULT_CONFIG = {
   details: 'اشتراك شهري في مور كاش: البيع، المخزون، الموظفون والرواتب، والتقارير، مع الدعم.',
   methods: [],
   whatsapp: null,
+  plans: { month: 50_000, year: 500_000 }, // الأسعار الموحّدة: الموقع التعريفي وصفحة الاشتراك (دينار)
 };
 
 /** إضافة أشهر تقويمية (31 كانون الثاني + شهر = آخر شباط) */
@@ -5648,7 +5663,12 @@ function createSubscriptions({ db, now, newId, admins = new Set(), enabled = fal
       holder: str(m?.holder, { field: 'methods.holder', max: 60, optional: true }),
     })) : [];
     const whatsapp = body.whatsapp ? str(body.whatsapp, { field: 'whatsapp', max: 20 }).replace(/\D/g, '') : null;
-    const c = { price: str(body.price, { field: 'price', max: 80, optional: true }) ?? '', details: str(body.details, { field: 'details', max: 1200, optional: true }) ?? '', methods, whatsapp, updatedAt: now(), updatedBy: admin.email };
+    const cur = await config();
+    const plans = body.plans === undefined ? cur.plans : {
+      month: int(body.plans?.month, { field: 'plans.month', min: 1000, max: 100_000_000 }),
+      year: int(body.plans?.year, { field: 'plans.year', min: 1000, max: 1_000_000_000 }),
+    };
+    const c = { plans, price: str(body.price, { field: 'price', max: 80, optional: true }) ?? '', details: str(body.details, { field: 'details', max: 1200, optional: true }) ?? '', methods, whatsapp, updatedAt: now(), updatedBy: admin.email };
     await CONFIG().updateOne({ _id: 'main' }, { $set: c }, { upsert: true });
     await audit(admin, 'config.update', { methods: methods.length });
     return config();
@@ -5725,9 +5745,12 @@ function createLeads({ db, now, audit = async () => {} }) {
   async function list({ status } = {}) {
     const q = LEAD_STATUS.includes(status) ? { status } : {};
     const rows = await LEADS().find(q).sort({ createdAt: -1 }).limit(500).toArray();
-    const all = await LEADS().find({}).project({ status: 1 }).limit(5000).toArray();
-    const counts = Object.fromEntries(LEAD_STATUS.map((s) => [s, all.filter((r) => r.status === s).length]));
-    return { counts, leads: rows.map(view) };
+    const counts = Object.fromEntries(await Promise.all(LEAD_STATUS.map(async (s) => [s, await LEADS().countDocuments({ status: s })])));
+    // اسم المقهى المرتبط بكل طلب (حين يشترك صاحبه)
+    const ids = [...new Set(rows.map((r) => r.tenantId).filter(Boolean))];
+    const shops = ids.length ? await db.collection('tenants').find({ _id: { $in: ids } }).project({ name: 1 }).toArray() : [];
+    const names = new Map(shops.map((t) => [t._id, t.name]));
+    return { counts, leads: rows.map((r) => ({ ...view(r), shopName: r.tenantId ? names.get(r.tenantId) ?? null : null })) };
   }
 
   async function update(admin, leadId, body = {}) {
@@ -5735,6 +5758,15 @@ function createLeads({ db, now, audit = async () => {} }) {
     const $set = { updatedAt: now(), updatedBy: admin.email };
     if (body.status !== undefined) $set.status = oneOf(body.status, LEAD_STATUS, 'status');
     if (body.adminNote !== undefined) $set.adminNote = str(body.adminNote, { field: 'adminNote', max: 500, optional: true });
+    if (body.tenantId !== undefined) {
+      if (body.tenantId === null || body.tenantId === '') $set.tenantId = null;
+      else {
+        const tid = checkId(body.tenantId, 'tenantId');
+        if (!(await db.collection('tenants').findOne({ _id: tid }, { projection: { _id: 1 } }))) throw new AppError(404, 'NOT_FOUND');
+        $set.tenantId = tid;
+        if ($set.status === undefined) $set.status = 'won';
+      }
+    }
     const r = await LEADS().updateOne({ _id: lid }, { $set });
     if (!r.matchedCount) throw new AppError(404, 'NOT_FOUND');
     await audit(admin, 'lead.update', { leadId: lid, status: $set.status ?? null });
@@ -5742,9 +5774,10 @@ function createLeads({ db, now, audit = async () => {} }) {
   }
 
   // ---------------------------------------------------------------- محتوى الموقع
+  /** محتوى الموقع العام: من يثق بنا، والآراء، والأسعار وواتساب من إعدادات المزوّد (نفس ما في صفحة الاشتراك) */
   async function site() {
-    const c = await CONFIG().findOne({ _id: 'site' });
-    return { trusted: c?.trusted ?? [], testimonials: c?.testimonials ?? [] };
+    const [c, main] = await Promise.all([CONFIG().findOne({ _id: 'site' }), CONFIG().findOne({ _id: 'main' })]);
+    return { trusted: c?.trusted ?? [], testimonials: c?.testimonials ?? [], plans: main?.plans ?? { month: 50_000, year: 500_000 }, whatsapp: main?.whatsapp || null };
   }
 
   async function saveSite(admin, body = {}) {
@@ -5759,7 +5792,8 @@ function createLeads({ db, now, audit = async () => {} }) {
     }));
     await CONFIG().updateOne({ _id: 'site' }, { $set: { trusted, testimonials, updatedAt: now(), updatedBy: admin.email } }, { upsert: true });
     await audit(admin, 'site.update', { trusted: trusted.length, testimonials: testimonials.length });
-    return site();
+    const { trusted: t, testimonials: q } = await site();
+    return { trusted: t, testimonials: q };
   }
 
   return { submit, list, update, site, saveSite };
@@ -6026,9 +6060,9 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
     const key = `${req.method} ${req.path}`;
     try {
       if (req.path.startsWith('/api/platform/')) return await platformAdmin.handle({ ...req, ip });
-      if (key === 'GET /api/support') return { status: 200, body: { whatsapp: support } };
+      if (key === 'GET /api/support') return { status: 200, body: { whatsapp: (await leads.site()).whatsapp || support } };
       // الموقع التعريفي: محتواه العام، وطلب «احجز عرضك المجاني» (بلا جهاز ولا حساب)
-      if (key === 'GET /api/site') return { status: 200, body: { whatsapp: support, ...(await leads.site()) } };
+      if (key === 'GET /api/site') { const st = await leads.site(); return { status: 200, body: { ...st, whatsapp: st.whatsapp || support } }; }
       if (key === 'POST /api/leads') return { status: 200, body: await leads.submit(req.body, ip) };
       if (key === 'POST /api/account/signup') return await signup(req.body, ip);
       if (key === 'POST /api/account/login') return await login(req.body, ip);
@@ -8392,6 +8426,8 @@ const img = (name) => `${BASE()}/img/site/${name}.webp`;
 const href = (route) => (SAME_ORIGIN() ? `#/${route}` : `${LIVE_URL}/#/${route}`);
 const PRICE = { month: 50_000, year: 500_000 };
 const num = (n) => n.toLocaleString('en-US');
+// السعر من إعدادات المزوّد (نفس صفحة الاشتراك)، والقيم الثابتة احتياط قبل التحميل
+const plans = () => S().info?.plans ?? PRICE;
 
 const S = () => state.site ?? (state.site = { info: undefined, shot: 'pos', bill: 'month', kind: 'cafe', menu: false, sent: false, clientId: null });
 
@@ -8622,20 +8658,23 @@ function testimonials(info) {
 
 function pricing(s) {
   const yearly = s.bill === 'year';
+  const P = plans();
+  const save = P.month * 12 - P.year;
+  const months = Math.floor(save / P.month);
   const link = wa('مرحباً، عندي أكثر من فرع وأريد سعر مور كاش للسلسلة.');
   return `<section class="st-sec" id="pricing"><div class="st-wrap">
     ${head('الباقات والأسعار', 'سعر واضح… كل شي مشمول', 'كل الوحدات · تحديثات مستمرة · دعم بالعربي')}
     <div class="st-seg-row">
       <div class="st-seg" role="tablist">${Object.entries(KINDS).map(([k, t]) => `<button type="button" class="${s.kind === k ? 'on' : ''}" data-action="st-kind" data-k="${k}">${t}</button>`).join('')}</div>
       <div class="st-bill"><button type="button" class="${!yearly ? 'on' : ''}" data-action="st-bill" data-k="month">شهري</button>
-        <button type="button" class="${yearly ? 'on' : ''}" data-action="st-bill" data-k="year">سنوي <span class="save">وفّر شهرين</span></button></div>
+        <button type="button" class="${yearly ? 'on' : ''}" data-action="st-bill" data-k="year">سنوي${months > 0 ? ` <span class="save">وفّر ${months === 1 ? 'شهر' : months === 2 ? 'شهرين' : `${months} أشهر`}</span>` : ''}</button></div>
     </div>
     <div class="st-plans">
       <article class="st-plan main">
         <span class="st-badge">الأكثر طلباً</span>
         <h3>مور كاش الكامل</h3><p class="muted">لـ${KINDS[s.kind]} · لكل فرع</p>
-        <p class="st-price"><b>${num(yearly ? PRICE.year : PRICE.month)}</b><span>د.ع / ${yearly ? 'سنوياً' : 'شهرياً'}</span></p>
-        <p class="st-price-note">${yearly ? `بدل ${num(PRICE.month * 12)} د.ع — توفّر ${num(PRICE.month * 12 - PRICE.year)} د.ع` : `أو ${num(PRICE.year)} د.ع سنوياً وتوفّر شهرين`}</p>
+        <p class="st-price"><b>${num(yearly ? P.year : P.month)}</b><span>د.ع / ${yearly ? 'سنوياً' : 'شهرياً'}</span></p>
+        <p class="st-price-note">${yearly ? (save > 0 ? `بدل ${num(P.month * 12)} د.ع — توفّر ${num(save)} د.ع` : '') : (save > 0 ? `أو ${num(P.year)} د.ع سنوياً وتوفّر ${num(save)} د.ع` : `أو ${num(P.year)} د.ع سنوياً`)}</p>
         <ul>${PLAN_FEATURES[s.kind].map((f) => `<li>${icon('check', 'sm')}${f}</li>`).join('')}</ul>
         <a class="st-btn dark block" href="${href('book')}">احجز عرضك المجاني</a>
       </article>
@@ -8719,8 +8758,8 @@ on({
   'st-go': (el) => {
     const id = el.dataset.to;
     S().menu = false;
-    if (location.hash && location.hash !== '#/' && location.hash !== '#') {
-      location.hash = '#/';
+    if (location.hash && !['#/', '#', '#/site'].includes(location.hash)) {
+      location.hash = state.shop ? '#/site' : '#/';
       setTimeout(() => scrollToSection(id), 120);
       return;
     }
@@ -10796,7 +10835,7 @@ const { busy, fail, field, modalFrame, on, openModal, render, state, toast } = _
 
 
 const TZ = 180;
-const P = () => state.platform ?? (state.platform = { me: undefined, list: null, search: '', tab: 'requests', filter: 'all' });
+const P = () => state.platform ?? (state.platform = { me: undefined, list: null, search: '', tab: 'overview', filter: 'all' });
 const ago = (d) => {
   if (!d) return '—';
   const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400_000);
@@ -10815,7 +10854,7 @@ const subPill = (s) => {
 };
 const ACTIONS = {
   'request.approve': 'موافقة على طلب', 'request.reject': 'رفض طلب', 'subscription.extend': 'تفعيل/تمديد', 'subscription.stop': 'إيقاف الاشتراك',
-  'config.update': 'تعديل بيانات التحويل', 'lead.update': 'متابعة طلب عرض', 'site.update': 'تعديل محتوى الموقع', 'shop.disable': 'إيقاف المقهى', 'shop.enable': 'تفعيل المقهى', 'account.reset_password': 'كلمة مرور مؤقتة', 'backup.download': 'نسخة احتياطية',
+  'config.update': 'تعديل الأسعار وبيانات التحويل', 'lead.update': 'متابعة طلب عرض', 'site.update': 'تعديل محتوى الموقع', 'shop.disable': 'إيقاف المقهى', 'shop.enable': 'تفعيل المقهى', 'account.reset_password': 'كلمة مرور مؤقتة', 'backup.download': 'نسخة احتياطية',
 };
 
 async function enterPlatform() {
@@ -10863,9 +10902,9 @@ function platformView() {
   const T = l?.totals ?? {};
   const pendingReqs = (p.requests ?? []).filter((r) => r.status === 'pending');
   const newLeads = p.leads?.counts?.new ?? 0;
-  const TABS = [['requests', `طلبات الاشتراك${pendingReqs.length ? ` (${pendingReqs.length})` : ''}`], ['leads', `طلبات العرض${newLeads ? ` (${newLeads})` : ''}`], ['clients', 'العملاء'], ['log', 'السجل'], ['config', 'بيانات التحويل والتفاصيل'], ['site', 'محتوى الموقع'], ['errors', `أخطاء الخادم${p.errors?.count24h ? ` (${p.errors.count24h})` : ''}`]];
+  const TABS = [['overview', 'نظرة عامة'], ['requests', `طلبات الاشتراك${pendingReqs.length ? ` (${pendingReqs.length})` : ''}`], ['leads', `طلبات العرض${newLeads ? ` (${newLeads})` : ''}`], ['clients', 'العملاء'], ['log', 'السجل'], ['site', 'محتوى الموقع'], ['config', 'الأسعار والتحويل'], ['errors', `أخطاء الخادم${p.errors?.count24h ? ` (${p.errors.count24h})` : ''}`]];
   const head = `<div class="page-head"><h1>لوحة المزوّد</h1><span class="muted small" dir="ltr">${esc(p.me.email)}</span>
-      <span class="spacer"></span><button class="btn sm" data-action="platform-refresh">${icon('check', 'sm')} تحديث</button>
+      <span class="spacer"></span><a class="btn sm" href="/#/site" target="_blank" rel="noopener">${icon('expand', 'sm')} عرض الموقع</a><button class="btn sm" data-action="platform-refresh">${icon('check', 'sm')} تحديث</button>
       <button class="btn sm ghost" data-action="platform-logout">${icon('lock', 'sm')} خروج</button></div>
     ${l ? `<div class="kpis">
       <div class="kpi lead"><span class="label">طلبات تنتظرك</span><b>${T.requests ?? 0}</b><span class="small">${T.pending ?? 0} حساب بانتظار الموافقة</span></div>
@@ -10875,6 +10914,7 @@ function platformView() {
       ${T.approval === false ? '<p class="small" style="color:var(--warn)">الموافقة على الحسابات معطّلة على هذا الخادم (REQUIRE_APPROVAL=false): كل حساب جديد يعمل مباشرة.</p>' : ''}` : ''}
     <div class="toolbar"><div class="seg wrap-seg">${TABS.map(([k, label]) => `<button class="${p.tab === k ? 'on' : ''}" data-action="pf-tab" data-k="${k}">${label}</button>`).join('')}</div></div>`;
   const body = {
+    overview: () => overviewView(p, pendingReqs),
     requests: () => `${pendingReqs.length ? pendingReqs.map(requestCard).join('') : '<div class="empty">لا طلبات اشتراك تنتظر موافقتك</div>'}
       ${(p.requests ?? []).filter((r) => r.status !== 'pending').length ? `<h2 style="margin-top:8px">آخر القرارات</h2><div class="table-wrap"><table><thead><tr><th>المقهى</th><th>الطريقة</th><th>القرار</th><th>المدة</th><th>التاريخ</th><th>ملاحظة</th></tr></thead><tbody>
         ${(p.requests ?? []).filter((r) => r.status !== 'pending').slice(0, 40).map((r) => `<tr><td><b>${esc(r.shopName ?? '')}</b>${r.manual ? ' <span class="pill">من اللوحة</span>' : ''}</td><td>${METHOD[r.method] ?? r.method}</td>
@@ -10911,22 +10951,66 @@ function platformView() {
   return `<div class="page" style="max-width:1280px;height:100%;overflow:auto">${head}${(body[p.tab] ?? body.requests)()}</div>`;
 }
 
+// ---------------------------------------------------------------- نظرة عامة: ما يحتاجك اليوم، ومسار العميل من الموقع للاشتراك
+function overviewView(p, pendingReqs) {
+  const rows = p.list?.rows ?? [];
+  const leads = p.leads?.leads ?? [];
+  const c = p.leads?.counts ?? {};
+  const since = Date.now() - 30 * 86400_000;
+  const recent = leads.filter((l) => new Date(l.createdAt).getTime() >= since);
+  const reached = recent.filter((l) => l.status !== 'new').length;
+  const won = recent.filter((l) => l.status === 'won').length;
+  const expiring = rows.filter((r) => !r.branchOf && r.subscription && !r.subscription.unlimited && ['active', 'trial'].includes(r.subscription.status) && (r.subscription.daysLeft ?? 99) <= 7);
+  const waiting = rows.filter((r) => !r.branchOf && r.subscription?.status === 'pending' && !r.pendingRequest);
+  const todo = [
+    [c.new, `${c.new} طلب عرض جديد من الموقع`, 'تواصل معهم على واتساب', 'leads'],
+    [pendingReqs.length, `${pendingReqs.length} طلب اشتراك ينتظر موافقتك`, 'راجع الدفع وفعّل الحساب', 'requests'],
+    [expiring.length, `${expiring.length} اشتراك ينتهي خلال 7 أيام`, expiring.slice(0, 3).map((r) => r.name).join('، '), 'clients'],
+    [waiting.length, `${waiting.length} حساب جديد لم يرسل طلب اشتراك`, 'ذكّرهم بإرسال الطلب أو فعّلهم تجريبياً', 'clients'],
+    [p.errors?.count24h, `${p.errors?.count24h} خطأ في الخادم خلال 24 ساعة`, 'افحص التفاصيل', 'errors'],
+  ].filter(([n]) => n);
+  const funnel = [['طلبات عرض (30 يوم)', recent.length], ['تم التواصل', reached], ['اشتركوا', won]];
+  const max = Math.max(1, recent.length);
+  return `<div class="grid-2" style="align-items:start">
+    <section class="card pad stack"><h2>يحتاج انتباهك</h2>
+      ${todo.length ? todo.map(([, t, sub, tab]) => `<button class="pf-todo" data-action="pf-tab" data-k="${tab}">${icon('alert', 'sm')}<span><b>${esc(t)}</b><small>${esc(sub)}</small></span>${icon('arrow', 'sm')}</button>`).join('')
+        : `<div class="empty">${icon('check')} كل شي مرتب، ما في شي ينتظرك</div>`}
+    </section>
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">من الموقع للاشتراك</h2><span class="pill olive">${recent.length ? Math.round((won / recent.length) * 100) : 0}% تحويل</span></div>
+      ${funnel.map(([t, n]) => `<div class="pf-funnel"><span>${t}</span><div class="bar"><i style="width:${Math.round((n / max) * 100)}%"></i></div><b>${n}</b></div>`).join('')}
+      <p class="muted small" style="margin:0">كل الطلبات: ${c.new ?? 0} جديد · ${c.contacted ?? 0} تم التواصل · ${c.won ?? 0} اشترك · ${c.lost ?? 0} لم يكمل</p>
+      <div class="row wrap"><button class="btn sm" data-action="pf-tab" data-k="leads">طلبات العرض</button><button class="btn sm" data-action="pf-tab" data-k="site">محتوى الموقع</button>
+        <button class="btn sm" data-action="pf-tab" data-k="config">الأسعار</button><a class="btn sm" href="/#/site" target="_blank" rel="noopener">${icon('expand', 'sm')} عرض الموقع</a></div>
+    </section>
+    <section class="card pad stack"><h2>الموقع الآن</h2>
+      <p style="margin:0">الأسعار: <b>${(p.config?.plans?.month ?? 50000).toLocaleString('en-US')}</b> د.ع شهرياً · <b>${(p.config?.plans?.year ?? 500000).toLocaleString('en-US')}</b> د.ع سنوياً</p>
+      <p style="margin:0">«يثقون بمور كاش»: <b>${p.site?.trusted?.length ?? 0}</b> مقهى · آراء العملاء: <b>${p.site?.testimonials?.length ?? 0}</b>${!(p.site?.trusted?.length) ? ' <span class="pill warn">تظهر مستطيلات فارغة</span>' : ''}</p>
+      <p style="margin:0">واتساب الموقع: ${p.config?.whatsapp ? `<span dir="ltr">${esc(p.config.whatsapp)}</span>` : '<span class="muted">رقم الدعم الافتراضي للخادم</span> <button class="link-btn" data-action="pf-tab" data-k="config">غيّره</button>'}</p>
+    </section>
+  </div>`;
+}
+
 // ---------------------------------------------------------------- طلبات «احجز عرضك المجاني» من الموقع
 const LEAD = { new: ['جديد', 'warn'], contacted: ['تم التواصل', 'olive'], won: ['اشترك', 'ok'], lost: ['لم يكمل', ''] };
 function leadsView(p) {
   const d = p.leads;
   if (!d) return '<p class="muted">جارٍ التحميل…</p>';
   const f = p.leadFilter ?? 'new';
-  const rows = d.leads.filter((l) => f === 'all' || l.status === f);
+  const q = (p.leadQ ?? '').trim();
+  const rows = d.leads.filter((l) => (f === 'all' || l.status === f) && (!q || [l.name, l.shop, l.phone, l.city, l.shopName].some((v) => String(v ?? '').includes(q))));
   const waText = (l) => encodeURIComponent(`مرحباً ${l.name}، معك فريق مور كاش بخصوص طلب العرض المجاني لـ${l.shop}.`);
-  return `<div class="toolbar"><div class="seg">${[['new', 'جديد'], ['contacted', 'تم التواصل'], ['won', 'اشترك'], ['lost', 'لم يكمل'], ['all', 'الكل']].map(([k, t]) =>
+  return `<div class="toolbar"><input type="search" id="pf-lead-q" class="grow" placeholder="ابحث بالاسم أو المحل أو الرقم أو المدينة" value="${esc(p.leadQ ?? '')}" data-input="pf-lead-q" autocomplete="off" style="max-width:340px">
+    <button class="btn sm" data-action="pf-lead-csv">${icon('download', 'sm')} تصدير CSV</button></div>
+  <div class="toolbar"><div class="seg">${[['new', 'جديد'], ['contacted', 'تم التواصل'], ['won', 'اشترك'], ['lost', 'لم يكمل'], ['all', 'الكل']].map(([k, t]) =>
       `<button class="${f === k ? 'on' : ''}" data-action="pf-lead-filter" data-k="${k}">${t}${k !== 'all' && d.counts[k] ? ` (${d.counts[k]})` : ''}</button>`).join('')}</div></div>
-    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الاسم</th><th>المحل</th><th>النوع</th><th class="num">فروع</th><th>المدينة</th><th>الهاتف</th><th>ملاحظة</th><th>الحالة</th></tr></thead><tbody>
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الاسم</th><th>المحل</th><th>النوع</th><th class="num">فروع</th><th>المدينة</th><th>الهاتف</th><th>ملاحظة</th><th>الحالة</th><th></th></tr></thead><tbody>
       ${rows.map((l) => `<tr><td class="small">${dateTime(l.createdAt, TZ)}</td><td><b>${esc(l.name)}</b></td><td>${esc(l.shop)}</td><td class="small">${esc(l.typeName)}</td>
         <td class="num">${l.branches}</td><td class="small">${esc(l.city ?? '')}${l.when ? `<div class="muted">${esc(l.when)}</div>` : ''}</td>
         <td><a href="https://wa.me/${esc(l.phone.replace(/^0/, '964'))}?text=${waText(l)}" target="_blank" rel="noopener" dir="ltr">${esc(l.phone)}</a></td>
         <td class="small" style="max-width:220px">${esc(l.note ?? '')}${l.adminNote ? `<div class="muted">ملاحظتك: ${esc(l.adminNote)}</div>` : ''}</td>
-        <td><select data-change="pf-lead-status" data-id="${esc(l.id)}" aria-label="حالة الطلب">${Object.entries(LEAD).map(([k, [t]]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td></tr>`).join('')}
+        <td><select data-change="pf-lead-status" data-id="${esc(l.id)}" aria-label="حالة الطلب">${Object.entries(LEAD).map(([k, [t]]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+          ${l.shopName ? `<div class="small" style="margin-top:4px">${icon('check', 'sm')} ${esc(l.shopName)}</div>` : ''}</td>
+        <td><button class="btn sm" data-action="pf-lead-open" data-id="${esc(l.id)}">متابعة</button></td></tr>`).join('')}
       </tbody></table></div>` : '<p class="muted">لا طلبات هنا. الطلبات تصل من صفحة «احجز عرضك المجاني» في الموقع.</p>'}`;
 }
 
@@ -10957,10 +11041,13 @@ function configForm(p) {
   const c = p.cfgDraft ?? (p.cfgDraft = structuredClone(p.config ?? { price: '', details: '', methods: [], whatsapp: '' }));
   if (!c.methods.length) c.methods.push({ label: '', value: '', holder: '' });
   return `<div class="grid-2" style="align-items:start"><section class="card pad stack">
-      <h2>ما يراه العميل في صفحة الاشتراك</h2>
-      ${field('السعر', `<input id="cf-price" value="${esc(c.price ?? '')}" maxlength="80" placeholder="مثلاً: 25,000 د.ع شهرياً" data-input="pf-cfg" data-k="price">`)}
+      <h2>الأسعار وما يراه العميل</h2>
+      <div class="grid-2">
+        ${field('السعر الشهري (د.ع)', `<input id="cf-pm" value="${c.plans?.month ?? 50000}" inputmode="numeric" dir="ltr" maxlength="9" data-input="pf-cfg-plan" data-k="month">`)}
+        ${field('السعر السنوي (د.ع)', `<input id="cf-py" value="${c.plans?.year ?? 500000}" inputmode="numeric" dir="ltr" maxlength="10" data-input="pf-cfg-plan" data-k="year">`)}</div>
+      <p class="muted small" style="margin:0">نفس السعر يظهر في الموقع (قسم الأسعار) وفي صفحة الاشتراك داخل البرنامج.</p>
       ${field('التفاصيل', `<textarea id="cf-details" rows="5" maxlength="1200" data-input="pf-cfg" data-k="details">${esc(c.details ?? '')}</textarea>`, 'ما يشمله الاشتراك، والمدة، وأي شرط')}
-      ${field('واتساب للتواصل', `<input id="cf-wa" value="${esc(c.whatsapp ?? '')}" inputmode="tel" dir="ltr" maxlength="20" placeholder="9647…" data-input="pf-cfg" data-k="whatsapp">`)}
+      ${field('واتساب للتواصل (الموقع وصفحة الاشتراك)', `<input id="cf-wa" value="${esc(c.whatsapp ?? '')}" inputmode="tel" dir="ltr" maxlength="20" placeholder="9647…" data-input="pf-cfg" data-k="whatsapp">`)}
     </section><section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">طرق الدفع وبيانات التحويل</h2>
       <button type="button" class="btn sm" data-action="pf-cfg-add">${icon('plus', 'sm')} طريقة</button></div>
       ${c.methods.map((m, i) => `<div class="card pad stack" style="gap:8px;box-shadow:none"><div class="grid-2">
@@ -10977,6 +11064,17 @@ const durationFields = (preset = 1) => `<div class="grid-2">
     ${field('أيام إضافية', '<input name="days" id="pf-days" inputmode="numeric" value="0" maxlength="3">', 'مثلاً 14 للتجربة')}</div>`;
 
 const modals = {
+  'pf-lead'(s) {
+    const l = (P().leads?.leads ?? []).find((x) => x.id === s.modal.id);
+    if (!l) return '';
+    const shops = (P().list?.rows ?? []).filter((r) => !r.branchOf);
+    return modalFrame({ title: `متابعة ${esc(l.name)}`, sub: `${esc(l.shop)} · ${esc(l.typeName)}${l.city ? ` · ${esc(l.city)}` : ''}`, body: `<form class="stack" data-form="pf-lead-save">
+      <div class="grid-2">${field('الحالة', `<select name="status" id="pl-status">${Object.entries(LEAD).map(([k, [t]]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
+        ${field('حساب المقهى (إن اشترك)', `<select name="tenantId" id="pl-shop"><option value="">— غير مرتبط —</option>${shops.map((r) => `<option value="${esc(r.id)}" ${l.tenantId === r.id ? 'selected' : ''}>${esc(r.name)} · ${esc(r.email ?? '')}</option>`).join('')}</select>`)}</div>
+      ${field('ملاحظتك', `<textarea name="adminNote" id="pl-note" rows="3" maxlength="500" placeholder="مثلاً: موعد العرض الأحد 4 العصر">${esc(l.adminNote ?? '')}</textarea>`)}
+      ${l.note ? `<p class="small muted" style="margin:0">ملاحظة الزبون: ${esc(l.note)}</p>` : ''}
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ</button></form>` });
+  },
   'pf-approve'(s) {
     const r = (P().requests ?? []).find((x) => x.id === s.modal.id);
     return modalFrame({ title: `تفعيل ${r?.shopName ?? ''}`, sub: `${METHOD[r?.method] ?? ''}${r?.reference ? ` · ${esc(r.reference)}` : ''}`, body: `<form class="stack" data-form="pf-approve-submit">
@@ -11107,6 +11205,28 @@ on({
     toast('نُزّلت النسخة الاحتياطية', 'ok');
   }),
   'pf-lead-filter': (el) => { P().leadFilter = el.dataset.k; render(); },
+  'pf-lead-q': (el) => { P().leadQ = el.value; clearTimeout(P().lqTimer); P().lqTimer = setTimeout(render, 200); },
+  'pf-lead-open': (el) => openModal({ type: 'pf-lead', id: el.dataset.id }),
+  'pf-lead-save': (_el, _e, d) => busy(async () => {
+    // ربط الطلب بمقهى يعني أنه اشترك، إلا إن اختار المزوّد «لم يكمل» صراحة
+    const status = d.tenantId && ['new', 'contacted'].includes(d.status) ? 'won' : d.status;
+    await post(`/api/platform/leads/${state.modal.id}`, { status, adminNote: d.adminNote || null, tenantId: d.tenantId || null });
+    state.modal = null;
+    P().leads = await get('/api/platform/leads');
+    toast('حُفظت المتابعة', 'ok');
+  }),
+  'pf-lead-csv': () => {
+    const rows = P().leads?.leads ?? [];
+    const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = ['التاريخ', 'الاسم', 'المحل', 'النوع', 'الفروع', 'المدينة', 'الوقت المناسب', 'الهاتف', 'ملاحظة الزبون', 'الحالة', 'ملاحظتك', 'حساب المقهى'];
+    const lines = rows.map((l) => [dateTime(l.createdAt, TZ), l.name, l.shop, l.typeName, l.branches, l.city, l.when, l.phone, l.note, LEAD[l.status]?.[0] ?? l.status, l.adminNote, l.shopName].map(cell).join(','));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([`\ufeff${[head.map(cell).join(','), ...lines].join('\n')}`], { type: 'text/csv;charset=utf-8' }));
+    a.download = `morecash-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast(`صُدّر ${rows.length} طلب`, 'ok');
+  },
   'pf-lead-status': (el) => busy(async () => {
     await post(`/api/platform/leads/${el.dataset.id}`, { status: el.value });
     P().leads = await get('/api/platform/leads');
@@ -11126,6 +11246,7 @@ on({
     render();
   }),
   'pf-cfg': (el) => { P().cfgDraft[el.dataset.k] = el.value; },
+  'pf-cfg-plan': (el) => { const c = P().cfgDraft; c.plans = { ...(c.plans ?? {}), [el.dataset.k]: el.value }; },
   'pf-cfg-m': (el) => { P().cfgDraft.methods[Number(el.dataset.i)][el.dataset.k] = el.value; },
   'pf-cfg-add': () => { P().cfgDraft.methods.push({ label: '', value: '', holder: '' }); render(); },
   'pf-cfg-del': (el) => { P().cfgDraft.methods.splice(Number(el.dataset.i), 1); render(); },
@@ -11133,7 +11254,11 @@ on({
     const c = P().cfgDraft;
     const methods = c.methods.filter((m) => m.label.trim() || m.value.trim());
     if (methods.some((m) => !m.label.trim() || !m.value.trim())) throw new Error('أكمل اسم الطريقة ورقمها، أو احذف السطر');
-    P().config = await put('/api/platform/config', { price: c.price, details: c.details, whatsapp: c.whatsapp || null, methods });
+    const num = (v) => Number(String(v ?? '').replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x0660).replace(/\D/g, ''));
+    const plans = { month: num(c.plans?.month), year: num(c.plans?.year) };
+    if (plans.month < 1000 || plans.year < 1000) throw new Error('اكتب السعر الشهري والسنوي بالدينار');
+    P().config = await put('/api/platform/config', { price: c.price, details: c.details, whatsapp: c.whatsapp || null, methods, plans });
+    P().site = await get('/api/platform/site').catch(() => P().site);
     P().cfgDraft = null;
     toast('حُفظت بيانات التحويل', 'ok');
     render();
@@ -11305,7 +11430,7 @@ function subscriptionView(s) {
       </section>
       <section class="card pad stack">
         <h2>تفاصيل الاشتراك</h2>
-        ${cfg?.price ? `<p class="sub-price">${esc(cfg.price)}</p>` : ''}
+        ${cfg?.plans ? `<p class="sub-price">${cfg.plans.month.toLocaleString('en-US')} د.ع شهرياً <span class="muted" style="font-size:.6em">أو ${cfg.plans.year.toLocaleString('en-US')} د.ع سنوياً</span></p>` : cfg?.price ? `<p class="sub-price">${esc(cfg.price)}</p>` : ''}
         ${cfg?.details ? `<p style="white-space:pre-line;margin:0">${esc(cfg.details)}</p>` : '<p class="muted">جارٍ التحميل…</p>'}
         ${methods.length ? `<h3 style="margin-top:6px">طرق الدفع</h3>${methods.map((m, i) => `<div class="sub-method"><div style="flex:1;min-width:0"><b>${esc(m.label)}</b>${m.holder ? `<div class="muted small">باسم ${esc(m.holder)}</div>` : ''}
           <div class="sub-number" dir="ltr">${esc(m.value)}</div></div><button class="btn sm" data-action="sub-copy" data-i="${i}">نسخ</button></div>`).join('')}` : ''}
@@ -11402,7 +11527,9 @@ const cancel = __m_public_js_views_cancel_js;
 const hr = __m_public_js_views_hr_js;
 const kiosk = __m_public_js_views_kiosk_js;
 const subscription = __m_public_js_views_subscription_js;
+const site = __m_public_js_views_site_js;
 // التشغيل، التوجيه، شاشتا الإعداد والدخول، والهيكل العام.
+
 
 
 
@@ -11447,6 +11574,7 @@ function parseHash() {
 async function navigate() {
   const { route, sub, id } = parseHash();
   if (route === 'platform') { state.modal = null; render(); return platform.enterPlatform(); }
+  if (route === 'site' || (route === 'book' && state.shop)) { state.modal = null; return render(); } // الموقع وصفحة الحجز من أي جهاز (معاينة من لوحة المزوّد)
   if (!state.employee) { state.authPage = route; state.modal = null; return render(); }
   const name = route || defaultRoute();
   const allowed = NAV.find(([r]) => r === name);
@@ -11469,6 +11597,8 @@ const views = {
     if (!s.ready) return '<div class="auth-panel" style="height:100%"><p class="muted">جارٍ التحميل…</p></div>';
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
     if (parseHash().route === 'platform') return platform.platformView(s);
+    if (parseHash().route === 'site') return site.siteView(s);
+    if (parseHash().route === 'book' && s.shop) return site.bookView(s);
     if (s.shop?.disabled) return account.disabledView(s);
     // حساب ينتظر موافقة المزوّد: صفحة الاشتراك فقط؛ وصفحة التجديد عند طلبها
     if (s.shop && (s.shop.subscription?.status === 'pending' || s.subPage)) return subscription.subscriptionView(s);

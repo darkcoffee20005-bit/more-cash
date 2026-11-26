@@ -529,7 +529,9 @@ tr.audit-warn td:nth-child(3) b { color: var(--warn); }
   .ticket { margin: 0; border-radius: 0; }
   .ticket.is-empty .lines, .ticket.is-empty .totals { display: none; }
   .rail > a:not(.rail-brand) { flex: 1; min-width: 60px; }
-  .kpis, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpi { padding: 12px 14px; }
   .tiles { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
@@ -953,3 +955,15 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
   .st-wa { width: 52px; height: 52px; bottom: 16px; inset-inline-end: 16px; }
   .st-nav-cta .st-btn.dark { padding: 8px 14px; }
 }
+
+/* لوحة المزوّد: نظرة عامة */
+.pf-todo { display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 14px; cursor: pointer; color: var(--ink); font: inherit; }
+.pf-todo:hover { border-color: var(--line-strong); background: var(--surface); }
+.pf-todo > svg:first-child { color: var(--warn); flex: none; }
+.pf-todo span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pf-todo small { color: var(--muted); }
+.pf-funnel { display: grid; grid-template-columns: 9.5em 1fr 3em; align-items: center; gap: 10px; }
+.pf-funnel .bar { height: 12px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.pf-funnel .bar i { display: block; height: 100%; border-radius: inherit; background: var(--olive-grad); min-width: 4px; }
+.pf-funnel b { text-align: end; font-variant-numeric: tabular-nums; }
+.pf-todo > svg:last-child { transform: scaleX(-1); color: var(--muted); flex: none; }

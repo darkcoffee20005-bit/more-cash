@@ -56,9 +56,12 @@ export function createLeads({ db, now, audit = async () => {} }) {
   async function list({ status } = {}) {
     const q = LEAD_STATUS.includes(status) ? { status } : {};
     const rows = await LEADS().find(q).sort({ createdAt: -1 }).limit(500).toArray();
-    const all = await LEADS().find({}).project({ status: 1 }).limit(5000).toArray();
-    const counts = Object.fromEntries(LEAD_STATUS.map((s) => [s, all.filter((r) => r.status === s).length]));
-    return { counts, leads: rows.map(view) };
+    const counts = Object.fromEntries(await Promise.all(LEAD_STATUS.map(async (s) => [s, await LEADS().countDocuments({ status: s })])));
+    // اسم المقهى المرتبط بكل طلب (حين يشترك صاحبه)
+    const ids = [...new Set(rows.map((r) => r.tenantId).filter(Boolean))];
+    const shops = ids.length ? await db.collection('tenants').find({ _id: { $in: ids } }).project({ name: 1 }).toArray() : [];
+    const names = new Map(shops.map((t) => [t._id, t.name]));
+    return { counts, leads: rows.map((r) => ({ ...view(r), shopName: r.tenantId ? names.get(r.tenantId) ?? null : null })) };
   }
 
   async function update(admin, leadId, body = {}) {
@@ -66,6 +69,15 @@ export function createLeads({ db, now, audit = async () => {} }) {
     const $set = { updatedAt: now(), updatedBy: admin.email };
     if (body.status !== undefined) $set.status = oneOf(body.status, LEAD_STATUS, 'status');
     if (body.adminNote !== undefined) $set.adminNote = str(body.adminNote, { field: 'adminNote', max: 500, optional: true });
+    if (body.tenantId !== undefined) {
+      if (body.tenantId === null || body.tenantId === '') $set.tenantId = null;
+      else {
+        const tid = checkId(body.tenantId, 'tenantId');
+        if (!(await db.collection('tenants').findOne({ _id: tid }, { projection: { _id: 1 } }))) throw new AppError(404, 'NOT_FOUND');
+        $set.tenantId = tid;
+        if ($set.status === undefined) $set.status = 'won';
+      }
+    }
     const r = await LEADS().updateOne({ _id: lid }, { $set });
     if (!r.matchedCount) throw new AppError(404, 'NOT_FOUND');
     await audit(admin, 'lead.update', { leadId: lid, status: $set.status ?? null });
@@ -73,9 +85,10 @@ export function createLeads({ db, now, audit = async () => {} }) {
   }
 
   // ---------------------------------------------------------------- محتوى الموقع
+  /** محتوى الموقع العام: من يثق بنا، والآراء، والأسعار وواتساب من إعدادات المزوّد (نفس ما في صفحة الاشتراك) */
   async function site() {
-    const c = await CONFIG().findOne({ _id: 'site' });
-    return { trusted: c?.trusted ?? [], testimonials: c?.testimonials ?? [] };
+    const [c, main] = await Promise.all([CONFIG().findOne({ _id: 'site' }), CONFIG().findOne({ _id: 'main' })]);
+    return { trusted: c?.trusted ?? [], testimonials: c?.testimonials ?? [], plans: main?.plans ?? { month: 50_000, year: 500_000 }, whatsapp: main?.whatsapp || null };
   }
 
   async function saveSite(admin, body = {}) {
@@ -90,7 +103,8 @@ export function createLeads({ db, now, audit = async () => {} }) {
     }));
     await CONFIG().updateOne({ _id: 'site' }, { $set: { trusted, testimonials, updatedAt: now(), updatedBy: admin.email } }, { upsert: true });
     await audit(admin, 'site.update', { trusted: trusted.length, testimonials: testimonials.length });
-    return site();
+    const { trusted: t, testimonials: q } = await site();
+    return { trusted: t, testimonials: q };
   }
 
   return { submit, list, update, site, saveSite };

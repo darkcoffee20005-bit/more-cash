@@ -6,7 +6,7 @@ import { icon } from '../icons.js';
 import { busy, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 
 const TZ = 180;
-const P = () => state.platform ?? (state.platform = { me: undefined, list: null, search: '', tab: 'requests', filter: 'all' });
+const P = () => state.platform ?? (state.platform = { me: undefined, list: null, search: '', tab: 'overview', filter: 'all' });
 const ago = (d) => {
   if (!d) return '—';
   const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400_000);
@@ -25,7 +25,7 @@ const subPill = (s) => {
 };
 const ACTIONS = {
   'request.approve': 'موافقة على طلب', 'request.reject': 'رفض طلب', 'subscription.extend': 'تفعيل/تمديد', 'subscription.stop': 'إيقاف الاشتراك',
-  'config.update': 'تعديل بيانات التحويل', 'lead.update': 'متابعة طلب عرض', 'site.update': 'تعديل محتوى الموقع', 'shop.disable': 'إيقاف المقهى', 'shop.enable': 'تفعيل المقهى', 'account.reset_password': 'كلمة مرور مؤقتة', 'backup.download': 'نسخة احتياطية',
+  'config.update': 'تعديل الأسعار وبيانات التحويل', 'lead.update': 'متابعة طلب عرض', 'site.update': 'تعديل محتوى الموقع', 'shop.disable': 'إيقاف المقهى', 'shop.enable': 'تفعيل المقهى', 'account.reset_password': 'كلمة مرور مؤقتة', 'backup.download': 'نسخة احتياطية',
 };
 
 export async function enterPlatform() {
@@ -73,9 +73,9 @@ export function platformView() {
   const T = l?.totals ?? {};
   const pendingReqs = (p.requests ?? []).filter((r) => r.status === 'pending');
   const newLeads = p.leads?.counts?.new ?? 0;
-  const TABS = [['requests', `طلبات الاشتراك${pendingReqs.length ? ` (${pendingReqs.length})` : ''}`], ['leads', `طلبات العرض${newLeads ? ` (${newLeads})` : ''}`], ['clients', 'العملاء'], ['log', 'السجل'], ['config', 'بيانات التحويل والتفاصيل'], ['site', 'محتوى الموقع'], ['errors', `أخطاء الخادم${p.errors?.count24h ? ` (${p.errors.count24h})` : ''}`]];
+  const TABS = [['overview', 'نظرة عامة'], ['requests', `طلبات الاشتراك${pendingReqs.length ? ` (${pendingReqs.length})` : ''}`], ['leads', `طلبات العرض${newLeads ? ` (${newLeads})` : ''}`], ['clients', 'العملاء'], ['log', 'السجل'], ['site', 'محتوى الموقع'], ['config', 'الأسعار والتحويل'], ['errors', `أخطاء الخادم${p.errors?.count24h ? ` (${p.errors.count24h})` : ''}`]];
   const head = `<div class="page-head"><h1>لوحة المزوّد</h1><span class="muted small" dir="ltr">${esc(p.me.email)}</span>
-      <span class="spacer"></span><button class="btn sm" data-action="platform-refresh">${icon('check', 'sm')} تحديث</button>
+      <span class="spacer"></span><a class="btn sm" href="/#/site" target="_blank" rel="noopener">${icon('expand', 'sm')} عرض الموقع</a><button class="btn sm" data-action="platform-refresh">${icon('check', 'sm')} تحديث</button>
       <button class="btn sm ghost" data-action="platform-logout">${icon('lock', 'sm')} خروج</button></div>
     ${l ? `<div class="kpis">
       <div class="kpi lead"><span class="label">طلبات تنتظرك</span><b>${T.requests ?? 0}</b><span class="small">${T.pending ?? 0} حساب بانتظار الموافقة</span></div>
@@ -85,6 +85,7 @@ export function platformView() {
       ${T.approval === false ? '<p class="small" style="color:var(--warn)">الموافقة على الحسابات معطّلة على هذا الخادم (REQUIRE_APPROVAL=false): كل حساب جديد يعمل مباشرة.</p>' : ''}` : ''}
     <div class="toolbar"><div class="seg wrap-seg">${TABS.map(([k, label]) => `<button class="${p.tab === k ? 'on' : ''}" data-action="pf-tab" data-k="${k}">${label}</button>`).join('')}</div></div>`;
   const body = {
+    overview: () => overviewView(p, pendingReqs),
     requests: () => `${pendingReqs.length ? pendingReqs.map(requestCard).join('') : '<div class="empty">لا طلبات اشتراك تنتظر موافقتك</div>'}
       ${(p.requests ?? []).filter((r) => r.status !== 'pending').length ? `<h2 style="margin-top:8px">آخر القرارات</h2><div class="table-wrap"><table><thead><tr><th>المقهى</th><th>الطريقة</th><th>القرار</th><th>المدة</th><th>التاريخ</th><th>ملاحظة</th></tr></thead><tbody>
         ${(p.requests ?? []).filter((r) => r.status !== 'pending').slice(0, 40).map((r) => `<tr><td><b>${esc(r.shopName ?? '')}</b>${r.manual ? ' <span class="pill">من اللوحة</span>' : ''}</td><td>${METHOD[r.method] ?? r.method}</td>
@@ -121,22 +122,66 @@ export function platformView() {
   return `<div class="page" style="max-width:1280px;height:100%;overflow:auto">${head}${(body[p.tab] ?? body.requests)()}</div>`;
 }
 
+// ---------------------------------------------------------------- نظرة عامة: ما يحتاجك اليوم، ومسار العميل من الموقع للاشتراك
+function overviewView(p, pendingReqs) {
+  const rows = p.list?.rows ?? [];
+  const leads = p.leads?.leads ?? [];
+  const c = p.leads?.counts ?? {};
+  const since = Date.now() - 30 * 86400_000;
+  const recent = leads.filter((l) => new Date(l.createdAt).getTime() >= since);
+  const reached = recent.filter((l) => l.status !== 'new').length;
+  const won = recent.filter((l) => l.status === 'won').length;
+  const expiring = rows.filter((r) => !r.branchOf && r.subscription && !r.subscription.unlimited && ['active', 'trial'].includes(r.subscription.status) && (r.subscription.daysLeft ?? 99) <= 7);
+  const waiting = rows.filter((r) => !r.branchOf && r.subscription?.status === 'pending' && !r.pendingRequest);
+  const todo = [
+    [c.new, `${c.new} طلب عرض جديد من الموقع`, 'تواصل معهم على واتساب', 'leads'],
+    [pendingReqs.length, `${pendingReqs.length} طلب اشتراك ينتظر موافقتك`, 'راجع الدفع وفعّل الحساب', 'requests'],
+    [expiring.length, `${expiring.length} اشتراك ينتهي خلال 7 أيام`, expiring.slice(0, 3).map((r) => r.name).join('، '), 'clients'],
+    [waiting.length, `${waiting.length} حساب جديد لم يرسل طلب اشتراك`, 'ذكّرهم بإرسال الطلب أو فعّلهم تجريبياً', 'clients'],
+    [p.errors?.count24h, `${p.errors?.count24h} خطأ في الخادم خلال 24 ساعة`, 'افحص التفاصيل', 'errors'],
+  ].filter(([n]) => n);
+  const funnel = [['طلبات عرض (30 يوم)', recent.length], ['تم التواصل', reached], ['اشتركوا', won]];
+  const max = Math.max(1, recent.length);
+  return `<div class="grid-2" style="align-items:start">
+    <section class="card pad stack"><h2>يحتاج انتباهك</h2>
+      ${todo.length ? todo.map(([, t, sub, tab]) => `<button class="pf-todo" data-action="pf-tab" data-k="${tab}">${icon('alert', 'sm')}<span><b>${esc(t)}</b><small>${esc(sub)}</small></span>${icon('arrow', 'sm')}</button>`).join('')
+        : `<div class="empty">${icon('check')} كل شي مرتب، ما في شي ينتظرك</div>`}
+    </section>
+    <section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">من الموقع للاشتراك</h2><span class="pill olive">${recent.length ? Math.round((won / recent.length) * 100) : 0}% تحويل</span></div>
+      ${funnel.map(([t, n]) => `<div class="pf-funnel"><span>${t}</span><div class="bar"><i style="width:${Math.round((n / max) * 100)}%"></i></div><b>${n}</b></div>`).join('')}
+      <p class="muted small" style="margin:0">كل الطلبات: ${c.new ?? 0} جديد · ${c.contacted ?? 0} تم التواصل · ${c.won ?? 0} اشترك · ${c.lost ?? 0} لم يكمل</p>
+      <div class="row wrap"><button class="btn sm" data-action="pf-tab" data-k="leads">طلبات العرض</button><button class="btn sm" data-action="pf-tab" data-k="site">محتوى الموقع</button>
+        <button class="btn sm" data-action="pf-tab" data-k="config">الأسعار</button><a class="btn sm" href="/#/site" target="_blank" rel="noopener">${icon('expand', 'sm')} عرض الموقع</a></div>
+    </section>
+    <section class="card pad stack"><h2>الموقع الآن</h2>
+      <p style="margin:0">الأسعار: <b>${(p.config?.plans?.month ?? 50000).toLocaleString('en-US')}</b> د.ع شهرياً · <b>${(p.config?.plans?.year ?? 500000).toLocaleString('en-US')}</b> د.ع سنوياً</p>
+      <p style="margin:0">«يثقون بمور كاش»: <b>${p.site?.trusted?.length ?? 0}</b> مقهى · آراء العملاء: <b>${p.site?.testimonials?.length ?? 0}</b>${!(p.site?.trusted?.length) ? ' <span class="pill warn">تظهر مستطيلات فارغة</span>' : ''}</p>
+      <p style="margin:0">واتساب الموقع: ${p.config?.whatsapp ? `<span dir="ltr">${esc(p.config.whatsapp)}</span>` : '<span class="muted">رقم الدعم الافتراضي للخادم</span> <button class="link-btn" data-action="pf-tab" data-k="config">غيّره</button>'}</p>
+    </section>
+  </div>`;
+}
+
 // ---------------------------------------------------------------- طلبات «احجز عرضك المجاني» من الموقع
 const LEAD = { new: ['جديد', 'warn'], contacted: ['تم التواصل', 'olive'], won: ['اشترك', 'ok'], lost: ['لم يكمل', ''] };
 function leadsView(p) {
   const d = p.leads;
   if (!d) return '<p class="muted">جارٍ التحميل…</p>';
   const f = p.leadFilter ?? 'new';
-  const rows = d.leads.filter((l) => f === 'all' || l.status === f);
+  const q = (p.leadQ ?? '').trim();
+  const rows = d.leads.filter((l) => (f === 'all' || l.status === f) && (!q || [l.name, l.shop, l.phone, l.city, l.shopName].some((v) => String(v ?? '').includes(q))));
   const waText = (l) => encodeURIComponent(`مرحباً ${l.name}، معك فريق مور كاش بخصوص طلب العرض المجاني لـ${l.shop}.`);
-  return `<div class="toolbar"><div class="seg">${[['new', 'جديد'], ['contacted', 'تم التواصل'], ['won', 'اشترك'], ['lost', 'لم يكمل'], ['all', 'الكل']].map(([k, t]) =>
+  return `<div class="toolbar"><input type="search" id="pf-lead-q" class="grow" placeholder="ابحث بالاسم أو المحل أو الرقم أو المدينة" value="${esc(p.leadQ ?? '')}" data-input="pf-lead-q" autocomplete="off" style="max-width:340px">
+    <button class="btn sm" data-action="pf-lead-csv">${icon('download', 'sm')} تصدير CSV</button></div>
+  <div class="toolbar"><div class="seg">${[['new', 'جديد'], ['contacted', 'تم التواصل'], ['won', 'اشترك'], ['lost', 'لم يكمل'], ['all', 'الكل']].map(([k, t]) =>
       `<button class="${f === k ? 'on' : ''}" data-action="pf-lead-filter" data-k="${k}">${t}${k !== 'all' && d.counts[k] ? ` (${d.counts[k]})` : ''}</button>`).join('')}</div></div>
-    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الاسم</th><th>المحل</th><th>النوع</th><th class="num">فروع</th><th>المدينة</th><th>الهاتف</th><th>ملاحظة</th><th>الحالة</th></tr></thead><tbody>
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الاسم</th><th>المحل</th><th>النوع</th><th class="num">فروع</th><th>المدينة</th><th>الهاتف</th><th>ملاحظة</th><th>الحالة</th><th></th></tr></thead><tbody>
       ${rows.map((l) => `<tr><td class="small">${dateTime(l.createdAt, TZ)}</td><td><b>${esc(l.name)}</b></td><td>${esc(l.shop)}</td><td class="small">${esc(l.typeName)}</td>
         <td class="num">${l.branches}</td><td class="small">${esc(l.city ?? '')}${l.when ? `<div class="muted">${esc(l.when)}</div>` : ''}</td>
         <td><a href="https://wa.me/${esc(l.phone.replace(/^0/, '964'))}?text=${waText(l)}" target="_blank" rel="noopener" dir="ltr">${esc(l.phone)}</a></td>
         <td class="small" style="max-width:220px">${esc(l.note ?? '')}${l.adminNote ? `<div class="muted">ملاحظتك: ${esc(l.adminNote)}</div>` : ''}</td>
-        <td><select data-change="pf-lead-status" data-id="${esc(l.id)}" aria-label="حالة الطلب">${Object.entries(LEAD).map(([k, [t]]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td></tr>`).join('')}
+        <td><select data-change="pf-lead-status" data-id="${esc(l.id)}" aria-label="حالة الطلب">${Object.entries(LEAD).map(([k, [t]]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+          ${l.shopName ? `<div class="small" style="margin-top:4px">${icon('check', 'sm')} ${esc(l.shopName)}</div>` : ''}</td>
+        <td><button class="btn sm" data-action="pf-lead-open" data-id="${esc(l.id)}">متابعة</button></td></tr>`).join('')}
       </tbody></table></div>` : '<p class="muted">لا طلبات هنا. الطلبات تصل من صفحة «احجز عرضك المجاني» في الموقع.</p>'}`;
 }
 
@@ -167,10 +212,13 @@ function configForm(p) {
   const c = p.cfgDraft ?? (p.cfgDraft = structuredClone(p.config ?? { price: '', details: '', methods: [], whatsapp: '' }));
   if (!c.methods.length) c.methods.push({ label: '', value: '', holder: '' });
   return `<div class="grid-2" style="align-items:start"><section class="card pad stack">
-      <h2>ما يراه العميل في صفحة الاشتراك</h2>
-      ${field('السعر', `<input id="cf-price" value="${esc(c.price ?? '')}" maxlength="80" placeholder="مثلاً: 25,000 د.ع شهرياً" data-input="pf-cfg" data-k="price">`)}
+      <h2>الأسعار وما يراه العميل</h2>
+      <div class="grid-2">
+        ${field('السعر الشهري (د.ع)', `<input id="cf-pm" value="${c.plans?.month ?? 50000}" inputmode="numeric" dir="ltr" maxlength="9" data-input="pf-cfg-plan" data-k="month">`)}
+        ${field('السعر السنوي (د.ع)', `<input id="cf-py" value="${c.plans?.year ?? 500000}" inputmode="numeric" dir="ltr" maxlength="10" data-input="pf-cfg-plan" data-k="year">`)}</div>
+      <p class="muted small" style="margin:0">نفس السعر يظهر في الموقع (قسم الأسعار) وفي صفحة الاشتراك داخل البرنامج.</p>
       ${field('التفاصيل', `<textarea id="cf-details" rows="5" maxlength="1200" data-input="pf-cfg" data-k="details">${esc(c.details ?? '')}</textarea>`, 'ما يشمله الاشتراك، والمدة، وأي شرط')}
-      ${field('واتساب للتواصل', `<input id="cf-wa" value="${esc(c.whatsapp ?? '')}" inputmode="tel" dir="ltr" maxlength="20" placeholder="9647…" data-input="pf-cfg" data-k="whatsapp">`)}
+      ${field('واتساب للتواصل (الموقع وصفحة الاشتراك)', `<input id="cf-wa" value="${esc(c.whatsapp ?? '')}" inputmode="tel" dir="ltr" maxlength="20" placeholder="9647…" data-input="pf-cfg" data-k="whatsapp">`)}
     </section><section class="card pad stack"><div class="row"><h2 style="margin-inline-end:auto">طرق الدفع وبيانات التحويل</h2>
       <button type="button" class="btn sm" data-action="pf-cfg-add">${icon('plus', 'sm')} طريقة</button></div>
       ${c.methods.map((m, i) => `<div class="card pad stack" style="gap:8px;box-shadow:none"><div class="grid-2">
@@ -187,6 +235,17 @@ const durationFields = (preset = 1) => `<div class="grid-2">
     ${field('أيام إضافية', '<input name="days" id="pf-days" inputmode="numeric" value="0" maxlength="3">', 'مثلاً 14 للتجربة')}</div>`;
 
 export const modals = {
+  'pf-lead'(s) {
+    const l = (P().leads?.leads ?? []).find((x) => x.id === s.modal.id);
+    if (!l) return '';
+    const shops = (P().list?.rows ?? []).filter((r) => !r.branchOf);
+    return modalFrame({ title: `متابعة ${esc(l.name)}`, sub: `${esc(l.shop)} · ${esc(l.typeName)}${l.city ? ` · ${esc(l.city)}` : ''}`, body: `<form class="stack" data-form="pf-lead-save">
+      <div class="grid-2">${field('الحالة', `<select name="status" id="pl-status">${Object.entries(LEAD).map(([k, [t]]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
+        ${field('حساب المقهى (إن اشترك)', `<select name="tenantId" id="pl-shop"><option value="">— غير مرتبط —</option>${shops.map((r) => `<option value="${esc(r.id)}" ${l.tenantId === r.id ? 'selected' : ''}>${esc(r.name)} · ${esc(r.email ?? '')}</option>`).join('')}</select>`)}</div>
+      ${field('ملاحظتك', `<textarea name="adminNote" id="pl-note" rows="3" maxlength="500" placeholder="مثلاً: موعد العرض الأحد 4 العصر">${esc(l.adminNote ?? '')}</textarea>`)}
+      ${l.note ? `<p class="small muted" style="margin:0">ملاحظة الزبون: ${esc(l.note)}</p>` : ''}
+      <button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ</button></form>` });
+  },
   'pf-approve'(s) {
     const r = (P().requests ?? []).find((x) => x.id === s.modal.id);
     return modalFrame({ title: `تفعيل ${r?.shopName ?? ''}`, sub: `${METHOD[r?.method] ?? ''}${r?.reference ? ` · ${esc(r.reference)}` : ''}`, body: `<form class="stack" data-form="pf-approve-submit">
@@ -317,6 +376,28 @@ on({
     toast('نُزّلت النسخة الاحتياطية', 'ok');
   }),
   'pf-lead-filter': (el) => { P().leadFilter = el.dataset.k; render(); },
+  'pf-lead-q': (el) => { P().leadQ = el.value; clearTimeout(P().lqTimer); P().lqTimer = setTimeout(render, 200); },
+  'pf-lead-open': (el) => openModal({ type: 'pf-lead', id: el.dataset.id }),
+  'pf-lead-save': (_el, _e, d) => busy(async () => {
+    // ربط الطلب بمقهى يعني أنه اشترك، إلا إن اختار المزوّد «لم يكمل» صراحة
+    const status = d.tenantId && ['new', 'contacted'].includes(d.status) ? 'won' : d.status;
+    await post(`/api/platform/leads/${state.modal.id}`, { status, adminNote: d.adminNote || null, tenantId: d.tenantId || null });
+    state.modal = null;
+    P().leads = await get('/api/platform/leads');
+    toast('حُفظت المتابعة', 'ok');
+  }),
+  'pf-lead-csv': () => {
+    const rows = P().leads?.leads ?? [];
+    const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = ['التاريخ', 'الاسم', 'المحل', 'النوع', 'الفروع', 'المدينة', 'الوقت المناسب', 'الهاتف', 'ملاحظة الزبون', 'الحالة', 'ملاحظتك', 'حساب المقهى'];
+    const lines = rows.map((l) => [dateTime(l.createdAt, TZ), l.name, l.shop, l.typeName, l.branches, l.city, l.when, l.phone, l.note, LEAD[l.status]?.[0] ?? l.status, l.adminNote, l.shopName].map(cell).join(','));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([`\ufeff${[head.map(cell).join(','), ...lines].join('\n')}`], { type: 'text/csv;charset=utf-8' }));
+    a.download = `morecash-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast(`صُدّر ${rows.length} طلب`, 'ok');
+  },
   'pf-lead-status': (el) => busy(async () => {
     await post(`/api/platform/leads/${el.dataset.id}`, { status: el.value });
     P().leads = await get('/api/platform/leads');
@@ -336,6 +417,7 @@ on({
     render();
   }),
   'pf-cfg': (el) => { P().cfgDraft[el.dataset.k] = el.value; },
+  'pf-cfg-plan': (el) => { const c = P().cfgDraft; c.plans = { ...(c.plans ?? {}), [el.dataset.k]: el.value }; },
   'pf-cfg-m': (el) => { P().cfgDraft.methods[Number(el.dataset.i)][el.dataset.k] = el.value; },
   'pf-cfg-add': () => { P().cfgDraft.methods.push({ label: '', value: '', holder: '' }); render(); },
   'pf-cfg-del': (el) => { P().cfgDraft.methods.splice(Number(el.dataset.i), 1); render(); },
@@ -343,7 +425,11 @@ on({
     const c = P().cfgDraft;
     const methods = c.methods.filter((m) => m.label.trim() || m.value.trim());
     if (methods.some((m) => !m.label.trim() || !m.value.trim())) throw new Error('أكمل اسم الطريقة ورقمها، أو احذف السطر');
-    P().config = await put('/api/platform/config', { price: c.price, details: c.details, whatsapp: c.whatsapp || null, methods });
+    const num = (v) => Number(String(v ?? '').replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x0660).replace(/\D/g, ''));
+    const plans = { month: num(c.plans?.month), year: num(c.plans?.year) };
+    if (plans.month < 1000 || plans.year < 1000) throw new Error('اكتب السعر الشهري والسنوي بالدينار');
+    P().config = await put('/api/platform/config', { price: c.price, details: c.details, whatsapp: c.whatsapp || null, methods, plans });
+    P().site = await get('/api/platform/site').catch(() => P().site);
     P().cfgDraft = null;
     toast('حُفظت بيانات التحويل', 'ok');
     render();
