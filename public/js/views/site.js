@@ -10,7 +10,8 @@ import { busy, field, on, render, state } from '../ui.js';
 const LIVE_URL = 'https://more-cashpro.vercel.app';
 const DEMO_PAGE = () => !!globalThis.MORECASH_DEMO_PAGE;
 const SAME_ORIGIN = () => !DEMO_PAGE() || globalThis.location?.hostname?.endsWith('vercel.app');
-const BASE = () => (SAME_ORIGIN() ? '' : LIVE_URL);
+// المحاكي (صفحة واحدة خارج الموقع) يضبط مكان الصور بنفسه
+const BASE = () => globalThis.MORECASH_IMG_BASE ?? (SAME_ORIGIN() ? '' : LIVE_URL);
 const img = (name) => `${BASE()}/img/site/${name}.webp`;
 const href = (route) => (SAME_ORIGIN() ? `#/${route}` : `${LIVE_URL}/#/${route}`);
 const PRICE = { month: 50_000, year: 500_000 };
@@ -27,7 +28,7 @@ async function loadSite() {
   render();
 }
 const wa = (text) => {
-  const n = S().info?.whatsapp;
+  const n = S().info?.whatsapp ?? globalThis.MORECASH_SUPPORT;
   return n ? `https://wa.me/${n}?text=${encodeURIComponent(text)}` : null;
 };
 const WA_HELLO = 'مرحباً، أريد أعرف أكثر عن مور كاش لمقهاي.';

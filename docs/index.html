@@ -8383,7 +8383,8 @@ const { busy, field, on, render, state } = __m_public_js_ui_js;
 const LIVE_URL = 'https://more-cashpro.vercel.app';
 const DEMO_PAGE = () => !!globalThis.MORECASH_DEMO_PAGE;
 const SAME_ORIGIN = () => !DEMO_PAGE() || globalThis.location?.hostname?.endsWith('vercel.app');
-const BASE = () => (SAME_ORIGIN() ? '' : LIVE_URL);
+// المحاكي (صفحة واحدة خارج الموقع) يضبط مكان الصور بنفسه
+const BASE = () => globalThis.MORECASH_IMG_BASE ?? (SAME_ORIGIN() ? '' : LIVE_URL);
 const img = (name) => `${BASE()}/img/site/${name}.webp`;
 const href = (route) => (SAME_ORIGIN() ? `#/${route}` : `${LIVE_URL}/#/${route}`);
 const PRICE = { month: 50_000, year: 500_000 };
@@ -8400,7 +8401,7 @@ async function loadSite() {
   render();
 }
 const wa = (text) => {
-  const n = S().info?.whatsapp;
+  const n = S().info?.whatsapp ?? globalThis.MORECASH_SUPPORT;
   return n ? `https://wa.me/${n}?text=${encodeURIComponent(text)}` : null;
 };
 const WA_HELLO = 'مرحباً، أريد أعرف أكثر عن مور كاش لمقهاي.';
@@ -11648,7 +11649,8 @@ const root = document.getElementById('app');
 root.innerHTML = '<div style="height:100%;display:grid;place-items:center;font-family:sans-serif;color:#6a776f">جارٍ تجهيز المقهى التجريبي…</div>';
 createDemoBackend().then(({ backend }) => {
   globalThis.MORECASH_BACKEND = backend;
-  globalThis.MORECASH_DEMO_PAGE = true; // التسجيل في التجربة يوجّه للموقع الحقيقي (الحساب هنا لا يُحفظ)
+  // التسجيل في التجربة يوجّه للموقع الحقيقي (الحساب هنا لا يُحفظ)، إلا في المحاكي: كل شي يجري داخله
+  if (!globalThis.MORECASH_SIMULATOR) globalThis.MORECASH_DEMO_PAGE = true;
   return boot();
 }).catch((e) => { root.textContent = `تعذر التشغيل: ${e.message}`; console.error(e); });
 
