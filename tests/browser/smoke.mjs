@@ -416,11 +416,18 @@ try {
     await pp.waitForSelector('[data-action="pf-tab"][data-k="clients"]');
     // بيانات التحويل التي يراها العميل
     await pp.click('[data-action="pf-tab"][data-k="config"]');
-    await pp.fill('#cf-price', '25,000 د.ع شهرياً');
+    await pp.fill('#cf-pm', '25000');
+    await pp.fill('#cf-py', '250000');
     await pp.fill('#cf-l-0', 'زين كاش');
     await pp.fill('#cf-v-0', '07701234567');
     await pp.click('[data-action="pf-cfg-save"]');
     await pp.waitForSelector('.toast.ok:has-text("بيانات التحويل")');
+    // نفس السعر يظهر في الموقع (معاينة من جهاز المزوّد المرتبط بمقهاه)
+    const sp = await pc.newPage();
+    await sp.route(/fonts\.(googleapis|gstatic)/, (r) => r.abort());
+    await sp.goto(`http://127.0.0.1:${PORT}/#/site`);
+    await sp.waitForSelector('.st-plan.main .st-price:has-text("25,000")');
+    await sp.close();
     // عميل جديد: بانتظار الموافقة، يرى السعر ورقم التحويل، ويرسل طلباً
     const cc = await browser.newContext({ viewport: { width: 1180, height: 820 } });
     const cp = await cc.newPage();
