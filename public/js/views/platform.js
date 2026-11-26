@@ -208,6 +208,18 @@ function siteForm(p) {
     <button class="btn primary lg" data-action="pf-site-save" ${state.busy ? 'disabled' : ''}>حفظ ونشر على الموقع</button></div>`;
 }
 
+// قراءة السعر كما يكتبه المزوّد: أرقام عربية أو لاتينية، مع فواصل أو بدونها
+const priceNum = (v) => Number(String(v ?? '').replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x0660).replace(/[۰-۹]/g, (d) => d.charCodeAt(0) - 0x06f0).replace(/\D/g, ''));
+function planHint(plans) {
+  const m = priceNum(plans?.month ?? 50000);
+  const y = priceNum(plans?.year ?? 500000);
+  if (!m || !y) return '<span style="color:var(--bad)">اكتب السعرين بالدينار</span>';
+  const save = m * 12 - y;
+  return `${m.toLocaleString('en-US')} د.ع شهرياً · ${y.toLocaleString('en-US')} د.ع سنوياً · ${save > 0
+    ? `السنوي يوفّر ${save.toLocaleString('en-US')} د.ع`
+    : '<span style="color:var(--warn)">السنوي مو أرخص من 12 شهر، فما يظهر «وفّر» بالموقع</span>'}`;
+}
+
 function configForm(p) {
   const c = p.cfgDraft ?? (p.cfgDraft = structuredClone(p.config ?? { price: '', details: '', methods: [], whatsapp: '' }));
   if (!c.methods.length) c.methods.push({ label: '', value: '', holder: '' });
@@ -216,6 +228,7 @@ function configForm(p) {
       <div class="grid-2">
         ${field('السعر الشهري (د.ع)', `<input id="cf-pm" value="${c.plans?.month ?? 50000}" inputmode="numeric" dir="ltr" maxlength="9" data-input="pf-cfg-plan" data-k="month">`)}
         ${field('السعر السنوي (د.ع)', `<input id="cf-py" value="${c.plans?.year ?? 500000}" inputmode="numeric" dir="ltr" maxlength="10" data-input="pf-cfg-plan" data-k="year">`)}</div>
+      <p class="small" style="margin:0" id="cf-plan-hint">${planHint(c.plans)}</p>
       <p class="muted small" style="margin:0">نفس السعر يظهر في الموقع (قسم الأسعار) وفي صفحة الاشتراك داخل البرنامج.</p>
       ${field('التفاصيل', `<textarea id="cf-details" rows="5" maxlength="1200" data-input="pf-cfg" data-k="details">${esc(c.details ?? '')}</textarea>`, 'ما يشمله الاشتراك، والمدة، وأي شرط')}
       ${field('واتساب للتواصل (الموقع وصفحة الاشتراك)', `<input id="cf-wa" value="${esc(c.whatsapp ?? '')}" inputmode="tel" dir="ltr" maxlength="20" placeholder="9647…" data-input="pf-cfg" data-k="whatsapp">`)}
@@ -227,7 +240,7 @@ function configForm(p) {
         <div class="row">${field('باسم (اختياري)', `<input id="cf-h-${i}" value="${esc(m.holder ?? '')}" maxlength="60" data-input="pf-cfg-m" data-i="${i}" data-k="holder">`)}
           <button type="button" class="icon-btn" data-action="pf-cfg-del" data-i="${i}" aria-label="حذف الطريقة">${icon('trash', 'sm')}</button></div></div>`).join('')}
       <p class="muted small" style="margin:0">لا تُكتب هذه البيانات في الكود: تحفظها هنا وتغيّرها متى شئت، وتظهر فوراً لكل عميل في صفحة الاشتراك.</p>
-      <button class="btn primary lg" data-action="pf-cfg-save" ${state.busy ? 'disabled' : ''}>حفظ</button></section></div>`;
+      <button class="btn primary lg" data-action="pf-cfg-save" ${state.busy ? 'disabled' : ''}>حفظ الأسعار وبيانات التحويل</button></section></div>`;
 }
 
 const durationFields = (preset = 1) => `<div class="grid-2">
@@ -417,7 +430,12 @@ on({
     render();
   }),
   'pf-cfg': (el) => { P().cfgDraft[el.dataset.k] = el.value; },
-  'pf-cfg-plan': (el) => { const c = P().cfgDraft; c.plans = { ...(c.plans ?? {}), [el.dataset.k]: el.value }; },
+  'pf-cfg-plan': (el) => {
+    const c = P().cfgDraft;
+    c.plans = { ...(c.plans ?? {}), [el.dataset.k]: el.value };
+    const h = document.getElementById('cf-plan-hint');
+    if (h) h.innerHTML = planHint(c.plans);
+  },
   'pf-cfg-m': (el) => { P().cfgDraft.methods[Number(el.dataset.i)][el.dataset.k] = el.value; },
   'pf-cfg-add': () => { P().cfgDraft.methods.push({ label: '', value: '', holder: '' }); render(); },
   'pf-cfg-del': (el) => { P().cfgDraft.methods.splice(Number(el.dataset.i), 1); render(); },
@@ -425,13 +443,13 @@ on({
     const c = P().cfgDraft;
     const methods = c.methods.filter((m) => m.label.trim() || m.value.trim());
     if (methods.some((m) => !m.label.trim() || !m.value.trim())) throw new Error('أكمل اسم الطريقة ورقمها، أو احذف السطر');
-    const num = (v) => Number(String(v ?? '').replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x0660).replace(/\D/g, ''));
-    const plans = { month: num(c.plans?.month), year: num(c.plans?.year) };
-    if (plans.month < 1000 || plans.year < 1000) throw new Error('اكتب السعر الشهري والسنوي بالدينار');
+    const plans = { month: priceNum(c.plans?.month ?? 50000), year: priceNum(c.plans?.year ?? 500000) };
+    if (plans.month < 1000 || plans.year < 1000) throw new Error('اكتب السعر الشهري والسنوي بالدينار (1,000 على الأقل)');
+    if (plans.month > 100_000_000 || plans.year > 1_000_000_000) throw new Error('السعر كبير جداً: الشهري حتى 100 مليون، والسنوي حتى مليار دينار');
     P().config = await put('/api/platform/config', { price: c.price, details: c.details, whatsapp: c.whatsapp || null, methods, plans });
     P().site = await get('/api/platform/site').catch(() => P().site);
     P().cfgDraft = null;
-    toast('حُفظت بيانات التحويل', 'ok');
+    toast('حُفظت الأسعار وبيانات التحويل', 'ok');
     render();
   }),
   'platform-enable': (el) => busy(async () => { await post(`/api/platform/shops/${el.dataset.id}/enable`, {}); state.modal = null; toast('أُلغي الحظر', 'ok'); await enterPlatform(); }),

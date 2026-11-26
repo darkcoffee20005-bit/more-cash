@@ -54,7 +54,9 @@ export function subscriptionView(s) {
       </section>
       <section class="card pad stack">
         <h2>تفاصيل الاشتراك</h2>
-        ${cfg?.plans ? `<p class="sub-price">${cfg.plans.month.toLocaleString('en-US')} د.ع شهرياً <span class="muted" style="font-size:.6em">أو ${cfg.plans.year.toLocaleString('en-US')} د.ع سنوياً</span></p>` : cfg?.price ? `<p class="sub-price">${esc(cfg.price)}</p>` : ''}
+        ${cfg?.plans ? `<div><p class="sub-price" style="margin:0">${cfg.plans.month.toLocaleString('en-US')} د.ع <span style="font-size:.55em">شهرياً</span></p>
+          <p class="muted" style="margin:4px 0 0">أو ${cfg.plans.year.toLocaleString('en-US')} د.ع سنوياً${cfg.plans.month * 12 > cfg.plans.year ? ` · توفّر ${(cfg.plans.month * 12 - cfg.plans.year).toLocaleString('en-US')} د.ع` : ''}</p></div>`
+          : cfg?.price ? `<p class="sub-price">${esc(cfg.price)}</p>` : ''}
         ${cfg?.details ? `<p style="white-space:pre-line;margin:0">${esc(cfg.details)}</p>` : '<p class="muted">جارٍ التحميل…</p>'}
         ${methods.length ? `<h3 style="margin-top:6px">طرق الدفع</h3>${methods.map((m, i) => `<div class="sub-method"><div style="flex:1;min-width:0"><b>${esc(m.label)}</b>${m.holder ? `<div class="muted small">باسم ${esc(m.holder)}</div>` : ''}
           <div class="sub-number" dir="ltr">${esc(m.value)}</div></div><button class="btn sm" data-action="sub-copy" data-i="${i}">نسخ</button></div>`).join('')}` : ''}
