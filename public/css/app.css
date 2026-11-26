@@ -686,18 +686,20 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 /* ================================================================ الموقع التعريفي (site.js) */
 .st {
   --st-bg: #f6f3ea; --st-bg-2: #efebdf; --st-card: #fcfbf7; --st-line: #e4dfd1; --st-ink: #12302d; --st-soft: #55665f;
+  --st-display: "Alexandria", "Readex Pro", "IBM Plex Sans Arabic", Tahoma, sans-serif;
   --st-brand: #073c3c; --st-brand-2: #0b4a4a; --st-olive: #687b1b; --st-lime: #b4c83d; --st-gold: #8a6d1d;
-  min-height: 100%; background: var(--st-bg); color: var(--st-ink); overflow-x: clip; font-size: 17px;
+  min-height: 100%; background: var(--st-bg); color: var(--st-ink); overflow-x: clip; font-size: 17px; font-family: var(--font-body); line-height: 1.7;
   background-image: radial-gradient(1200px 600px at 85% -10%, rgb(180 200 61 / 14%), transparent 60%), radial-gradient(900px 500px at 0% 8%, rgb(11 74 74 / 8%), transparent 60%);
 }
-.st h1, .st h2, .st h3 { font-family: var(--font-display); color: var(--st-ink); text-wrap: balance; }
+.st h1, .st h2, .st h3 { font-family: var(--st-display); color: var(--st-ink); text-wrap: balance; letter-spacing: 0; }
+.st h3 { font-weight: 600; line-height: 1.45; }
 .st p { margin: 0; }
 .st-wrap { width: min(1200px, 100% - 48px); margin-inline: auto; }
 .st-narrow { width: min(860px, 100% - 48px); }
 .st .spacer { flex: 1; }
 
 /* أزرار */
-.st-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 999px; padding: 12px 24px; font-weight: 700; font-size: 1rem;
+.st-btn { font-family: var(--st-display); display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 999px; padding: 12px 24px; font-weight: 700; font-size: 1rem;
   border: 1px solid transparent; text-decoration: none; cursor: pointer; transition: transform .2s, box-shadow .2s, background .2s; white-space: nowrap; font-family: inherit; }
 .st-btn.lg { padding: 16px 32px; font-size: 1.08rem; }
 .st-btn.sm { padding: 9px 18px; font-size: .92rem; }
@@ -714,10 +716,10 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 /* الشريط العلوي */
 .st-nav { position: sticky; top: 0; z-index: 40; background: rgb(246 243 234 / 78%); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid rgb(228 223 209 / 70%); }
 .st-nav-in { display: flex; align-items: center; gap: 24px; height: 72px; }
-.st-logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--st-ink); font-family: var(--font-display); font-weight: 700; font-size: 1.25rem; }
+.st-logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--st-ink); font-family: var(--st-display); font-weight: 700; font-size: 1.25rem; }
 .st-logo .mark { width: 38px; height: 38px; }
 .st-links { display: flex; gap: 4px; margin-inline: auto; }
-.st-links button, .st-drawer button { background: none; border: 0; padding: 8px 14px; border-radius: 999px; color: var(--st-soft); font: 600 .95rem var(--font-body); cursor: pointer; }
+.st-links button, .st-drawer button { background: none; border: 0; padding: 8px 14px; border-radius: 999px; color: var(--st-soft); font: 500 .95rem var(--st-display); cursor: pointer; }
 .st-links button:hover { color: var(--st-ink); background: rgb(18 48 45 / 5%); }
 .st-nav-cta { display: flex; align-items: center; gap: 8px; }
 .st-burger { display: none; background: #fff; border: 1px solid var(--st-line); width: 42px; height: 42px; border-radius: 12px; align-items: center; justify-content: center; color: var(--st-ink); }
@@ -726,13 +728,14 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 /* البطل */
 .st-hero { padding: 88px 0 40px; text-align: center; }
 .st-pill { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--st-line); padding: 7px 16px; border-radius: 999px; color: var(--st-olive); font-weight: 700; font-size: .9rem; box-shadow: 0 4px 14px rgb(18 48 45 / 5%); }
-.st-hero h1 { font-size: clamp(2.6rem, 6.6vw, 5.4rem); line-height: 1.12; font-weight: 700; margin: 26px auto 0; letter-spacing: -.01em; }
+.st-hero h1 { font-size: clamp(2.5rem, 6.2vw, 5.1rem); line-height: 1.3; font-weight: 800; margin: 26px auto 0; }
+.st-hero h1 em { font-weight: 800; padding-block: .06em; }
 .st-hero h1 em { font-style: normal; background: linear-gradient(120deg, #0b4a4a 10%, #687b1b 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .st-lead { max-width: 60ch; margin: 24px auto 0 !important; color: var(--st-soft); font-size: 1.15rem; line-height: 1.9; }
 .st-cta-row { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 34px; }
 .st-stats { display: flex; justify-content: center; gap: clamp(28px, 7vw, 96px); margin: 46px 0 0; flex-wrap: wrap; }
 .st-stats div { min-width: 150px; }
-.st-stats dt { font-family: var(--font-display); font-weight: 700; font-size: 1.9rem; color: var(--st-gold); line-height: 1.2; }
+.st-stats dt { font-family: var(--st-display); font-weight: 700; font-size: 1.9rem; color: var(--st-gold); line-height: 1.2; }
 .st-stats dd { margin: 4px 0 0; color: var(--st-soft); font-size: .92rem; }
 .st-device-wrap { position: relative; width: min(980px, 100%); margin: 60px auto 0; }
 .st-device { background: #10201f; padding: clamp(8px, 1.4vw, 16px); border-radius: clamp(18px, 2.6vw, 34px); box-shadow: 0 40px 90px rgb(7 40 40 / 26%), 0 0 0 1px rgb(255 255 255 / 6%) inset; }
@@ -750,11 +753,11 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 
 /* يثقون بنا */
 .st-trusted { padding: 70px 0 20px; text-align: center; }
-.st-eyebrow { display: inline-flex; align-items: center; gap: 12px; color: var(--st-gold); font-weight: 700; font-size: .92rem; letter-spacing: .02em; }
+.st-eyebrow { display: inline-flex; align-items: center; gap: 12px; color: var(--st-gold); font-weight: 600; font-size: .95rem; font-family: var(--st-display); }
 .st-eyebrow span { width: 26px; height: 1px; background: currentColor; opacity: .5; }
 .st-logos { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 22px; }
 .st-logo-card { background: var(--st-card); border: 1px solid var(--st-line); border-radius: 18px; padding: 22px 16px; min-height: 96px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
-.st-logo-card b { font-family: var(--font-display); font-size: 1.15rem; letter-spacing: .02em; }
+.st-logo-card b { font-family: var(--st-display); font-size: 1.15rem; font-weight: 600; }
 .st-logo-card small { color: var(--st-soft); font-size: .82rem; }
 .st-logo-card.empty { border-style: dashed; border-color: #d6cfbb; background: transparent; }
 .st-logo-card.empty b { color: #9a917b; }
@@ -764,7 +767,7 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 .st-sec { padding: clamp(72px, 10vw, 120px) 0; scroll-margin-top: 72px; }
 .st-sec.alt { background: linear-gradient(180deg, rgb(239 235 223 / 0%), var(--st-bg-2) 18%, var(--st-bg-2) 82%, rgb(239 235 223 / 0%)); }
 .st-head { text-align: center; max-width: 760px; margin: 0 auto 48px; }
-.st-head h2 { font-size: clamp(2rem, 4.2vw, 3.1rem); line-height: 1.2; margin-top: 12px; font-weight: 700; }
+.st-head h2 { font-size: clamp(1.9rem, 4vw, 2.9rem); line-height: 1.35; margin-top: 12px; font-weight: 700; }
 .st-head p { color: var(--st-soft); margin-top: 14px !important; font-size: 1.08rem; line-height: 1.85; }
 .st-mod-ic { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: #eef3dd; color: var(--st-olive); border: 1px solid #dfe7bd; }
 
@@ -796,19 +799,19 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 
 /* من داخل البرنامج */
 .st-tabs { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; background: #fff; border: 1px solid var(--st-line); border-radius: 999px; padding: 6px; width: fit-content; max-width: 100%; margin: 0 auto 34px; }
-.st-tabs button { border: 0; background: none; padding: 9px 18px; border-radius: 999px; font: 600 .93rem var(--font-body); color: var(--st-soft); cursor: pointer; transition: background .2s, color .2s; }
+.st-tabs button { border: 0; background: none; padding: 9px 18px; border-radius: 999px; font: 500 .93rem var(--st-display); color: var(--st-soft); cursor: pointer; transition: background .2s, color .2s; }
 .st-tabs button.on { background: var(--st-brand); color: #fff; }
 .st-shot { margin: 0 auto; width: min(1000px, 100%); }
 .st-device.big img { animation: st-fade .45s ease both; }
 @keyframes st-fade { from { opacity: 0; transform: scale(.985); } }
 .st-shot figcaption { text-align: center; margin-top: 22px; display: flex; flex-direction: column; gap: 4px; }
-.st-shot figcaption b { font-family: var(--font-display); font-size: 1.25rem; }
+.st-shot figcaption b { font-family: var(--st-display); font-size: 1.25rem; }
 .st-shot figcaption span { color: var(--st-soft); }
 
 /* إبراز */
 .st-split { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
 .st-split.flip .st-split-text { order: 2; }
-.st-split-text h2 { font-size: clamp(1.9rem, 3.6vw, 2.8rem); line-height: 1.2; margin-top: 12px; font-weight: 700; }
+.st-split-text h2 { font-size: clamp(1.8rem, 3.4vw, 2.6rem); line-height: 1.35; margin-top: 12px; font-weight: 700; }
 .st-split-text > p { color: var(--st-soft); margin-top: 14px !important; line-height: 1.85; font-size: 1.06rem; }
 .st-checks { list-style: none; margin: 26px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .st-checks li { display: flex; gap: 14px; align-items: flex-start; background: var(--st-card); border: 1px solid var(--st-line); border-radius: 16px; padding: 14px 16px; }
@@ -824,7 +827,7 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 /* لماذا */
 .st-why { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
 .st-why article { position: relative; background: var(--st-card); border: 1px solid var(--st-line); border-radius: 22px; padding: 26px 20px; display: flex; flex-direction: column; gap: 10px; }
-.st-why .n { position: absolute; top: 18px; inset-inline-end: 20px; font-family: var(--font-display); font-weight: 700; color: #d9d2bd; font-size: 1.4rem; }
+.st-why .n { position: absolute; top: 18px; inset-inline-end: 20px; font-family: var(--st-display); font-weight: 700; color: #d9d2bd; font-size: 1.4rem; }
 .st-why h3 { font-size: 1.1rem; margin-top: 6px; }
 .st-why p { color: var(--st-soft); font-size: .92rem; line-height: 1.7; }
 .st-why-foot { text-align: center; margin-top: 26px !important; color: var(--st-olive); font-weight: 700; display: flex; justify-content: center; gap: 8px; align-items: center; }
@@ -844,7 +847,7 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 /* الأسعار */
 .st-seg-row { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-bottom: 34px; }
 .st-seg, .st-bill { display: inline-flex; background: #fff; border: 1px solid var(--st-line); border-radius: 999px; padding: 5px; gap: 4px; flex-wrap: wrap; justify-content: center; }
-.st-seg button, .st-bill button { border: 0; background: none; padding: 9px 20px; border-radius: 999px; font: 600 .95rem var(--font-body); color: var(--st-soft); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.st-seg button, .st-bill button { border: 0; background: none; padding: 9px 20px; border-radius: 999px; font: 600 .95rem var(--st-display); color: var(--st-soft); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
 .st-seg button.on { background: var(--st-brand); color: #fff; }
 .st-bill button.on { background: var(--st-bg-2); color: var(--st-ink); }
 .st-bill .save { background: #f3e7c6; color: var(--st-gold); font-size: .76rem; padding: 2px 8px; border-radius: 999px; }
@@ -855,7 +858,7 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 .st-plan .muted { color: var(--st-soft); font-size: .92rem; }
 .st-badge { position: absolute; top: -14px; inset-inline-start: 28px; background: var(--st-lime); color: #0a2c27; font-weight: 700; font-size: .8rem; padding: 5px 14px; border-radius: 999px; }
 .st-price { display: flex; align-items: baseline; gap: 10px; margin-top: 10px !important; flex-wrap: wrap; }
-.st-price b { font-family: var(--font-display); font-size: clamp(2.4rem, 5vw, 3.2rem); line-height: 1; color: var(--st-brand); font-variant-numeric: tabular-nums; }
+.st-price b { font-family: var(--st-display); font-size: clamp(2.4rem, 5vw, 3.2rem); line-height: 1; color: var(--st-brand); font-variant-numeric: tabular-nums; }
 .st-price b.custom { font-size: 2rem; color: var(--st-gold); }
 .st-price span { color: var(--st-soft); font-weight: 600; }
 .st-price-note { color: var(--st-olive); font-size: .9rem; font-weight: 600; min-height: 1.4em; }
@@ -876,7 +879,7 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 .st-final { text-align: center; background: radial-gradient(700px 300px at 50% 0%, rgb(180 200 61 / 22%), transparent 70%), linear-gradient(160deg, #073c3c, #0a2c27); color: #fff; border-radius: 32px; padding: clamp(48px, 7vw, 80px) 24px; }
 .st-final-mark { display: flex; justify-content: center; }
 .st-final-mark .mark { width: 56px; height: 56px; display: block; }
-.st-final h2 { color: #fff; font-size: clamp(2rem, 4.4vw, 3.2rem); margin-top: 16px; }
+.st-final h2 { color: #fff; font-size: clamp(2rem, 4.2vw, 3rem); line-height: 1.35; margin-top: 16px; }
 .st-final p { color: #c9dcd6; margin-top: 10px !important; font-size: 1.08rem; }
 .st-final .st-btn.dark { background: var(--st-lime); color: #0a2c27; }
 .st-foot-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 30px 4px 0; color: var(--st-soft); font-size: .92rem; }
@@ -894,7 +897,7 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 /* صفحة الحجز */
 .st-book-in { padding: clamp(40px, 7vw, 90px) 0 90px; }
 .st-book-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(28px, 6vw, 72px); align-items: start; }
-.st-book-side h1 { font-size: clamp(2.2rem, 4.6vw, 3.4rem); line-height: 1.15; margin-top: 12px; font-weight: 700; }
+.st-book-side h1 { font-size: clamp(2.1rem, 4.4vw, 3.2rem); line-height: 1.3; margin-top: 12px; font-weight: 700; }
 .st-book-side > p { color: var(--st-soft); margin-top: 14px !important; line-height: 1.9; font-size: 1.08rem; }
 .st-book-card { background: #fff; border: 1px solid var(--st-line); border-radius: 28px; padding: clamp(22px, 4vw, 36px); box-shadow: 0 30px 70px rgb(18 48 45 / 10%); }
 .st-form { display: flex; flex-direction: column; gap: 16px; }
