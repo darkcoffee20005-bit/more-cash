@@ -3,6 +3,7 @@ import { ROLES, permissionsOf } from '../../shared/perms.js';
 import { AppError, audit, bad, bool, conflict, getSettings, id as checkId, int, isDup, notFound, oneOf, out, requirePerm, str } from './core.js';
 import { normalizePin, pinLookup, randomToken, sha256, validPin } from './security.js';
 import { DEFAULT_SETTINGS, seedMenu } from './seed.js';
+import { loyaltyOf } from '../../shared/loyalty.js';
 
 const SESSION_HOURS = 12;
 const MAX_FAILS = 5;
@@ -189,7 +190,17 @@ export function createSettings(ctx) {
     if ('loyalty' in input) {
       const rateBp = input.loyalty?.rateBp;
       if (!Number.isInteger(rateBp) || rateBp < 0 || rateBp > 5000) throw bad('INVALID_NUMBER', 'loyalty.rateBp');
-      set.loyalty = { enabled: bool(input.loyalty.enabled), rateBp };
+      const cur = loyaltyOf(await getSettings(db));
+      const L = input.loyalty;
+      const tiers = L.tiers === undefined ? cur.tiers : (Array.isArray(L.tiers) && L.tiers.length <= 5 ? L.tiers : (() => { throw bad('INVALID_LIST', 'loyalty.tiers'); })()).map((t) => ({
+        id: checkId(t.id, 'loyalty.tiers.id'), name: str(t.name, { field: 'loyalty.tiers.name', min: 1, max: 20 }),
+        minSpent: int(t.minSpent, { field: 'loyalty.tiers.minSpent', min: 1, max: 1_000_000_000 }), bonusBp: int(t.bonusBp, { field: 'loyalty.tiers.bonusBp', min: 0, max: 20000 }),
+      }));
+      set.loyalty = {
+        enabled: bool(L.enabled), rateBp, tiers,
+        welcomePoints: L.welcomePoints === undefined ? cur.welcomePoints : int(L.welcomePoints, { field: 'loyalty.welcomePoints', min: 0, max: 1_000_000 }),
+        awayDays: L.awayDays === undefined ? cur.awayDays : int(L.awayDays, { field: 'loyalty.awayDays', min: 7, max: 365 }),
+      };
     }
     if ('paymentTypes' in input) {
       const list = input.paymentTypes;

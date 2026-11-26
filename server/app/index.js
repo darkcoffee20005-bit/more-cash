@@ -58,12 +58,13 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
 
     ['GET', '/api/kds', (actor) => sales.kdsList(actor)],
     ['POST', '/api/kds/:id/advance', (actor, req, p) => sales.kdsAdvance(actor, p.id, req.body)],
+    ['POST', '/api/kds/:id/urgent', (actor, req, p) => sales.kdsUrgent(actor, p.id, req.body)],
 
     ['GET', '/api/tickets', (actor) => sales.listTickets(actor)],
     ['POST', '/api/tickets', (actor, req) => sales.saveTicket(actor, req.body)],
     ['DELETE', '/api/tickets/:id', (actor, req, p) => sales.deleteTicket(actor, p.id)],
 
-    ['GET', '/api/customers', (actor, req) => sales.listCustomers(actor, { search: req.query.search ?? '' })],
+    ['GET', '/api/customers', (actor, req) => sales.listCustomers(actor, { search: req.query.search ?? '', away: req.query.away })],
     ['GET', '/api/customers/:id', (actor, req, p) => sales.getCustomer(actor, p.id)],
     ['POST', '/api/customers', (actor, req) => sales.saveCustomer(actor, req.body)],
 

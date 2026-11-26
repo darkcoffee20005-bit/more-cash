@@ -1,5 +1,6 @@
 // شاشة البيع: الأصناف ← التذكرة ← الدفع. الحساب للعرض بنفس كود الخادم (shared/calc.js).
 import { calculateTicket, unitPrice } from '../../../shared/calc.js';
+import { loyaltyOf, nextTier, tierOf } from '../../../shared/loyalty.js';
 import { esc, money, parseAmount, pct, time } from '../../../shared/format.js';
 import { del, get, post, uid } from '../api.js';
 import { icon } from '../icons.js';
@@ -310,6 +311,14 @@ function ticketPane(s) {
 }
 
 // ---------------------------------------------------------------- النوافذ
+/** مستوى الزبون وما يبقى للترقية (من إعدادات الولاء) */
+function tierInfo(s, c) {
+  const L = loyaltyOf(s.settings);
+  const t = tierOf(c.totalSpent ?? 0, L.tiers);
+  const n = nextTier(c.totalSpent ?? 0, L.tiers);
+  return { pill: `<span class="pill tier-${esc(t.id)}">${esc(t.name)}${t.bonusBp ? ` +${t.bonusBp / 100}%` : ''}</span>`, next: n ? ` · باقي ${money(n.remaining)} للمستوى ${esc(n.tier.name)}` : '' };
+}
+
 export const modals = {
   item(s) {
     const m = s.modal;
@@ -382,10 +391,10 @@ export const modals = {
     const current = cart.customer;
     const list = (m.results ?? []).map((c) => `<tr class="click" data-action="customer-pick" data-id="${c.id}">
       <td><b>${esc(c.name)}</b><div class="muted small">${esc(c.phone ?? '')}</div></td>
-      <td class="num">${c.visits} زيارة</td><td class="num">${loyalty ? `${c.points} نقطة` : ''}</td></tr>`).join('');
+      <td class="num">${c.visits} زيارة</td><td>${loyalty ? tierInfo(s, c).pill : ''}</td><td class="num">${loyalty ? `${c.points} نقطة` : ''}</td></tr>`).join('');
     const body = current ? `
       <div class="card pad row wrap"><div class="avatar">${esc(current.name.slice(0, 1))}</div>
-        <div><b>${esc(current.name)}</b><div class="muted small">${current.points} نقطة متاحة</div></div><span class="spacer"></span>
+        <div><b>${esc(current.name)}</b> ${loyalty ? tierInfo(s, current).pill : ''}<div class="muted small">${current.points} نقطة متاحة${loyalty ? tierInfo(s, current).next : ''}</div></div><span class="spacer"></span>
         <button class="btn sm danger" data-action="customer-remove">إزالة</button></div>
       ${loyalty && current.points > 0 ? `<form class="stack" data-form="customer-points">
         ${field('استبدال نقاط (1 نقطة = 1 د.ع)', `<input class="amount-input" name="points" id="cust-points" inputmode="numeric" value="${cart.pointsRedeemed || ''}" placeholder="0">`, `بحد أقصى ${Math.min(current.points, cartTotals({ ...cart, pointsRedeemed: 0 }).net)} نقطة`)}

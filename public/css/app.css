@@ -967,3 +967,70 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 .pf-funnel .bar i { display: block; height: 100%; border-radius: inherit; background: var(--olive-grad); min-width: 4px; }
 .pf-funnel b { text-align: end; font-variant-numeric: tabular-nums; }
 .pf-todo > svg:last-child { transform: scaleX(-1); color: var(--muted); flex: none; }
+
+/* ================================================================ شاشة التحضير (kd-*) */
+.kd { height: 100%; display: flex; flex-direction: column; gap: 16px; padding: 18px 20px 14px; overflow: auto; background: #f6f2ea; }
+.kd-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; background: #fff; border-radius: 22px; padding: 12px 18px; box-shadow: var(--shadow-1); }
+.kd-head h1 { font-size: 1.5rem; color: var(--heading); margin-inline-end: auto; }
+.kd-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.kd-chips button { border: 1px solid var(--line); background: #fff; color: var(--ink-2); border-radius: 999px; padding: 9px 16px; font: 600 .95rem var(--font-body); display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+.kd-chips button b { font-variant-numeric: tabular-nums; }
+.kd-chips button.urgent { color: #8a5a00; border-color: #ecd6a6; }
+.kd-chips button.late { color: var(--bad); border-color: #efc7c1; }
+.kd-chips button.on { background: #1f4a3d; border-color: #1f4a3d; color: #fff; }
+.kd-chips button.on b { background: rgb(255 255 255 / 18%); padding: 1px 9px; border-radius: 999px; }
+.kd-grid { display: grid; grid-template-columns: repeat(min(var(--per), 99), minmax(0, 1fr)); gap: 18px; align-items: stretch; flex: 1; min-height: 0; }
+.kd-card { background: #fff; border-radius: 22px; box-shadow: 0 6px 20px rgb(60 40 10 / 8%); display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.kd-card header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; color: #fff; background: #2f7a55; }
+.kd-card header b { font-family: var(--font-display); font-size: 1.15rem; margin-inline-end: auto; }
+.kd-card.late header { background: #a5463b; }
+.kd-card.urgent header { background: #a37a2c; }
+.kd-card.preparing header { background: #1f5f63; }
+.kd-card.ready header { background: var(--olive-grad); }
+.kd-card.done header { background: #8a958f; }
+.kd-flag { background: rgb(255 255 255 / 20%); border-radius: 999px; padding: 3px 10px; font-size: .82rem; display: inline-flex; gap: 4px; align-items: center; }
+.kd-time { display: inline-flex; gap: 5px; align-items: center; font-variant-numeric: tabular-nums; font-size: .92rem; }
+.kd-sub { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #efe9dd; font-weight: 600; }
+.kd-sub span:first-child { display: inline-flex; gap: 6px; align-items: center; }
+.kd-state { font-size: .88rem; color: var(--muted); }
+.kd-card.late .kd-state { color: var(--bad); }
+.kd-card.urgent .kd-state { color: #8a5a00; }
+.kd-who { padding: 8px 16px 0; color: var(--ink-2); font-size: .9rem; display: flex; gap: 6px; align-items: center; }
+.kd-lines { list-style: none; margin: 0; padding: 6px 16px; display: flex; flex-direction: column; flex: 1; overflow: auto; }
+.kd-lines > li { padding: 12px 0; border-bottom: 1px solid #f0ebe1; display: flex; flex-direction: column; gap: 8px; }
+.kd-lines > li:last-child { border-bottom: 0; }
+.kd-lines > li.void { opacity: .45; text-decoration: line-through; }
+.kd-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.kd-line b { font-family: var(--font-display); font-size: 1.12rem; }
+.kd-line small { font-weight: 500; color: var(--muted); font-size: .85rem; }
+.kd-qty { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.kd-box { border-radius: 14px; padding: 10px 12px; background: #f4f5f2; }
+.kd-box.note { background: #fbf3e4; }
+.kd-tag { display: inline-block; font-size: .75rem; font-weight: 700; background: #e7ebe6; color: var(--ink-2); padding: 2px 9px; border-radius: 8px; margin-bottom: 6px; }
+.kd-box.note .kd-tag { background: #f1dfbd; color: #7a5510; }
+.kd-box ul { list-style: disc; margin: 0; padding-inline-start: 18px; color: var(--ink-2); font-size: .92rem; line-height: 1.7; }
+.kd-card footer { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.kd-go { width: 100%; border: 0; border-radius: 16px; padding: 16px; background: #1f4a3d; color: #fff; font: 700 1.15rem var(--font-display); cursor: pointer; }
+.kd-card.ready .kd-go { background: var(--olive-grad); }
+.kd-go:active { transform: scale(.99); }
+.kd-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.kd-tools .icon-btn.on { background: #f3e4c3; color: #8a5a00; }
+.kd-pager { display: flex; justify-content: center; align-items: center; gap: 14px; }
+.kd-pager span { background: #fff; border-radius: 999px; padding: 8px 20px; font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: var(--shadow-1); }
+.kd-pager .icon-btn { background: #1f4a3d; color: #fff; border-radius: 50%; width: 44px; height: 44px; }
+.kd-pager .icon-btn:disabled { background: #e3e6e1; color: #9aa39d; }
+@media (max-width: 600px) { .kd { padding: 12px; } .kd-grid { grid-template-columns: 1fr; } .kd-head h1 { font-size: 1.2rem; } }
+.kd-card header { flex-wrap: nowrap; white-space: nowrap; }
+.kd-card header b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.kd-time { font-size: .85rem; }
+.kd-chips button { white-space: nowrap; }
+.kd-tools { flex-wrap: nowrap; justify-content: space-between; }
+.kd-tools .btn { flex: 1; }
+.kd-tools .icon-btn.danger { color: var(--bad); }
+.kd-chips button { flex: none; flex-direction: row; }
+.kd-sub .kd-flag { background: #f3e4c3; color: #8a5a00; margin-inline-start: auto; margin-inline-end: 10px; }
+.kd-qty { direction: ltr; unicode-bidi: isolate; }
+.pill.tier-bronze { background: #f3e6da; color: #85532c; }
+.pill.tier-silver { background: #e9edf0; color: #4b5a66; }
+.pill.tier-gold { background: #f7ebc4; color: #7a5a06; }
+.pill.tier-diamond { background: #e2f0f4; color: #1f5f73; }

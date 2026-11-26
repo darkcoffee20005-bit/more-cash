@@ -212,6 +212,9 @@ export function bindEvents(root) {
     const el = e.target.closest('[data-action]');
     if (!el || el.disabled) return;
     if (el.dataset.action === 'modal-back' && e.target !== el) return;
+    // رابط داخل عنصر قابل للنقر (مثل واتساب داخل صف): يفتح الرابط ولا يشغّل إجراء الصف
+    const link = e.target.closest('a[href]');
+    if (link && link !== el && el.contains(link)) return;
     e.preventDefault();
     run(el.dataset.action, el, e);
   });

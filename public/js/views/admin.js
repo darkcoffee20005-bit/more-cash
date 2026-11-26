@@ -1,5 +1,6 @@
 // لوحة الإدارة (Back Office): المتابعة، التقارير، الأصناف، التصنيفات، الإضافات، الخصومات، المخزون، الموظفون، الورديات، الإعدادات.
 import { formatMilli } from '../../../shared/calc.js';
+import { loyaltyOf } from '../../../shared/loyalty.js';
 import { dateTime, esc, localDate, money, parseAmount, pct, time } from '../../../shared/format.js';
 import { ROLES } from '../../../shared/perms.js';
 import { del, get, post, put, uid } from '../api.js';
@@ -359,7 +360,21 @@ const PAGES = {
             <label class="check"><input type="checkbox" name="loyaltyEnabled" ${st.loyalty.enabled ? 'checked' : ''}> برنامج النقاط</label>
             ${field('نسبة النقاط %', `<input name="loyaltyRate" id="st-loyalty" inputmode="decimal" value="${st.loyalty.rateBp / 100}">`, 'من المبلغ المدفوع. 1 نقطة = 1 د.ع عند الاستبدال')}
             ${field('تنبيه فرق الصندوق (د.ع)', `<input name="cashVarianceAlert" id="st-var" inputmode="numeric" value="${st.cashVarianceAlert}">`, 'فوقه تُطلب ملاحظة عند الإغلاق')}
-          </div></section>
+          </div>
+          ${(() => {
+            const L = loyaltyOf(st);
+            const tiers = [...L.tiers, ...Array(Math.max(0, 2 - L.tiers.length)).fill(null)].slice(0, 3);
+            return `<h3 style="margin-top:6px">مستويات الولاء</h3>
+          <p class="muted small" style="margin:0">الزبون يترقّى وحده حسب إجمالي صرفه، وكل مستوى يزيد نقاطه بنسبة. المستوى الأول «برونزي» للجميع.</p>
+          <div class="grid-3">
+            ${field('نقاط الترحيب', `<input name="welcomePoints" id="st-welcome" inputmode="numeric" value="${L.welcomePoints}">`, 'تنضاف للزبون الجديد أول تسجيل')}
+            ${field('الغياب بعد (يوم)', `<input name="awayDays" id="st-away" inputmode="numeric" value="${L.awayDays}">`, 'قائمة «الغائبون» في صفحة العملاء')}
+          </div>
+          ${tiers.map((t, i) => `<div class="grid-3">
+            ${field(`المستوى ${i + 2}`, `<input name="tier_name_${i}" id="st-tier-n-${i}" maxlength="20" value="${esc(t?.name ?? '')}" placeholder="${['فضي', 'ذهبي', 'ماسي'][i]}">`)}
+            ${field('من صرف (د.ع)', `<input name="tier_min_${i}" id="st-tier-m-${i}" inputmode="numeric" value="${t?.minSpent ?? ''}" placeholder="${[150000, 500000, 1500000][i]}">`)}
+            ${field('زيادة النقاط %', `<input name="tier_bonus_${i}" id="st-tier-b-${i}" inputmode="decimal" value="${t ? t.bonusBp / 100 : ''}" placeholder="${[25, 50, 100][i]}">`)}</div>`).join('')}`;
+          })()}</section>
         <section class="card pad stack"><h2>طرق الدفع</h2>
           ${st.paymentTypes.map((p, i) => `<div class="row wrap"><input name="pt_name_${i}" id="pt-name-${i}" value="${esc(p.name)}" style="flex:1;min-width:140px" aria-label="اسم طريقة الدفع">
             <select name="pt_kind_${i}" id="pt-kind-${i}" style="width:auto" aria-label="النوع"><option value="cash" ${p.kind === 'cash' ? 'selected' : ''}>نقد (يدخل الدرج)</option><option value="card" ${p.kind === 'card' ? 'selected' : ''}>بطاقة</option><option value="other" ${p.kind === 'other' ? 'selected' : ''}>محفظة/أخرى</option></select>
@@ -1168,7 +1183,14 @@ on({
       name: d.name, address: d.address, phone: d.phone, reportPhone: d.reportPhone ?? '',
       receipt: { header: d.header, footer: d.footer, showCustomer: d.showCustomer },
       tax: { mode: d.taxMode, rateBp: d.taxMode === 'none' ? 0 : percentToBp(d.taxRate), name: d.taxName || 'ضريبة' },
-      loyalty: { enabled: d.loyaltyEnabled, rateBp: percentToBp(d.loyaltyRate) },
+      loyalty: {
+        enabled: d.loyaltyEnabled, rateBp: percentToBp(d.loyaltyRate),
+        welcomePoints: num(d.welcomePoints || '0', 'نقاط الترحيب'), awayDays: num(d.awayDays || '30', 'أيام الغياب'),
+        tiers: [0, 1, 2].filter((i) => String(d[`tier_name_${i}`] ?? '').trim()).map((i) => ({
+          id: ['silver', 'gold', 'diamond'][i], name: d[`tier_name_${i}`].trim(),
+          minSpent: num(d[`tier_min_${i}`], `حد المستوى ${i + 2}`), bonusBp: percentToBp(d[`tier_bonus_${i}`] || '0'),
+        })),
+      },
       cashVarianceAlert: num(d.cashVarianceAlert, 'تنبيه الفرق'),
       paymentTypes: st.paymentTypes.map((p, i) => ({ id: p.id, name: d[`pt_name_${i}`], kind: d[`pt_kind_${i}`], active: d[`pt_active_${i}`] })),
       diningOptions: names.map((n, i) => ({ id: st.diningOptions.find((x) => x.name === n)?.id ?? `d${i}${Date.now().toString(36)}`, name: n })),

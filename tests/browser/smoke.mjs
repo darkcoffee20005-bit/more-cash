@@ -115,11 +115,11 @@ try {
   await page.waitForLoadState('networkidle');
 
   await page.goto(`http://127.0.0.1:${PORT}/#/kds`);
-  await page.waitForSelector('.kds-card');
+  await page.waitForSelector('.kd-card');
   // إلغاء من شاشة التحضير: السبب إلزامي، وزر التنفيذ يُظهر المبلغ المسترجع
   {
-    const before = await page.locator('.kds-card').count();
-    await page.click('.kds-card >> nth=0 >> [data-action="kds-cancel"]');
+    const before = await page.locator('.kd-card').count();
+    await page.click('.kd-card >> nth=0 >> [data-action="kds-cancel"]');
     await page.waitForSelector('form[data-form="kds-cancel-submit"]');
     if (!(await page.isDisabled('button[form="kds-cancel-form"]'))) errors.push('kds cancel allowed without a reason');
     await page.click('[data-action="kds-cancel-reason"] >> nth=0');
@@ -130,9 +130,17 @@ try {
     await shot('08a-kds-cancel');
     await page.click('button[form="kds-cancel-form"]');
     await page.waitForSelector('.toast.ok:has-text("أُلغي")');
-    await page.waitForFunction((n) => document.querySelectorAll('.kds-card').length === n - 1, before).catch(() => errors.push('cancelled order still on KDS'));
+    await page.waitForFunction((n) => document.querySelectorAll('.kd-card').length === n - 1, before).catch(() => errors.push('cancelled order still on KDS'));
   }
   await shot('08-kds');
+  // «جاهز» بلمسة: من جديد إلى جاهز للتسليم، ثم «تم التسليم» يخرجه من القائمة
+  if (await page.locator('.kd-card').count()) {
+    const n = await page.locator('.kd-card').count();
+    await page.click('.kd-card >> nth=0 >> .kd-go');
+    await page.waitForSelector('.kd-card.ready .kd-go:has-text("تم التسليم")').catch(() => errors.push('KDS ready button did not move the order to ready'));
+    await page.click('.kd-card.ready >> nth=0 >> .kd-go');
+    await page.waitForFunction((x) => document.querySelectorAll('.kd-card').length === x - 1, n).catch(() => errors.push('served order still on KDS'));
+  }
   await page.goto(`http://127.0.0.1:${PORT}/#/receipts`);
   await page.waitForSelector('tr.click');
   await page.waitForSelector('tr.click .pill.bad:has-text("ملغى")').catch(() => errors.push('cancelled sale not marked in receipts list'));

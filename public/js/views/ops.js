@@ -5,40 +5,68 @@ import { icon } from '../icons.js';
 import { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } from '../ui.js';
 import { printHtml } from './receipts.js';
 import { openCancel } from './cancel.js';
+import { loyaltyOf, nextTier, tierOf } from '../../../shared/loyalty.js';
 
 const PREP = { new: ['جديد', 'بدء التحضير'], preparing: ['قيد التحضير', 'جاهز'], ready: ['جاهز للتسليم', 'تم التسليم'] };
 const LATE_MIN = 8;
+/** عدد البطاقات بالصفحة حسب عرض الشاشة (بلا تمرير على الآيباد) */
+const kdsPerPage = () => { const w = globalThis.innerWidth ?? 1366; return w >= 1600 ? 5 : w >= 1180 ? 4 : w >= 860 ? 3 : w >= 600 ? 2 : 99; };
 let kdsTimer = null;
 
 export const routes = {
   kds(s) {
     const all = s.view.kds;
-    const list = all?.filter((o) => o.prep.status !== 'served');
-    const served = (all ?? []).filter((o) => o.prep.status === 'served');
     const tz = s.settings?.tzOffsetMin ?? 180;
-    const counts = { new: 0, preparing: 0, ready: 0 };
-    for (const o of list ?? []) counts[o.prep.status] += 1;
     const canCancel = can('pos.cancel') || can('pos.refund');
-    const cards = (list ?? []).map((o) => {
-      const mins = Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000);
-      const late = o.prep.status !== 'ready' && mins >= LATE_MIN;
-      return `<article class="kds-card ${o.prep.status} ${late ? 'late' : ''}">
-        <header><b class="num">#${o.number}</b><span>${esc(o.diningOption ?? '')}</span><span class="spacer"></span><span class="num small">${time(o.createdAt, tz)} · ${mins} د</span></header>
-        ${o.customerName || o.ticketName ? `<div class="who small">${esc(o.ticketName ?? o.customerName)}</div>` : ''}
-        <ul>${o.lines.map((l) => `<li class="${l.refundedQty >= l.qty ? 'void' : ''}"><b class="num">${l.qty}×</b><div><b>${esc(l.name)}</b> ${esc(l.variant ?? '')}
-          ${l.modifiers.length ? `<div class="muted small">${l.modifiers.map(esc).join(' · ')}</div>` : ''}${l.note ? `<div class="small" style="color:var(--warn)">✎ ${esc(l.note)}</div>` : ''}</div></li>`).join('')}</ul>
-        <div class="kds-actions"><button class="btn ${o.prep.status === 'ready' ? 'primary' : 'olive'}" data-action="kds-advance" data-id="${o.id}" data-from="${o.prep.status}">${PREP[o.prep.status][1]}</button>
-          ${canCancel && o.lines.some((l) => l.refundedQty < l.qty) ? `<button class="btn danger" data-action="kds-cancel" data-id="${o.id}" aria-label="إلغاء أو استرجاع الطلب #${o.number}">${icon('refund', 'sm')} إلغاء</button>` : ''}</div>
+    if (all === undefined) return '<div class="page"><p class="muted">جارٍ التحميل…</p></div>';
+    const nowMs = Date.now();
+    const orders = all.map((o) => {
+      const mins = Math.floor((nowMs - new Date(o.createdAt).getTime()) / 60000);
+      const done = o.prep.status === 'served';
+      const late = !done && o.prep.status !== 'ready' && mins >= LATE_MIN;
+      return { ...o, mins, done, late, urgent: !done && !!o.prep.urgent };
+    });
+    const active = orders.filter((o) => !o.done);
+    const counts = { all: active.length, urgent: active.filter((o) => o.urgent).length, late: active.filter((o) => o.late).length,
+      new: active.filter((o) => o.prep.status === 'new').length, done: orders.filter((o) => o.done).length };
+    const f = s.view.kdsFilter ?? 'all';
+    const pick = { all: active, urgent: active.filter((o) => o.urgent), late: active.filter((o) => o.late), new: active.filter((o) => o.prep.status === 'new'), done: orders.filter((o) => o.done) }[f] ?? active;
+    // العاجل أولاً، ثم المتأخر، ثم الأقدم
+    const list = f === 'done' ? pick : [...pick].sort((a, b) => (b.urgent - a.urgent) || (b.late - a.late) || (new Date(a.createdAt) - new Date(b.createdAt)));
+    const per = kdsPerPage();
+    const pages = Math.max(1, Math.ceil(list.length / per));
+    const page = Math.min(s.view.kdsPage ?? 0, pages - 1);
+    const shown = list.slice(page * per, page * per + per);
+    const CHIPS = [['all', 'جميع الطلبات'], ['urgent', 'عاجل'], ['late', 'متأخر'], ['new', 'جديد'], ['done', 'مكتمل']];
+    const card = (o) => {
+      const tone = o.done ? 'done' : o.late ? 'late' : o.urgent ? 'urgent' : o.prep.status;
+      const where = o.ticketName ? ['table', o.ticketName] : [o.diningOptionId === 'takeaway' ? 'sale' : o.diningOptionId === 'delivery' ? 'arrow' : 'cup', o.diningOption ?? ''];
+      const state = o.done ? 'سُلّم' : o.late ? 'متأخر' : PREP[o.prep.status][0];
+      const action = o.done ? '' : o.prep.status === 'ready'
+        ? `<button class="kd-go" data-action="kds-advance" data-id="${o.id}" data-from="ready" data-to="served">تم التسليم</button>`
+        : `<button class="kd-go" data-action="kds-advance" data-id="${o.id}" data-from="${o.prep.status}" data-to="ready">جاهز</button>`;
+      return `<article class="kd-card ${tone}">
+        <header><b>رقم #${o.number}</b><span class="kd-time">${icon('clock', 'sm')} ${time(o.createdAt, tz)}${o.done ? '' : ` · ${o.mins} د`}</span></header>
+        <div class="kd-sub"><span>${icon(where[0], 'sm')} ${esc(where[1])}</span>${o.urgent ? `<span class="kd-flag">${icon('bolt', 'sm')} عاجل</span>` : ''}<span class="kd-state">${state}</span></div>
+        ${o.customerName ? `<div class="kd-who">${icon('user', 'sm')} ${esc(o.customerName)}</div>` : ''}
+        <ul class="kd-lines">${o.lines.map((l) => `<li class="${l.refundedQty >= l.qty ? 'void' : ''}">
+          <div class="kd-line"><b>${esc(l.name)}${l.variant ? ` <small>${esc(l.variant)}</small>` : ''}</b><span class="kd-qty">×${l.qty}</span></div>
+          ${l.modifiers.length ? `<div class="kd-box add"><span class="kd-tag">إضافة</span><ul>${l.modifiers.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>` : ''}
+          ${l.note ? `<div class="kd-box note"><span class="kd-tag">ملاحظة</span><ul><li>${esc(l.note)}</li></ul></div>` : ''}</li>`).join('')}</ul>
+        <footer>${action}
+          <div class="kd-tools">${o.done ? '' : `<button class="icon-btn ${o.urgent ? 'on' : ''}" data-action="kds-urgent" data-id="${o.id}" data-v="${o.urgent ? '0' : '1'}" aria-label="${o.urgent ? 'إلغاء العاجل' : 'تعليم كعاجل'}" title="عاجل">${icon('bolt', 'sm')}</button>`}
+          ${o.prep.status === 'new' ? `<button class="btn sm" data-action="kds-advance" data-id="${o.id}" data-from="new" data-to="preparing">بدء التحضير</button>` : ''}
+          ${canCancel && o.lines.some((l) => l.refundedQty < l.qty) ? `<button class="icon-btn danger" data-action="kds-cancel" data-id="${o.id}" aria-label="إلغاء الطلب #${o.number}" title="إلغاء">${icon('refund', 'sm')}</button>` : ''}</div></footer>
       </article>`;
-    }).join('');
-    return `<div class="page" style="max-width:none">
-      <div class="page-head"><h1>التحضير</h1>
-        <span class="pill petrol">جديد ${counts.new}</span><span class="pill olive">قيد التحضير ${counts.preparing}</span><span class="pill ok">جاهز ${counts.ready}</span>
-        <button class="btn sm" data-action="kds-refresh">${icon('clock', 'sm')} تحديث</button></div>
-      ${list === undefined ? '<p class="muted">جارٍ التحميل…</p>' : list.length ? `<div class="kds">${cards}</div>` : `<div class="card empty">${icon('cup')}<h2>لا طلبات قيد التحضير</h2><p>تظهر الطلبات هنا فور الدفع، وتتحدث كل 10 ثوانٍ.</p></div>`}
-      ${served.length && canCancel ? `<section class="kds-served"><h3 class="small muted">سُلّم مؤخراً — ألغِ الطلب إن لم يستلمه الزبون</h3>
-        <div class="row wrap" style="gap:8px">${served.map((o) => `<div class="served-chip"><b class="num">#${o.number}</b><span class="small muted">${time(o.createdAt, tz)} · ${o.lines.reduce((a, l) => a + l.qty - l.refundedQty, 0)} صنف</span>
-          <button class="btn sm danger" data-action="kds-cancel" data-id="${o.id}" aria-label="إلغاء الطلب #${o.number}">${icon('refund', 'sm')} إلغاء</button></div>`).join('')}</div></section>` : ''}
+    };
+    return `<div class="kd">
+      <div class="kd-head"><h1>شاشة التحضير</h1>
+        <div class="kd-chips">${CHIPS.map(([k, t]) => `<button class="${f === k ? 'on' : ''} ${k}" data-action="kds-filter" data-k="${k}">${t} <b>${counts[k]}</b></button>`).join('')}</div>
+        <button class="icon-btn" data-action="kds-refresh" aria-label="تحديث">${icon('clock', 'sm')}</button></div>
+      ${shown.length ? `<div class="kd-grid" style="--per:${per}">${shown.map(card).join('')}</div>`
+        : `<div class="card empty">${icon('cup')}<h2>${f === 'all' ? 'لا طلبات قيد التحضير' : 'لا طلبات هنا'}</h2><p>تظهر الطلبات هنا فور الدفع، وتتحدث كل 10 ثوانٍ.</p></div>`}
+      ${pages > 1 ? `<nav class="kd-pager" aria-label="صفحات الطلبات"><button class="icon-btn" data-action="kds-page" data-d="-1" ${page === 0 ? 'disabled' : ''} aria-label="السابق">${icon('arrow', 'sm')}</button>
+        <span>${page + 1} / ${pages}</span><button class="icon-btn" data-action="kds-page" data-d="1" ${page >= pages - 1 ? 'disabled' : ''} aria-label="التالي">${icon('back', 'sm')}</button></nav>` : ''}
     </div>`;
   },
 
@@ -85,16 +113,29 @@ export const routes = {
 
   customers(s) {
     const v = s.view.customers ?? {};
-    const loyalty = s.settings?.loyalty?.enabled;
+    const L = loyaltyOf(s.settings);
+    const loyalty = L.enabled;
     const tz = s.settings?.tzOffsetMin ?? 180;
+    const away = !!v.away;
+    const days = (d) => (d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400_000) : null);
+    // رسالة ترجّع الزبون الغائب: باسمه ونقاطه (رقم عراقي 07… يصير 9647…)
+    const wa = (c) => {
+      const n = String(c.phone ?? '').replace(/\D/g, '').replace(/^0/, '964');
+      const msg = `هلا ${c.name}، اشتاقينالك بـ${s.settings?.name ?? 'مقهانا'} ☕${loyalty && c.points ? ` عندك ${c.points} نقطة تنتظرك، تگدر تستبدلها بزيارتك الجاية.` : ''} نشوفك قريب!`;
+      return n.length >= 10 ? `https://wa.me/${n}?text=${encodeURIComponent(msg)}` : null;
+    };
+    const tierPill = (c) => { const t = tierOf(c.totalSpent, L.tiers); return `<span class="pill tier-${esc(t.id)}">${esc(t.name)}</span>`; };
     return `<div class="page">
       <div class="page-head"><h1>العملاء</h1><button class="btn primary" data-action="customer-new">${icon('plus', 'sm')} عميل جديد</button></div>
-      <div class="toolbar"><input type="search" id="cu-search" placeholder="ابحث بالاسم أو الهاتف" value="${esc(v.search ?? '')}" data-input="customers-search" autocomplete="off"></div>
+      <div class="toolbar"><div class="seg"><button class="${away ? '' : 'on'}" data-action="customers-away" data-v="0">الكل</button><button class="${away ? 'on' : ''}" data-action="customers-away" data-v="1">الغائبون (${L.awayDays} يوم+)</button></div>
+        ${away ? '' : `<input type="search" id="cu-search" placeholder="ابحث بالاسم أو الهاتف" value="${esc(v.search ?? '')}" data-input="customers-search" autocomplete="off">`}</div>
+      ${away ? `<p class="muted small" style="margin:0">زبائن زاروا من قبل وما رجعوا من ${L.awayDays} يوم أو أكثر. أرسل لهم رسالة واتساب ترجّعهم${loyalty ? ' وتذكّرهم بنقاطهم' : ''}.</p>` : ''}
       <div class="table-wrap"><table>
-        <thead><tr><th>العميل</th><th>الهاتف</th><th class="num">الزيارات</th><th class="num">إجمالي الإنفاق</th>${loyalty ? '<th class="num">النقاط</th>' : ''}<th>آخر زيارة</th></tr></thead>
+        <thead><tr><th>العميل</th><th>الهاتف</th><th class="num">الزيارات</th><th class="num">إجمالي الإنفاق</th>${loyalty ? '<th>المستوى</th><th class="num">النقاط</th>' : ''}<th>آخر زيارة</th>${away ? '<th></th>' : ''}</tr></thead>
         <tbody>${(v.list ?? []).map((c) => `<tr class="click" data-action="customer-edit" data-id="${c.id}"><td><b>${esc(c.name)}</b>${c.note ? `<div class="muted small">${esc(c.note)}</div>` : ''}</td>
           <td dir="ltr" style="text-align:end">${esc(c.phone ?? '')}</td><td class="num">${c.visits}</td><td class="num">${money(c.totalSpent)}</td>
-          ${loyalty ? `<td class="num"><span class="pill olive">${c.points}</span></td>` : ''}<td class="muted small">${c.lastVisitAt ? dateTime(c.lastVisitAt, tz) : '—'}</td></tr>`).join('')
+          ${loyalty ? `<td>${tierPill(c)}</td><td class="num"><span class="pill olive">${c.points}</span></td>` : ''}<td class="muted small">${c.lastVisitAt ? `${dateTime(c.lastVisitAt, tz)}${away ? `<div>قبل ${days(c.lastVisitAt)} يوم</div>` : ''}` : '—'}</td>
+          ${away ? `<td>${wa(c) ? `<a class="btn sm" href="${wa(c)}" target="_blank" rel="noopener" data-stop>${icon('chat', 'sm')} واتساب</a>` : ''}</td>` : ''}</tr>`).join('')
           || `<tr><td colspan="6"><div class="empty">${icon('users')}<p>${v.list ? 'لا عملاء مطابقين' : 'جارٍ التحميل…'}</p></div></td></tr>`}</tbody>
       </table></div>
     </div>`;
@@ -183,7 +224,11 @@ export async function enter() {
 }
 
 async function loadKds() { state.view.kds = await get('/api/kds'); render(); }
-async function loadCustomers() { state.view.customers.list = await get('/api/customers', { search: state.view.customers.search }); render(); }
+async function loadCustomers() {
+  const v = state.view.customers;
+  v.list = await get('/api/customers', v.away ? { away: '1' } : { search: v.search });
+  render();
+}
 
 on({
   'kds-refresh': () => loadKds().catch(fail),
@@ -191,8 +236,11 @@ on({
     const o = (state.view.kds ?? []).find((x) => x.id === el.dataset.id);
     if (o) openCancel(o, { source: 'kds', after: loadKds });
   },
+  'kds-filter': (el) => { state.view.kdsFilter = el.dataset.k; state.view.kdsPage = 0; render(); },
+  'kds-page': (el) => { state.view.kdsPage = Math.max(0, (state.view.kdsPage ?? 0) + Number(el.dataset.d)); render(); },
+  'kds-urgent': (el) => busy(async () => { await post(`/api/kds/${el.dataset.id}/urgent`, { urgent: el.dataset.v === '1' }); await loadKds(); }),
   'kds-advance': (el) => busy(async () => {
-    const r = await post(`/api/kds/${el.dataset.id}/advance`, { from: el.dataset.from });
+    const r = await post(`/api/kds/${el.dataset.id}/advance`, { from: el.dataset.from, ...(el.dataset.to ? { to: el.dataset.to } : {}) });
     if (r.status === 'served') toast('سُلّم الطلب', 'ok');
     await loadKds();
   }),
@@ -236,6 +284,7 @@ on({
     state.modal = null;
     render();
   },
+  'customers-away': (el) => { const v = state.view.customers; v.away = el.dataset.v === '1'; v.list = null; render(); loadCustomers().catch(fail); },
   'customers-search': (el) => {
     const v = state.view.customers;
     v.search = el.value;

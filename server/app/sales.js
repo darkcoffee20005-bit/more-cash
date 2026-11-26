@@ -5,13 +5,16 @@
 //  - clientId فريد لكل عملية: إعادة الإرسال تعيد نفس الإيصال دون أي أثر جديد.
 //  - الآثار الجانبية (المخزون، النقاط) تُطبَّق بمفاتيح فريدة في الدفاتر، والإيصال يحمل effectsPending
 //    حتى تكتمل؛ أي إيصال بقي معلقاً (انقطاع كهرباء) يُستكمل عند تشغيل الخادم.
-import { calculateTicket, costOf, pointsEarned, refundPortion, settlePayments, unitPrice } from '../../shared/calc.js';
+import { calculateTicket, costOf, refundPortion, settlePayments, unitPrice } from '../../shared/calc.js';
 import { MoneyError } from '../../shared/money.js';
+import { earnPoints, loyaltyOf } from '../../shared/loyalty.js';
 import { can } from '../../shared/perms.js';
 import { AppError, audit, bad, conflict, escapeRegex, forbidden, getSettings, id as checkId, int, isDup, nextSeq, notFound, out, requirePerm, str } from './core.js';
 
 const RECEIPT_BASE = 1000;
 const PREP_FLOW = { new: 'preparing', preparing: 'ready', ready: 'served' };
+// القفزات المسموحة بلمسة واحدة: «جاهز» من جديد مباشرة (المطبخ لا يحتاج خطوة «بدء» دائماً)
+const PREP_JUMPS = { new: ['preparing', 'ready'], preparing: ['ready'], ready: ['served'] };
 
 export function createSales(ctx) {
   const { db, now, newId } = ctx;
@@ -157,7 +160,8 @@ export function createSales(ctx) {
       });
     }
 
-    const earned = settings.loyalty?.enabled && t.customer ? pointsEarned(t.totals.net, settings.loyalty.rateBp) : 0;
+    // النقاط حسب مستوى الزبون قبل هذه الفاتورة (المستوى يرتفع بإجمالي صرفه)
+    const earned = t.customer ? earnPoints(t.totals.net, loyaltyOf(settings), t.customer.totalSpent ?? 0) : 0;
     // بيع سُجّل على الجهاز بلا إنترنت: يُحفظ بوقته الفعلي (ضمن الوردية وآخر 72 ساعة) لا بوقت وصوله
     let createdAt = now();
     let offline = false;
@@ -495,21 +499,29 @@ export function createSales(ctx) {
     const rows = await C('receipts').find({ type: 'sale', 'prep.status': { $in: ['new', 'preparing', 'ready'] }, createdAt: { $gte: since } }).sort({ createdAt: 1 }).limit(80).toArray();
     // آخر الطلبات المسلّمة في الوردية الحالية: لإلغاء طلب لم يستلمه الزبون
     const shift = await C('shifts').findOne({ status: 'open' });
-    const served = shift ? await C('receipts').find({ type: 'sale', shiftId: shift._id, 'prep.status': 'served', status: { $ne: 'refunded' } }).sort({ createdAt: -1 }).limit(8).toArray() : [];
+    const served = shift ? await C('receipts').find({ type: 'sale', shiftId: shift._id, 'prep.status': 'served', status: { $ne: 'refunded' } }).sort({ 'prep.updatedAt': -1 }).limit(30).toArray() : [];
     return [...rows, ...served].map((r) => ({
-      id: r._id, number: r.number, createdAt: r.createdAt, prep: r.prep, diningOption: r.diningOption, customerName: r.customerName,
+      id: r._id, number: r.number, createdAt: r.createdAt, prep: r.prep, diningOption: r.diningOption, diningOptionId: r.diningOptionId ?? null, customerName: r.customerName,
       ticketName: r.ticketName, employeeName: r.employeeName, status: r.status, paymentTypeId: r.payments[0]?.typeId ?? null,
       lines: r.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: l.refundedQty, total: l.total, modifiers: l.modifiers.map((m) => m.name), note: l.note })),
     }));
   }
 
-  async function kdsAdvance(actor, receiptId, { from } = {}) {
+  async function kdsAdvance(actor, receiptId, { from, to } = {}) {
     requirePerm(actor, 'kds.use');
-    const next = PREP_FLOW[from];
-    if (!next) throw bad('INVALID_CHOICE', 'from');
+    const next = to ?? PREP_FLOW[from];
+    if (!PREP_JUMPS[from]?.includes(next)) throw bad('INVALID_CHOICE', 'from');
     // الانتقال مشروط بالحالة الحالية: نقرتان متزامنتان لا تقفزان مرحلتين
     const r = await C('receipts').updateOne({ _id: checkId(receiptId), 'prep.status': from }, { $set: { 'prep.status': next, 'prep.updatedAt': now(), [`prep.${next}At`]: now() } });
     return { advanced: r.matchedCount === 1, status: next };
+  }
+
+  /** «عاجل»: يقدّم الطلب على غيره في شاشة التحضير */
+  async function kdsUrgent(actor, receiptId, { urgent } = {}) {
+    requirePerm(actor, 'kds.use');
+    const r = await C('receipts').updateOne({ _id: checkId(receiptId), 'prep.status': { $in: ['new', 'preparing', 'ready'] } }, { $set: { 'prep.urgent': urgent === true } });
+    if (!r.matchedCount) throw notFound();
+    return { urgent: urgent === true };
   }
 
   // ---------------------------------------------------------------- التذاكر المفتوحة
@@ -576,8 +588,14 @@ export function createSales(ctx) {
   }
 
   // ---------------------------------------------------------------- العملاء
-  async function listCustomers(actor, { search = '' } = {}) {
+  async function listCustomers(actor, { search = '', away } = {}) {
     requirePerm(actor, 'customers.manage');
+    // الغائبون: زاروا من قبل ولم يرجعوا منذ «أيام الغياب» في إعدادات الولاء، ولهم رقم نتواصل عليه
+    if (away === '1' || away === true) {
+      const days = loyaltyOf(await getSettings(db)).awayDays;
+      const before = new Date(now().getTime() - days * 86400_000);
+      return (await C('customers').find({ lastVisitAt: { $lt: before }, phone: { $ne: null } }).sort({ lastVisitAt: 1 }).limit(200).toArray()).map((c) => out(c));
+    }
     const s = String(search).trim().slice(0, 40);
     const q = s ? { $or: [{ name: { $regex: escapeRegex(s), $options: 'i' } }, { phone: { $regex: escapeRegex(s) } }] } : {};
     return (await C('customers').find(q).sort({ lastVisitAt: -1, name: 1 }).limit(100).toArray()).map((c) => out(c));
@@ -599,8 +617,12 @@ export function createSales(ctx) {
         if (!r.matchedCount) throw notFound();
         return out(await C('customers').findOne({ _id: input.id }));
       }
-      const created = { _id: newId(), ...doc, points: 0, visits: 0, totalSpent: 0, lastVisitAt: null, createdAt: now() };
+      // نقاط الترحيب: تُسجَّل في دفتر النقاط مثل أي حركة (رصيد الزبون = مجموع دفتره)
+      const welcome = loyaltyOf(await getSettings(db));
+      const gift = welcome.enabled ? welcome.welcomePoints : 0;
+      const created = { _id: newId(), ...doc, points: gift, visits: 0, totalSpent: 0, lastVisitAt: null, createdAt: now() };
       await C('customers').insertOne(created);
+      if (gift > 0) await C('point_moves').insertOne({ _id: newId(), key: `welcome:${created._id}`, customerId: created._id, delta: gift, at: now() });
       return out(created);
     } catch (e) {
       if (isDup(e)) throw conflict('PHONE_IN_USE');
@@ -617,7 +639,7 @@ export function createSales(ctx) {
   }
 
   return {
-    createSale, refund, recoverPending, getReceipt, listReceipts, kdsList, kdsAdvance,
+    createSale, refund, recoverPending, getReceipt, listReceipts, kdsList, kdsAdvance, kdsUrgent,
     saveTicket, listTickets, deleteTicket, listCustomers, saveCustomer, getCustomer, AppError,
   };
 }
