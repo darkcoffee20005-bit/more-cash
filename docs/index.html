@@ -971,6 +971,152 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 .pf-funnel b { text-align: end; font-variant-numeric: tabular-nums; }
 .pf-todo > svg:last-child { transform: scaleX(-1); color: var(--muted); flex: none; }
 
+/* ================================================================ شاشة التحضير (kd-*) */
+.kd { height: 100%; display: flex; flex-direction: column; gap: 16px; padding: 18px 20px 14px; overflow: auto; background: #f6f2ea; }
+.kd-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; background: #fff; border-radius: 22px; padding: 12px 18px; box-shadow: var(--shadow-1); }
+.kd-head h1 { font-size: 1.5rem; color: var(--heading); margin-inline-end: auto; }
+.kd-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.kd-chips button { border: 1px solid var(--line); background: #fff; color: var(--ink-2); border-radius: 999px; padding: 9px 16px; font: 600 .95rem var(--font-body); display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+.kd-chips button b { font-variant-numeric: tabular-nums; }
+.kd-chips button.urgent { color: #8a5a00; border-color: #ecd6a6; }
+.kd-chips button.late { color: var(--bad); border-color: #efc7c1; }
+.kd-chips button.on { background: #1f4a3d; border-color: #1f4a3d; color: #fff; }
+.kd-chips button.on b { background: rgb(255 255 255 / 18%); padding: 1px 9px; border-radius: 999px; }
+.kd-grid { display: grid; grid-template-columns: repeat(min(var(--per), 99), minmax(0, 1fr)); gap: 18px; align-items: stretch; flex: 1; min-height: 0; }
+.kd-card { background: #fff; border-radius: 22px; box-shadow: 0 6px 20px rgb(60 40 10 / 8%); display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.kd-card header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; color: #fff; background: #2f7a55; }
+.kd-card header b { font-family: var(--font-display); font-size: 1.15rem; margin-inline-end: auto; }
+.kd-card.late header { background: #a5463b; }
+.kd-card.urgent header { background: #a37a2c; }
+.kd-card.preparing header { background: #1f5f63; }
+.kd-card.ready header { background: var(--olive-grad); }
+.kd-card.done header { background: #8a958f; }
+.kd-flag { background: rgb(255 255 255 / 20%); border-radius: 999px; padding: 3px 10px; font-size: .82rem; display: inline-flex; gap: 4px; align-items: center; }
+.kd-time { display: inline-flex; gap: 5px; align-items: center; font-variant-numeric: tabular-nums; font-size: .92rem; }
+.kd-sub { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #efe9dd; font-weight: 600; }
+.kd-sub span:first-child { display: inline-flex; gap: 6px; align-items: center; }
+.kd-state { font-size: .88rem; color: var(--muted); }
+.kd-card.late .kd-state { color: var(--bad); }
+.kd-card.urgent .kd-state { color: #8a5a00; }
+.kd-who { padding: 8px 16px 0; color: var(--ink-2); font-size: .9rem; display: flex; gap: 6px; align-items: center; }
+.kd-lines { list-style: none; margin: 0; padding: 6px 16px; display: flex; flex-direction: column; flex: 1; overflow: auto; }
+.kd-lines > li { padding: 12px 0; border-bottom: 1px solid #f0ebe1; display: flex; flex-direction: column; gap: 8px; }
+.kd-lines > li:last-child { border-bottom: 0; }
+.kd-lines > li.void { opacity: .45; text-decoration: line-through; }
+.kd-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.kd-line b { font-family: var(--font-display); font-size: 1.12rem; }
+.kd-line small { font-weight: 500; color: var(--muted); font-size: .85rem; }
+.kd-qty { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.kd-box { border-radius: 14px; padding: 10px 12px; background: #f4f5f2; }
+.kd-box.note { background: #fbf3e4; }
+.kd-tag { display: inline-block; font-size: .75rem; font-weight: 700; background: #e7ebe6; color: var(--ink-2); padding: 2px 9px; border-radius: 8px; margin-bottom: 6px; }
+.kd-box.note .kd-tag { background: #f1dfbd; color: #7a5510; }
+.kd-box ul { list-style: disc; margin: 0; padding-inline-start: 18px; color: var(--ink-2); font-size: .92rem; line-height: 1.7; }
+.kd-card footer { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.kd-go { width: 100%; border: 0; border-radius: 16px; padding: 16px; background: #1f4a3d; color: #fff; font: 700 1.15rem var(--font-display); cursor: pointer; }
+.kd-card.ready .kd-go { background: var(--olive-grad); }
+.kd-go:active { transform: scale(.99); }
+.kd-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.kd-tools .icon-btn.on { background: #f3e4c3; color: #8a5a00; }
+.kd-pager { display: flex; justify-content: center; align-items: center; gap: 14px; }
+.kd-pager span { background: #fff; border-radius: 999px; padding: 8px 20px; font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: var(--shadow-1); }
+.kd-pager .icon-btn { background: #1f4a3d; color: #fff; border-radius: 50%; width: 44px; height: 44px; }
+.kd-pager .icon-btn:disabled { background: #e3e6e1; color: #9aa39d; }
+@media (max-width: 600px) { .kd { padding: 12px; } .kd-grid { grid-template-columns: 1fr; } .kd-head h1 { font-size: 1.2rem; } }
+.kd-card header { flex-wrap: nowrap; white-space: nowrap; }
+.kd-card header b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.kd-time { font-size: .85rem; }
+.kd-chips button { white-space: nowrap; }
+.kd-tools { flex-wrap: nowrap; justify-content: space-between; }
+.kd-tools .btn { flex: 1; }
+.kd-tools .icon-btn.danger { color: var(--bad); }
+.kd-chips button { flex: none; flex-direction: row; }
+.kd-sub .kd-flag { background: #f3e4c3; color: #8a5a00; margin-inline-start: auto; margin-inline-end: 10px; }
+.kd-qty { direction: ltr; unicode-bidi: isolate; }
+.pill.tier-bronze { background: #f3e6da; color: #85532c; }
+.pill.tier-silver { background: #e9edf0; color: #4b5a66; }
+.pill.tier-gold { background: #f7ebc4; color: #7a5a06; }
+.pill.tier-diamond { background: #e2f0f4; color: #1f5f73; }
+.line .l-sent { font-size: .78rem; color: #2b7a4b; display: inline-flex; gap: 4px; align-items: center; background: #e1f1e6; border-radius: 999px; padding: 1px 8px; margin-top: 2px; }
+.kd-sub .kd-flag.qr { background: #e2eef0; color: #1f5f63; margin-inline-start: auto; margin-inline-end: 6px; }
+.btn.qr-alert { background: #f3e4c3; border-color: #e0c27e; color: #7a5510; animation: qr-pulse 1.6s ease-in-out infinite; }
+@keyframes qr-pulse { 50% { box-shadow: 0 0 0 5px rgb(224 194 126 / 35%); } }
+.qr-card { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: var(--surface); }
+.qr-card + .qr-card { margin-top: 10px; }
+.qr-card header { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.qr-card ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+@media (prefers-reduced-motion: reduce) { .btn.qr-alert { animation: none; } }
+.qr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.qr-tile { margin: 0; border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; background: #fff; }
+.qr-tile svg { width: 100%; max-width: 170px; height: auto; }
+.qr-tile figcaption { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; }
+.qr-print { text-align: center; padding: 6mm 0 8mm; border-bottom: 1px dashed #999; break-inside: avoid; page-break-inside: avoid; }
+.qr-print .qr-shop { font-size: 13pt; font-weight: 700; }
+.qr-print .qr-table { font-size: 20pt; font-weight: 800; margin: 2mm 0; }
+.qr-print svg { width: 52mm; height: 52mm; }
+.qr-print .qr-hint { font-size: 10pt; margin-top: 2mm; }
+
+/* ================================================================ صفحة الزبون: اطلب من الطاولة (qg-*) */
+.qg { min-height: 100%; background: #f6f3ea; color: #12302d; padding-bottom: 96px; font-family: var(--font-body); }
+.qg-center { display: grid; place-items: center; padding: 24px; }
+.qg-msg { background: #fff; border-radius: 24px; padding: 28px 22px; max-width: 420px; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; box-shadow: 0 16px 40px rgb(18 48 45 / 10%); }
+.qg-msg h1 { font-size: 1.4rem; }
+.qg-msg p { color: #55665f; line-height: 1.8; margin: 0; }
+.qg-ic { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: #eef3dd; color: #687b1b; }
+.qg-head { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: rgb(246 243 234 / 92%); backdrop-filter: blur(10px); border-bottom: 1px solid #e4dfd1; }
+.qg-head .mark { width: 40px; height: 40px; }
+.qg-head div { display: flex; flex-direction: column; }
+.qg-head b { font-family: var(--font-display); font-size: 1.1rem; }
+.qg-head span { color: #687b1b; font-weight: 600; display: inline-flex; gap: 4px; align-items: center; font-size: .9rem; }
+.qg-orders { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 0; }
+.qg-order { background: #fff; border-radius: 14px; padding: 10px 14px; display: flex; flex-direction: column; border-inline-start: 4px solid #c9d86b; }
+.qg-order.warn { border-color: #e0b04a; } .qg-order.ok { border-color: #2fb36b; } .qg-order.bad { border-color: #c4574b; }
+.qg-order span { color: #55665f; font-size: .85rem; }
+.qg-cats { display: flex; gap: 8px; overflow-x: auto; padding: 14px 16px 4px; scrollbar-width: none; }
+.qg-cats button { flex: none; border: 1px solid #e4dfd1; background: #fff; border-radius: 999px; padding: 8px 16px; font: 600 .95rem var(--font-body); color: #55665f; }
+.qg-cats button.on { background: #073c3c; color: #fff; border-color: #073c3c; }
+.qg-items { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 12px 16px; }
+@media (min-width: 640px) { .qg-items { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.qg-item { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #ebe6d9; border-radius: 18px; padding: 10px; text-align: start; font: inherit; color: inherit; }
+.qg-item.out { opacity: .5; }
+.qg-pic { width: 64px; height: 64px; flex: none; border-radius: 14px; background: var(--c); display: grid; place-items: center; overflow: hidden; font-size: 2rem; }
+.qg-pic img { width: 100%; height: 100%; object-fit: cover; }
+.qg-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qg-name b { font-family: var(--font-display); font-size: 1.02rem; }
+.qg-name small { color: #687b1b; font-weight: 700; }
+.qg-plus { width: 36px; height: 36px; border-radius: 50%; background: #073c3c; color: #fff; display: grid; place-items: center; flex: none; }
+.qg-bar { position: fixed; inset: auto 0 0 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(transparent, #f6f3ea 40%); z-index: 6; }
+.qg-bar button { width: 100%; border: 0; border-radius: 18px; padding: 16px; background: #073c3c; color: #fff; font: 700 1.05rem var(--font-display); display: flex; align-items: center; gap: 10px; justify-content: center; box-shadow: 0 12px 30px rgb(7 60 60 / 30%); }
+.qg-bar b { margin-inline-start: auto; }
+.qg-count { background: #b4c83d; color: #0a2c27; border-radius: 999px; min-width: 28px; height: 28px; display: grid; place-items: center; font-size: .9rem; }
+.qg-scrim { position: fixed; inset: 0; background: rgb(6 30 32 / 45%); z-index: 20; }
+.qg-sheet { position: fixed; inset: auto 0 0 0; z-index: 21; background: #fff; border-radius: 24px 24px 0 0; max-height: 88dvh; overflow: auto; padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; animation: qg-up .22s ease-out; }
+@media (min-width: 640px) { .qg-sheet { inset: auto 50% 24px auto; transform: translateX(50%); width: 560px; border-radius: 24px; } }
+@keyframes qg-up { from { transform: translateY(30px); opacity: 0; } }
+.qg-sheet header { display: flex; justify-content: space-between; align-items: center; }
+.qg-sheet header b { font-family: var(--font-display); font-size: 1.25rem; }
+.qg-sheet h3 { font-size: 1rem; margin-top: 6px; }
+.qg-x { border: 0; background: #f1efe8; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; }
+.qg-req { background: #fbecd2; color: #9a5b0c; font-size: .75rem; padding: 1px 8px; border-radius: 999px; }
+.qg-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.qg-choices button { border: 1.5px solid #e4dfd1; background: #fff; border-radius: 14px; padding: 10px 14px; font: 600 .95rem var(--font-body); color: #12302d; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.qg-choices button small { color: #687b1b; font-weight: 600; }
+.qg-choices button.on { border-color: #073c3c; background: #eef5f2; }
+.qg-choices button:disabled { opacity: .45; }
+.qg-sheet input { width: 100%; }
+.qg-sheet footer { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
+.qg-step { display: flex; align-items: center; gap: 10px; background: #f1efe8; border-radius: 14px; padding: 6px; }
+.qg-step button { border: 0; background: #fff; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; }
+.qg-step b { min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; }
+.qg-step.sm button { width: 30px; height: 30px; }
+.qg-btn { flex: 1; border: 0; border-radius: 16px; padding: 15px 18px; background: #073c3c; color: #fff; font: 700 1.02rem var(--font-display); }
+.qg-btn:disabled { opacity: .6; }
+.qg-cart { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.qg-cart li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0ece2; }
+.qg-form { display: flex; flex-direction: column; gap: 10px; }
+.qg-form p { margin: 0; text-align: center; }
+.qg ~ .toast-zone { top: calc(76px + env(safe-area-inset-top, 0px)); bottom: auto; }
+
 </style></head><body><div id="app"></div><div id="print-area" aria-hidden="true"></div><script type="module">
 // ---- server/db/memory.js
 const __m_server_db_memory_js = await (async () => {
@@ -1396,6 +1542,8 @@ async function ensureIndexes(db) {
     ix('platform_audit', { at: -1 }, { name: 'by_date' }),
     ix('leads', { status: 1, createdAt: -1 }, { name: 'by_status' }),
 
+    ix('qr_links', { tenantId: 1, tableId: 1 }, { unique: true, name: 'uniq_table' }),
+    ix('qr_links', { token: 1 }, { name: 'by_token' }),
     // ---- بيانات كل مقهى
     ix('receipts', t({ number: 1 }), { unique: true, name: 'uniq_number' }),
     ix('receipts', t({ clientId: 1 }), { unique: true, name: 'uniq_client_id' }),
@@ -1434,6 +1582,10 @@ async function ensureIndexes(db) {
     ix('employees', t({ pinLookup: 1 }), { unique: true, name: 'uniq_active_pin', partialFilterExpression: { active: true } }),
     ix('tickets', t({ updatedAt: -1 }), { name: 'by_updated' }),
     ix('tickets', t({ tableId: 1 }), { unique: true, name: 'uniq_table', partialFilterExpression: { tableId: { $exists: true } } }),
+    ix('qr_orders', t({ clientId: 1 }), { unique: true, name: 'uniq_client' }),
+    ix('qr_orders', t({ status: 1, createdAt: 1 }), { name: 'by_status' }),
+    ix('qr_orders', t({ tableId: 1, guestId: 1, createdAt: -1 }), { name: 'by_guest' }),
+    ix('qr_blocks', t({ guestId: 1 }), { unique: true, name: 'uniq_guest' }),
     ix('sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
     ix('audit', t({ at: -1 }), { name: 'by_date' }),
     ix('expenses', t({ day: -1 }), { name: 'by_day' }),
@@ -1864,243 +2016,6 @@ async function seedMenu(ctx) {
 return { DEFAULT_SETTINGS, seedMenu };
 })();
 
-// ---- server/app/auth.js
-const __m_server_app_auth_js = await (async () => {
-const { ROLES, permissionsOf } = __m_shared_perms_js;
-const { AppError, audit, bad, bool, conflict, getSettings, id: checkId, int, isDup, notFound, oneOf, out, requirePerm, str } = __m_server_app_core_js;
-const { normalizePin, pinLookup, randomToken, sha256, validPin } = __m_server_app_security_js;
-const { DEFAULT_SETTINGS, seedMenu } = __m_server_app_seed_js;
-// الإعداد الأول، الدخول بالرمز السري، الجلسات، والموظفون.
-
-
-
-
-
-const SESSION_HOURS = 12;
-const MAX_FAILS = 5;
-const LOCK_MS = 60_000;
-
-function createAuth(ctx) {
-  const { db, now, newId, pepper } = ctx;
-  const failures = new Map(); // ip → {count, until}
-
-  // سر بصمات الرموز: سر المقهى (عشوائي لكل مقهى) + PIN_PEPPER من بيئة الخادم إن وُجد
-  const mix = (storeSecret) => (pepper ? `${pepper}:${storeSecret}` : storeSecret);
-  async function secret() {
-    return mix((await getSettings(db)).secret);
-  }
-
-  async function isSetUp() {
-    return !!(await db.collection('settings').findOne({ _id: 'store' }, { projection: { _id: 1 } }));
-  }
-
-  async function setup({ storeName, ownerName, pin: rawPin, seed = true } = {}) {
-    const pin = normalizePin(rawPin);
-    if (await isSetUp()) throw conflict('ALREADY_SET_UP');
-    const name = str(storeName, { field: 'storeName', min: 2, max: 60 });
-    const owner = str(ownerName, { field: 'ownerName', min: 2, max: 40 });
-    if (!validPin(pin)) throw bad('WEAK_PIN');
-    const settings = { _id: 'store', ...structuredClone(DEFAULT_SETTINGS), name, secret: randomToken(32), createdAt: now() };
-    try {
-      await db.collection('settings').insertOne(settings);
-    } catch (e) {
-      if (isDup(e)) throw conflict('ALREADY_SET_UP');
-      throw e;
-    }
-    await db.collection('employees').insertOne({
-      _id: newId(), name: owner, role: 'owner', pinLookup: await pinLookup(mix(settings.secret), pin), active: true, createdAt: now(),
-    });
-    if (seed) await seedMenu(ctx);
-    return { ok: true };
-  }
-
-  function checkLock(ip) {
-    const f = failures.get(ip);
-    if (f && f.until > Date.now()) throw new AppError(429, 'TOO_MANY_ATTEMPTS', String(Math.ceil((f.until - Date.now()) / 1000)));
-  }
-
-  function recordFailure(ip) {
-    const f = failures.get(ip) ?? { count: 0, until: 0 };
-    f.count += 1;
-    if (f.count >= MAX_FAILS) { f.until = Date.now() + LOCK_MS; f.count = 0; }
-    failures.set(ip, f);
-  }
-
-  async function login({ pin: rawPin } = {}, ip = 'local') {
-    const pin = normalizePin(rawPin);
-    checkLock(ip);
-    if (typeof pin !== 'string' || !/^\d{4,6}$/.test(pin)) { recordFailure(ip); throw new AppError(401, 'WRONG_PIN'); }
-    const lookup = await pinLookup(await secret(), pin);
-    const emp = await db.collection('employees').findOne({ pinLookup: lookup, active: true });
-    if (!emp) { recordFailure(ip); throw new AppError(401, 'WRONG_PIN'); }
-    failures.delete(ip);
-    const token = randomToken(32);
-    await db.collection('sessions').insertOne({
-      _id: await sha256(token), employeeId: emp._id, createdAt: now(), expiresAt: new Date(now().getTime() + SESSION_HOURS * 3600_000),
-    });
-    return { token, employee: publicEmployee(emp) };
-  }
-
-  /**
-   * شاشة الحضور المشتركة على جهاز الكاشير: الموظف يختار اسمه ويكتب رمزه. لا تُنشأ جلسة ولا تتغير جلسة الجهاز.
-   * نفس قفل المحاولات الخاطئة لشاشة الرمز.
-   */
-  async function verifyPin(employeeId, rawPin, ip = 'local') {
-    checkLock(ip);
-    const pin = normalizePin(rawPin);
-    const emp = await db.collection('employees').findOne({ _id: checkId(employeeId, 'employeeId'), active: true });
-    if (!emp || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin) || emp.pinLookup !== await pinLookup(await secret(), pin)) {
-      recordFailure(ip);
-      throw new AppError(401, 'WRONG_PIN');
-    }
-    failures.delete(ip);
-    return { id: emp._id, name: emp.name, role: emp.role };
-  }
-
-  /** يعيد الموظف صاحب الجلسة أو null */
-  async function resolve(token) {
-    if (typeof token !== 'string' || token.length !== 64) return null;
-    const session = await db.collection('sessions').findOne({ _id: await sha256(token) });
-    if (!session || session.expiresAt <= now()) return null;
-    const emp = await db.collection('employees').findOne({ _id: session.employeeId, active: true });
-    return emp ? { id: emp._id, name: emp.name, role: emp.role } : null;
-  }
-
-  async function logout(token) {
-    if (typeof token === 'string') await db.collection('sessions').deleteOne({ _id: await sha256(token) });
-  }
-
-  // ---------------------------------------------------------------- الموظفون
-  async function listEmployees(actor) {
-    requirePerm(actor, 'admin.employees');
-    const list = await db.collection('employees').find({}).sort({ active: -1, name: 1 }).toArray();
-    return list.map(publicEmployee);
-  }
-
-  async function saveEmployee(actor, input = {}) {
-    requirePerm(actor, 'admin.employees');
-    const name = str(input.name, { field: 'name', min: 2, max: 40 });
-    const role = oneOf(input.role, Object.keys(ROLES), 'role');
-    const phone = str(input.phone, { field: 'phone', max: 20, optional: true });
-    const active = input.active !== false;
-    const set = { name, role, phone, active, updatedAt: now() };
-    // الموارد البشرية: الراتب الشهري (اختياري) ورصيد الإجازة السنوية المدفوعة بالأيام
-    if (input.salary !== undefined && input.salary !== null && input.salary !== '') set.salary = int(input.salary, { field: 'salary', min: 0, max: 1_000_000_000 });
-    if (input.annualLeave !== undefined && input.annualLeave !== null && input.annualLeave !== '') set.annualLeave = int(input.annualLeave, { field: 'annualLeave', min: 0, max: 90 });
-    if (input.pin) {
-      input.pin = normalizePin(input.pin);
-      if (!validPin(input.pin)) throw bad('WEAK_PIN');
-      set.pinLookup = await pinLookup(await secret(), input.pin);
-    }
-    const coll = db.collection('employees');
-    try {
-      if (input.id) {
-        const existing = await coll.findOne({ _id: checkId(input.id) });
-        if (!existing) throw notFound();
-        if (existing.role === 'owner' && (role !== 'owner' || !active)) {
-          const owners = await coll.countDocuments({ role: 'owner', active: true });
-          if (owners <= 1) throw conflict('LAST_OWNER');
-        }
-        await coll.updateOne({ _id: existing._id }, { $set: set });
-        if (!active || input.pin) await db.collection('sessions').deleteMany({ employeeId: existing._id });
-        await audit({ ...ctx, actor }, 'employee.update', { employeeId: existing._id, role, active, pinChanged: !!input.pin });
-        return publicEmployee(await coll.findOne({ _id: existing._id }));
-      }
-      if (!set.pinLookup) throw bad('REQUIRED', 'pin');
-      const doc = { _id: newId(), ...set, createdAt: now() };
-      await coll.insertOne(doc);
-      await audit({ ...ctx, actor }, 'employee.create', { employeeId: doc._id, role });
-      return publicEmployee(doc);
-    } catch (e) {
-      if (isDup(e)) throw conflict('PIN_IN_USE');
-      throw e;
-    }
-  }
-
-  return { isSetUp, setup, login, resolve, logout, listEmployees, saveEmployee, verifyPin };
-}
-
-function publicEmployee(emp) {
-  const o = out(emp, ['pinLookup']);
-  return { ...o, roleName: ROLES[emp.role], permissions: permissionsOf(emp.role) };
-}
-
-const settingsKeys = ['name', 'address', 'phone', 'reportPhone', 'tax', 'loyalty', 'paymentTypes', 'diningOptions', 'features', 'receipt', 'cashVarianceAlert'];
-
-function createSettings(ctx) {
-  const { db, now } = ctx;
-
-  async function get(actor, { full = false } = {}) {
-    if (!actor) throw new AppError(401, 'NOT_AUTHENTICATED');
-    const s = await getSettings(db);
-    const o = out(s, ['secret']);
-    if (!full) delete o.createdAt;
-    return o;
-  }
-
-  async function update(actor, input = {}) {
-    requirePerm(actor, 'admin.settings');
-    const set = { updatedAt: now() };
-    if ('name' in input) set.name = str(input.name, { field: 'name', min: 2, max: 60 });
-    if ('address' in input) set.address = str(input.address, { field: 'address', max: 120 });
-    if ('phone' in input) set.phone = str(input.phone, { field: 'phone', max: 30 });
-    if ('reportPhone' in input) {
-      // رقم واتساب لاستلام تقرير الوردية: يُخزَّن بصيغة دولية بأرقام فقط (07… العراقية → 9647…)
-      let d = normalizePin(String(input.reportPhone ?? '')).replace(/\D/g, '');
-      if (d.startsWith('00')) d = d.slice(2);
-      if (/^07\d{9}$/.test(d)) d = `964${d.slice(1)}`;
-      if (d && !/^\d{8,15}$/.test(d)) throw bad('INVALID_PHONE', 'reportPhone');
-      set.reportPhone = d;
-    }
-    if ('tax' in input) {
-      const mode = oneOf(input.tax?.mode, ['none', 'added', 'included'], 'tax.mode');
-      const rateBp = mode === 'none' ? 0 : input.tax.rateBp;
-      if (!Number.isInteger(rateBp) || rateBp < 0 || rateBp > 5000) throw bad('INVALID_NUMBER', 'tax.rateBp');
-      set.tax = { mode, rateBp, name: str(input.tax.name || 'ضريبة', { field: 'tax.name', max: 30 }) };
-    }
-    if ('loyalty' in input) {
-      const rateBp = input.loyalty?.rateBp;
-      if (!Number.isInteger(rateBp) || rateBp < 0 || rateBp > 5000) throw bad('INVALID_NUMBER', 'loyalty.rateBp');
-      set.loyalty = { enabled: bool(input.loyalty.enabled), rateBp };
-    }
-    if ('paymentTypes' in input) {
-      const list = input.paymentTypes;
-      if (!Array.isArray(list) || list.length === 0 || list.length > 12) throw bad('INVALID_LIST', 'paymentTypes');
-      set.paymentTypes = list.map((p) => ({
-        id: checkId(p.id, 'paymentTypes.id'), name: str(p.name, { field: 'paymentTypes.name', min: 1, max: 24 }),
-        kind: oneOf(p.kind, ['cash', 'card', 'other'], 'paymentTypes.kind'), active: p.active !== false,
-      }));
-      if (new Set(set.paymentTypes.map((p) => p.id)).size !== set.paymentTypes.length) throw bad('DUPLICATE_ID', 'paymentTypes');
-      if (!set.paymentTypes.some((p) => p.kind === 'cash' && p.active)) throw bad('CASH_REQUIRED');
-    }
-    if ('diningOptions' in input) {
-      const list = input.diningOptions;
-      if (!Array.isArray(list) || list.length === 0 || list.length > 8) throw bad('INVALID_LIST', 'diningOptions');
-      set.diningOptions = list.map((d) => ({ id: checkId(d.id, 'diningOptions.id'), name: str(d.name, { field: 'diningOptions.name', min: 1, max: 20 }) }));
-    }
-    if ('features' in input) set.features = { kds: bool(input.features?.kds), openTickets: bool(input.features?.openTickets) };
-    if ('receipt' in input) {
-      set.receipt = {
-        header: str(input.receipt?.header, { field: 'receipt.header', max: 200 }),
-        footer: str(input.receipt?.footer, { field: 'receipt.footer', max: 200 }),
-        showCustomer: input.receipt?.showCustomer !== false,
-      };
-    }
-    if ('cashVarianceAlert' in input) {
-      if (!Number.isSafeInteger(input.cashVarianceAlert) || input.cashVarianceAlert < 0) throw bad('INVALID_NUMBER', 'cashVarianceAlert');
-      set.cashVarianceAlert = input.cashVarianceAlert;
-    }
-    await db.collection('settings').updateOne({ _id: 'store' }, { $set: set });
-    await audit({ ...ctx, actor }, 'settings.update', { keys: Object.keys(set).filter((k) => k !== 'updatedAt') });
-    return get(actor);
-  }
-
-  return { get, update };
-}
-
-return { createAuth, publicEmployee, settingsKeys, createSettings };
-})();
-
 // ---- shared/money.js
 const __m_shared_money_js = await (async () => {
 
@@ -2371,6 +2286,304 @@ function weightedCost(stock, costMilli, recvQty, recvCostMilli) {
 }
 
 return { unitPrice, discountValue, calculateTicket, settlePayments, refundPortion, pointsEarned, parseMilli, formatMilli, costOf, weightedCost };
+})();
+
+// ---- shared/loyalty.js
+const __m_shared_loyalty_js = await (async () => {
+const { percentOf } = __m_shared_money_js;
+const { pointsEarned } = __m_shared_calc_js;
+// برنامج الولاء: مستويات ترقّي تلقائياً حسب إجمالي صرف الزبون، وكل مستوى يزيد النقاط المكتسبة بنسبة.
+// يعمل في الخادم (حساب النقاط عند البيع) وفي المتصفح (عرض مستوى الزبون وما يبقى له للترقية).
+
+
+
+const BASE_TIER = { id: 'bronze', name: 'برونزي', minSpent: 0, bonusBp: 0 };
+const DEFAULT_TIERS = [
+  { id: 'silver', name: 'فضي', minSpent: 150_000, bonusBp: 2500 },
+  { id: 'gold', name: 'ذهبي', minSpent: 500_000, bonusBp: 5000 },
+];
+const DEFAULT_AWAY_DAYS = 30;
+
+/** إعدادات الولاء مكتملة بالقيم الافتراضية (الإعدادات القديمة بلا مستويات تعمل كما هي) */
+function loyaltyOf(settings) {
+  const l = settings?.loyalty ?? {};
+  return {
+    enabled: !!l.enabled, rateBp: l.rateBp ?? 0, welcomePoints: l.welcomePoints ?? 0,
+    tiers: Array.isArray(l.tiers) ? l.tiers : DEFAULT_TIERS, awayDays: l.awayDays ?? DEFAULT_AWAY_DAYS,
+  };
+}
+
+/** مستوى الزبون: أعلى مستوى وصل حدّه */
+function tierOf(totalSpent, tiers = DEFAULT_TIERS) {
+  let best = BASE_TIER;
+  for (const t of tiers) if ((totalSpent ?? 0) >= t.minSpent && t.minSpent >= best.minSpent) best = t;
+  return best;
+}
+
+/** المستوى التالي وكم باقٍ عليه (null في أعلى مستوى) */
+function nextTier(totalSpent, tiers = DEFAULT_TIERS) {
+  const next = [...tiers].sort((a, b) => a.minSpent - b.minSpent).find((t) => t.minSpent > (totalSpent ?? 0));
+  return next ? { tier: next, remaining: next.minSpent - (totalSpent ?? 0) } : null;
+}
+
+/** نقاط فاتورة: النسبة الأساسية من الصافي، وزيادة المستوى على النقاط (أعداد صحيحة دائماً) */
+function earnPoints(net, loyalty, totalSpent) {
+  if (!loyalty?.enabled) return 0;
+  const base = pointsEarned(net, loyalty.rateBp);
+  const bonus = tierOf(totalSpent, loyalty.tiers).bonusBp;
+  return base + (bonus > 0 ? percentOf(base, bonus) : 0);
+}
+
+return { BASE_TIER, DEFAULT_TIERS, DEFAULT_AWAY_DAYS, loyaltyOf, tierOf, nextTier, earnPoints };
+})();
+
+// ---- server/app/auth.js
+const __m_server_app_auth_js = await (async () => {
+const { ROLES, permissionsOf } = __m_shared_perms_js;
+const { AppError, audit, bad, bool, conflict, getSettings, id: checkId, int, isDup, notFound, oneOf, out, requirePerm, str } = __m_server_app_core_js;
+const { normalizePin, pinLookup, randomToken, sha256, validPin } = __m_server_app_security_js;
+const { DEFAULT_SETTINGS, seedMenu } = __m_server_app_seed_js;
+const { loyaltyOf } = __m_shared_loyalty_js;
+// الإعداد الأول، الدخول بالرمز السري، الجلسات، والموظفون.
+
+
+
+
+
+
+const SESSION_HOURS = 12;
+const MAX_FAILS = 5;
+const LOCK_MS = 60_000;
+
+function createAuth(ctx) {
+  const { db, now, newId, pepper } = ctx;
+  const failures = new Map(); // ip → {count, until}
+
+  // سر بصمات الرموز: سر المقهى (عشوائي لكل مقهى) + PIN_PEPPER من بيئة الخادم إن وُجد
+  const mix = (storeSecret) => (pepper ? `${pepper}:${storeSecret}` : storeSecret);
+  async function secret() {
+    return mix((await getSettings(db)).secret);
+  }
+
+  async function isSetUp() {
+    return !!(await db.collection('settings').findOne({ _id: 'store' }, { projection: { _id: 1 } }));
+  }
+
+  async function setup({ storeName, ownerName, pin: rawPin, seed = true } = {}) {
+    const pin = normalizePin(rawPin);
+    if (await isSetUp()) throw conflict('ALREADY_SET_UP');
+    const name = str(storeName, { field: 'storeName', min: 2, max: 60 });
+    const owner = str(ownerName, { field: 'ownerName', min: 2, max: 40 });
+    if (!validPin(pin)) throw bad('WEAK_PIN');
+    const settings = { _id: 'store', ...structuredClone(DEFAULT_SETTINGS), name, secret: randomToken(32), createdAt: now() };
+    try {
+      await db.collection('settings').insertOne(settings);
+    } catch (e) {
+      if (isDup(e)) throw conflict('ALREADY_SET_UP');
+      throw e;
+    }
+    await db.collection('employees').insertOne({
+      _id: newId(), name: owner, role: 'owner', pinLookup: await pinLookup(mix(settings.secret), pin), active: true, createdAt: now(),
+    });
+    if (seed) await seedMenu(ctx);
+    return { ok: true };
+  }
+
+  function checkLock(ip) {
+    const f = failures.get(ip);
+    if (f && f.until > Date.now()) throw new AppError(429, 'TOO_MANY_ATTEMPTS', String(Math.ceil((f.until - Date.now()) / 1000)));
+  }
+
+  function recordFailure(ip) {
+    const f = failures.get(ip) ?? { count: 0, until: 0 };
+    f.count += 1;
+    if (f.count >= MAX_FAILS) { f.until = Date.now() + LOCK_MS; f.count = 0; }
+    failures.set(ip, f);
+  }
+
+  async function login({ pin: rawPin } = {}, ip = 'local') {
+    const pin = normalizePin(rawPin);
+    checkLock(ip);
+    if (typeof pin !== 'string' || !/^\d{4,6}$/.test(pin)) { recordFailure(ip); throw new AppError(401, 'WRONG_PIN'); }
+    const lookup = await pinLookup(await secret(), pin);
+    const emp = await db.collection('employees').findOne({ pinLookup: lookup, active: true });
+    if (!emp) { recordFailure(ip); throw new AppError(401, 'WRONG_PIN'); }
+    failures.delete(ip);
+    const token = randomToken(32);
+    await db.collection('sessions').insertOne({
+      _id: await sha256(token), employeeId: emp._id, createdAt: now(), expiresAt: new Date(now().getTime() + SESSION_HOURS * 3600_000),
+    });
+    return { token, employee: publicEmployee(emp) };
+  }
+
+  /**
+   * شاشة الحضور المشتركة على جهاز الكاشير: الموظف يختار اسمه ويكتب رمزه. لا تُنشأ جلسة ولا تتغير جلسة الجهاز.
+   * نفس قفل المحاولات الخاطئة لشاشة الرمز.
+   */
+  async function verifyPin(employeeId, rawPin, ip = 'local') {
+    checkLock(ip);
+    const pin = normalizePin(rawPin);
+    const emp = await db.collection('employees').findOne({ _id: checkId(employeeId, 'employeeId'), active: true });
+    if (!emp || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin) || emp.pinLookup !== await pinLookup(await secret(), pin)) {
+      recordFailure(ip);
+      throw new AppError(401, 'WRONG_PIN');
+    }
+    failures.delete(ip);
+    return { id: emp._id, name: emp.name, role: emp.role };
+  }
+
+  /** يعيد الموظف صاحب الجلسة أو null */
+  async function resolve(token) {
+    if (typeof token !== 'string' || token.length !== 64) return null;
+    const session = await db.collection('sessions').findOne({ _id: await sha256(token) });
+    if (!session || session.expiresAt <= now()) return null;
+    const emp = await db.collection('employees').findOne({ _id: session.employeeId, active: true });
+    return emp ? { id: emp._id, name: emp.name, role: emp.role } : null;
+  }
+
+  async function logout(token) {
+    if (typeof token === 'string') await db.collection('sessions').deleteOne({ _id: await sha256(token) });
+  }
+
+  // ---------------------------------------------------------------- الموظفون
+  async function listEmployees(actor) {
+    requirePerm(actor, 'admin.employees');
+    const list = await db.collection('employees').find({}).sort({ active: -1, name: 1 }).toArray();
+    return list.map(publicEmployee);
+  }
+
+  async function saveEmployee(actor, input = {}) {
+    requirePerm(actor, 'admin.employees');
+    const name = str(input.name, { field: 'name', min: 2, max: 40 });
+    const role = oneOf(input.role, Object.keys(ROLES), 'role');
+    const phone = str(input.phone, { field: 'phone', max: 20, optional: true });
+    const active = input.active !== false;
+    const set = { name, role, phone, active, updatedAt: now() };
+    // الموارد البشرية: الراتب الشهري (اختياري) ورصيد الإجازة السنوية المدفوعة بالأيام
+    if (input.salary !== undefined && input.salary !== null && input.salary !== '') set.salary = int(input.salary, { field: 'salary', min: 0, max: 1_000_000_000 });
+    if (input.annualLeave !== undefined && input.annualLeave !== null && input.annualLeave !== '') set.annualLeave = int(input.annualLeave, { field: 'annualLeave', min: 0, max: 90 });
+    if (input.pin) {
+      input.pin = normalizePin(input.pin);
+      if (!validPin(input.pin)) throw bad('WEAK_PIN');
+      set.pinLookup = await pinLookup(await secret(), input.pin);
+    }
+    const coll = db.collection('employees');
+    try {
+      if (input.id) {
+        const existing = await coll.findOne({ _id: checkId(input.id) });
+        if (!existing) throw notFound();
+        if (existing.role === 'owner' && (role !== 'owner' || !active)) {
+          const owners = await coll.countDocuments({ role: 'owner', active: true });
+          if (owners <= 1) throw conflict('LAST_OWNER');
+        }
+        await coll.updateOne({ _id: existing._id }, { $set: set });
+        if (!active || input.pin) await db.collection('sessions').deleteMany({ employeeId: existing._id });
+        await audit({ ...ctx, actor }, 'employee.update', { employeeId: existing._id, role, active, pinChanged: !!input.pin });
+        return publicEmployee(await coll.findOne({ _id: existing._id }));
+      }
+      if (!set.pinLookup) throw bad('REQUIRED', 'pin');
+      const doc = { _id: newId(), ...set, createdAt: now() };
+      await coll.insertOne(doc);
+      await audit({ ...ctx, actor }, 'employee.create', { employeeId: doc._id, role });
+      return publicEmployee(doc);
+    } catch (e) {
+      if (isDup(e)) throw conflict('PIN_IN_USE');
+      throw e;
+    }
+  }
+
+  return { isSetUp, setup, login, resolve, logout, listEmployees, saveEmployee, verifyPin };
+}
+
+function publicEmployee(emp) {
+  const o = out(emp, ['pinLookup']);
+  return { ...o, roleName: ROLES[emp.role], permissions: permissionsOf(emp.role) };
+}
+
+const settingsKeys = ['name', 'address', 'phone', 'reportPhone', 'tax', 'loyalty', 'paymentTypes', 'diningOptions', 'features', 'receipt', 'cashVarianceAlert'];
+
+function createSettings(ctx) {
+  const { db, now } = ctx;
+
+  async function get(actor, { full = false } = {}) {
+    if (!actor) throw new AppError(401, 'NOT_AUTHENTICATED');
+    const s = await getSettings(db);
+    const o = out(s, ['secret']);
+    if (!full) delete o.createdAt;
+    return o;
+  }
+
+  async function update(actor, input = {}) {
+    requirePerm(actor, 'admin.settings');
+    const set = { updatedAt: now() };
+    if ('name' in input) set.name = str(input.name, { field: 'name', min: 2, max: 60 });
+    if ('address' in input) set.address = str(input.address, { field: 'address', max: 120 });
+    if ('phone' in input) set.phone = str(input.phone, { field: 'phone', max: 30 });
+    if ('reportPhone' in input) {
+      // رقم واتساب لاستلام تقرير الوردية: يُخزَّن بصيغة دولية بأرقام فقط (07… العراقية → 9647…)
+      let d = normalizePin(String(input.reportPhone ?? '')).replace(/\D/g, '');
+      if (d.startsWith('00')) d = d.slice(2);
+      if (/^07\d{9}$/.test(d)) d = `964${d.slice(1)}`;
+      if (d && !/^\d{8,15}$/.test(d)) throw bad('INVALID_PHONE', 'reportPhone');
+      set.reportPhone = d;
+    }
+    if ('tax' in input) {
+      const mode = oneOf(input.tax?.mode, ['none', 'added', 'included'], 'tax.mode');
+      const rateBp = mode === 'none' ? 0 : input.tax.rateBp;
+      if (!Number.isInteger(rateBp) || rateBp < 0 || rateBp > 5000) throw bad('INVALID_NUMBER', 'tax.rateBp');
+      set.tax = { mode, rateBp, name: str(input.tax.name || 'ضريبة', { field: 'tax.name', max: 30 }) };
+    }
+    if ('loyalty' in input) {
+      const rateBp = input.loyalty?.rateBp;
+      if (!Number.isInteger(rateBp) || rateBp < 0 || rateBp > 5000) throw bad('INVALID_NUMBER', 'loyalty.rateBp');
+      const cur = loyaltyOf(await getSettings(db));
+      const L = input.loyalty;
+      const tiers = L.tiers === undefined ? cur.tiers : (Array.isArray(L.tiers) && L.tiers.length <= 5 ? L.tiers : (() => { throw bad('INVALID_LIST', 'loyalty.tiers'); })()).map((t) => ({
+        id: checkId(t.id, 'loyalty.tiers.id'), name: str(t.name, { field: 'loyalty.tiers.name', min: 1, max: 20 }),
+        minSpent: int(t.minSpent, { field: 'loyalty.tiers.minSpent', min: 1, max: 1_000_000_000 }), bonusBp: int(t.bonusBp, { field: 'loyalty.tiers.bonusBp', min: 0, max: 20000 }),
+      }));
+      set.loyalty = {
+        enabled: bool(L.enabled), rateBp, tiers,
+        welcomePoints: L.welcomePoints === undefined ? cur.welcomePoints : int(L.welcomePoints, { field: 'loyalty.welcomePoints', min: 0, max: 1_000_000 }),
+        awayDays: L.awayDays === undefined ? cur.awayDays : int(L.awayDays, { field: 'loyalty.awayDays', min: 7, max: 365 }),
+      };
+    }
+    if ('paymentTypes' in input) {
+      const list = input.paymentTypes;
+      if (!Array.isArray(list) || list.length === 0 || list.length > 12) throw bad('INVALID_LIST', 'paymentTypes');
+      set.paymentTypes = list.map((p) => ({
+        id: checkId(p.id, 'paymentTypes.id'), name: str(p.name, { field: 'paymentTypes.name', min: 1, max: 24 }),
+        kind: oneOf(p.kind, ['cash', 'card', 'other'], 'paymentTypes.kind'), active: p.active !== false,
+      }));
+      if (new Set(set.paymentTypes.map((p) => p.id)).size !== set.paymentTypes.length) throw bad('DUPLICATE_ID', 'paymentTypes');
+      if (!set.paymentTypes.some((p) => p.kind === 'cash' && p.active)) throw bad('CASH_REQUIRED');
+    }
+    if ('diningOptions' in input) {
+      const list = input.diningOptions;
+      if (!Array.isArray(list) || list.length === 0 || list.length > 8) throw bad('INVALID_LIST', 'diningOptions');
+      set.diningOptions = list.map((d) => ({ id: checkId(d.id, 'diningOptions.id'), name: str(d.name, { field: 'diningOptions.name', min: 1, max: 20 }) }));
+    }
+    if ('features' in input) set.features = { kds: bool(input.features?.kds), openTickets: bool(input.features?.openTickets), qr: bool(input.features?.qr) };
+    if ('receipt' in input) {
+      set.receipt = {
+        header: str(input.receipt?.header, { field: 'receipt.header', max: 200 }),
+        footer: str(input.receipt?.footer, { field: 'receipt.footer', max: 200 }),
+        showCustomer: input.receipt?.showCustomer !== false,
+      };
+    }
+    if ('cashVarianceAlert' in input) {
+      if (!Number.isSafeInteger(input.cashVarianceAlert) || input.cashVarianceAlert < 0) throw bad('INVALID_NUMBER', 'cashVarianceAlert');
+      set.cashVarianceAlert = input.cashVarianceAlert;
+    }
+    await db.collection('settings').updateOne({ _id: 'store' }, { $set: set });
+    await audit({ ...ctx, actor }, 'settings.update', { keys: Object.keys(set).filter((k) => k !== 'updatedAt') });
+    return get(actor);
+  }
+
+  return { get, update };
+}
+
+return { createAuth, publicEmployee, settingsKeys, createSettings };
 })();
 
 // ---- server/app/catalog.js
@@ -4060,8 +4273,9 @@ return { HR_POLICY, splitByWeight, createHr };
 
 // ---- server/app/sales.js
 const __m_server_app_sales_js = await (async () => {
-const { calculateTicket, costOf, pointsEarned, refundPortion, settlePayments, unitPrice } = __m_shared_calc_js;
+const { calculateTicket, costOf, refundPortion, settlePayments, unitPrice } = __m_shared_calc_js;
 const { MoneyError } = __m_shared_money_js;
+const { earnPoints, loyaltyOf } = __m_shared_loyalty_js;
 const { can } = __m_shared_perms_js;
 const { AppError, audit, bad, conflict, escapeRegex, forbidden, getSettings, id: checkId, int, isDup, nextSeq, notFound, out, requirePerm, str } = __m_server_app_core_js;
 // البيع والاسترجاع وشاشة التحضير والتذاكر المفتوحة والعملاء.
@@ -4076,8 +4290,11 @@ const { AppError, audit, bad, conflict, escapeRegex, forbidden, getSettings, id:
 
 
 
+
 const RECEIPT_BASE = 1000;
 const PREP_FLOW = { new: 'preparing', preparing: 'ready', ready: 'served' };
+// القفزات المسموحة بلمسة واحدة: «جاهز» من جديد مباشرة (المطبخ لا يحتاج خطوة «بدء» دائماً)
+const PREP_JUMPS = { new: ['preparing', 'ready'], preparing: ['ready'], ready: ['served'] };
 
 function createSales(ctx) {
   const { db, now, newId } = ctx;
@@ -4130,6 +4347,8 @@ function createSales(ctx) {
         itemId: item._id, itemName: item.name, variantId: v._id, variantName: v.name, categoryId: item.categoryId, categoryName: cat?.name ?? '',
         qty, unitPrice: unitPrice(v.price, chosen.map((c) => c.price)), modifiers: chosen,
         note: str(l.note, { field: 'note', max: 120, optional: true }),
+        // ما وصل المطبخ مسبقاً (طلب طاولة QR مقبول): لا يظهر مرة ثانية في شاشة التحضير
+        sentQty: Math.min(qty, int(l.sentQty ?? 0, { field: `lines.${no}.sentQty`, min: 0, max: 999 })),
         discounts: pickDiscounts(l.discountIds ?? []),
       };
     });
@@ -4219,11 +4438,12 @@ function createSales(ctx) {
         modifiers: l.modifiers.map(({ modifierName, name, price }) => ({ group: modifierName, name, price })),
         discounts: l.discounts.map((d) => d.name), note: l.note,
         gross: calc.gross, discount: calc.discount, net: calc.net, tax: calc.tax, total: calc.total,
-        cost: await lineCost(l), refundedQty: 0,
+        cost: await lineCost(l), refundedQty: 0, ...(l.sentQty ? { sentQty: l.sentQty } : {}),
       });
     }
 
-    const earned = settings.loyalty?.enabled && t.customer ? pointsEarned(t.totals.net, settings.loyalty.rateBp) : 0;
+    // النقاط حسب مستوى الزبون قبل هذه الفاتورة (المستوى يرتفع بإجمالي صرفه)
+    const earned = t.customer ? earnPoints(t.totals.net, loyaltyOf(settings), t.customer.totalSpent ?? 0) : 0;
     // بيع سُجّل على الجهاز بلا إنترنت: يُحفظ بوقته الفعلي (ضمن الوردية وآخر 72 ساعة) لا بوقت وصوله
     let createdAt = now();
     let offline = false;
@@ -4244,7 +4464,7 @@ function createSales(ctx) {
         taxMode: t.totals.taxMode, total: t.totals.total, cost: lines.reduce((a, l) => a + l.cost, 0),
       },
       payments, refundTotal: 0,
-      prep: { status: settings.features?.kds ? 'new' : 'served', updatedAt: now() },
+      prep: { status: settings.features?.kds && t.lines.some((l) => l.qty > (l.sentQty ?? 0)) ? 'new' : 'served', updatedAt: now() },
       effectsPending: true,
     };
 
@@ -4561,21 +4781,33 @@ function createSales(ctx) {
     const rows = await C('receipts').find({ type: 'sale', 'prep.status': { $in: ['new', 'preparing', 'ready'] }, createdAt: { $gte: since } }).sort({ createdAt: 1 }).limit(80).toArray();
     // آخر الطلبات المسلّمة في الوردية الحالية: لإلغاء طلب لم يستلمه الزبون
     const shift = await C('shifts').findOne({ status: 'open' });
-    const served = shift ? await C('receipts').find({ type: 'sale', shiftId: shift._id, 'prep.status': 'served', status: { $ne: 'refunded' } }).sort({ createdAt: -1 }).limit(8).toArray() : [];
+    const served = shift ? await C('receipts').find({ type: 'sale', shiftId: shift._id, 'prep.status': 'served', status: { $ne: 'refunded' } }).sort({ 'prep.updatedAt': -1 }).limit(30).toArray() : [];
     return [...rows, ...served].map((r) => ({
-      id: r._id, number: r.number, createdAt: r.createdAt, prep: r.prep, diningOption: r.diningOption, customerName: r.customerName,
+      id: r._id, number: r.number, createdAt: r.createdAt, prep: r.prep, diningOption: r.diningOption, diningOptionId: r.diningOptionId ?? null, customerName: r.customerName,
       ticketName: r.ticketName, employeeName: r.employeeName, status: r.status, paymentTypeId: r.payments[0]?.typeId ?? null,
-      lines: r.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: l.refundedQty, total: l.total, modifiers: l.modifiers.map((m) => m.name), note: l.note })),
+      lines: r.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: l.refundedQty, sentQty: l.sentQty ?? 0, total: l.total, modifiers: l.modifiers.map((m) => m.name), note: l.note })),
     }));
   }
 
-  async function kdsAdvance(actor, receiptId, { from } = {}) {
+  async function kdsAdvance(actor, receiptId, { from, to } = {}) {
     requirePerm(actor, 'kds.use');
-    const next = PREP_FLOW[from];
-    if (!next) throw bad('INVALID_CHOICE', 'from');
+    const next = to ?? PREP_FLOW[from];
+    if (!PREP_JUMPS[from]?.includes(next)) throw bad('INVALID_CHOICE', 'from');
     // الانتقال مشروط بالحالة الحالية: نقرتان متزامنتان لا تقفزان مرحلتين
-    const r = await C('receipts').updateOne({ _id: checkId(receiptId), 'prep.status': from }, { $set: { 'prep.status': next, 'prep.updatedAt': now(), [`prep.${next}At`]: now() } });
+    const set = { $set: { 'prep.status': next, 'prep.updatedAt': now(), [`prep.${next}At`]: now() } };
+    let r = await C('receipts').updateOne({ _id: checkId(receiptId), 'prep.status': from }, set);
+    if (!r.matchedCount) r = await C('qr_orders').updateOne({ _id: receiptId, status: 'accepted', 'prep.status': from }, set);
     return { advanced: r.matchedCount === 1, status: next };
+  }
+
+  /** «عاجل»: يقدّم الطلب على غيره في شاشة التحضير */
+  async function kdsUrgent(actor, receiptId, { urgent } = {}) {
+    requirePerm(actor, 'kds.use');
+    const q = { _id: checkId(receiptId), 'prep.status': { $in: ['new', 'preparing', 'ready'] } };
+    let r = await C('receipts').updateOne(q, { $set: { 'prep.urgent': urgent === true } });
+    if (!r.matchedCount) r = await C('qr_orders').updateOne(q, { $set: { 'prep.urgent': urgent === true } });
+    if (!r.matchedCount) throw notFound();
+    return { urgent: urgent === true };
   }
 
   // ---------------------------------------------------------------- التذاكر المفتوحة
@@ -4586,6 +4818,7 @@ function createSales(ctx) {
       modifierOptionIds: Array.isArray(l.modifierOptionIds) ? l.modifierOptionIds.map((o) => checkId(o, 'modifierOptionId')) : [],
       discountIds: Array.isArray(l.discountIds) ? l.discountIds.map((o) => checkId(o, 'discountId')) : [],
       note: str(l.note, { field: 'note', max: 120, optional: true }),
+      ...(l.sentQty ? { sentQty: Math.min(int(l.qty, { field: 'qty', min: 1, max: 999 }), int(l.sentQty, { field: 'sentQty', min: 0, max: 999 })) } : {}),
     }));
   }
 
@@ -4642,8 +4875,14 @@ function createSales(ctx) {
   }
 
   // ---------------------------------------------------------------- العملاء
-  async function listCustomers(actor, { search = '' } = {}) {
+  async function listCustomers(actor, { search = '', away } = {}) {
     requirePerm(actor, 'customers.manage');
+    // الغائبون: زاروا من قبل ولم يرجعوا منذ «أيام الغياب» في إعدادات الولاء، ولهم رقم نتواصل عليه
+    if (away === '1' || away === true) {
+      const days = loyaltyOf(await getSettings(db)).awayDays;
+      const before = new Date(now().getTime() - days * 86400_000);
+      return (await C('customers').find({ lastVisitAt: { $lt: before }, phone: { $ne: null } }).sort({ lastVisitAt: 1 }).limit(200).toArray()).map((c) => out(c));
+    }
     const s = String(search).trim().slice(0, 40);
     const q = s ? { $or: [{ name: { $regex: escapeRegex(s), $options: 'i' } }, { phone: { $regex: escapeRegex(s) } }] } : {};
     return (await C('customers').find(q).sort({ lastVisitAt: -1, name: 1 }).limit(100).toArray()).map((c) => out(c));
@@ -4665,8 +4904,12 @@ function createSales(ctx) {
         if (!r.matchedCount) throw notFound();
         return out(await C('customers').findOne({ _id: input.id }));
       }
-      const created = { _id: newId(), ...doc, points: 0, visits: 0, totalSpent: 0, lastVisitAt: null, createdAt: now() };
+      // نقاط الترحيب: تُسجَّل في دفتر النقاط مثل أي حركة (رصيد الزبون = مجموع دفتره)
+      const welcome = loyaltyOf(await getSettings(db));
+      const gift = welcome.enabled ? welcome.welcomePoints : 0;
+      const created = { _id: newId(), ...doc, points: gift, visits: 0, totalSpent: 0, lastVisitAt: null, createdAt: now() };
       await C('customers').insertOne(created);
+      if (gift > 0) await C('point_moves').insertOne({ _id: newId(), key: `welcome:${created._id}`, customerId: created._id, delta: gift, at: now() });
       return out(created);
     } catch (e) {
       if (isDup(e)) throw conflict('PHONE_IN_USE');
@@ -4683,7 +4926,7 @@ function createSales(ctx) {
   }
 
   return {
-    createSale, refund, recoverPending, getReceipt, listReceipts, kdsList, kdsAdvance,
+    createSale, refund, recoverPending, getReceipt, listReceipts, kdsList, kdsAdvance, kdsUrgent,
     saveTicket, listTickets, deleteTicket, listCustomers, saveCustomer, getCustomer, AppError,
   };
 }
@@ -4838,6 +5081,196 @@ function createShifts(ctx) {
 return { createShifts };
 })();
 
+// ---- server/app/qr.js
+const __m_server_app_qr_js = await (async () => {
+const { unitPrice } = __m_shared_calc_js;
+const { AppError, audit, bad, conflict, getSettings, id: checkId, int, isDup, nextSeq, notFound, out, requirePerm, str } = __m_server_app_core_js;
+// «اطلب من الطاولة» بجانب المقهى: قائمة الزبون، استلام طلبه، وقرار الكاشير (قبول/رفض/حظر).
+// الزبون بلا حساب ولا جلسة: تتحقق طبقة المنصة من رمز الطاولة ومن أن جهازه على شبكة المقهى قبل الوصول هنا.
+// الطلب المقبول يدخل تذكرة الطاولة (أسطره معلّمة «بالمطبخ» sentQty) ويظهر في شاشة التحضير فوراً،
+// فإذا دفع الزبون لاحقاً لا يتكرر على شاشة التحضير.
+
+
+
+const MAX_LINES = 30;
+const MAX_PENDING_PER_GUEST = 3;
+const MAX_PENDING_PER_TABLE = 8;
+const QR_STATUS = ['pending', 'accepted', 'rejected'];
+
+function createQr(ctx) {
+  const { db, now, newId, catalog } = ctx;
+  const C = (name) => db.collection(name);
+
+  async function context(tableId) {
+    const settings = await getSettings(db);
+    if (!settings.features?.qr) throw new AppError(403, 'QR_DISABLED');
+    const table = (settings.floor?.tables ?? []).find((t) => t.id === tableId && t.kind === 'table');
+    if (!table) throw new AppError(404, 'QR_UNKNOWN_TABLE');
+    return { settings, table };
+  }
+
+  /** قائمة الزبون: الأصناف المعروضة للبيع بأسعارها وإضافاتها، والمتوفر فقط قابل للطلب */
+  async function menu(tableId) {
+    const { settings, table } = await context(tableId);
+    const cat = await catalog.posCatalog();
+    const usedMods = new Set(cat.items.flatMap((i) => i.modifierIds ?? []));
+    return {
+      shop: { name: settings.name }, table: { name: table.name },
+      categories: cat.categories.map((c) => ({ id: c.id, name: c.name, color: c.color })),
+      items: cat.items.map((i) => ({
+        id: i.id, name: i.name, categoryId: i.categoryId, emoji: i.emoji ?? null, color: i.color ?? null, imageV: i.imageV ?? null, description: i.description ?? null,
+        modifierIds: i.modifierIds ?? [],
+        variants: i.variants.map((v) => ({ id: v.id, name: v.name, price: v.price, soldOut: v.available !== null && v.available <= 0 })),
+      })),
+      modifiers: cat.modifiers.filter((m) => usedMods.has(m.id)).map((m) => ({ id: m.id, name: m.name, selection: m.selection, required: !!m.required, options: m.options.map((o) => ({ id: o.id, name: o.name, price: o.price })) })),
+    };
+  }
+
+  /** طلب الزبون: يُسعَّر من القائمة على الخادم (لا يُوثق بسعر الجهاز) ويبقى معلّقاً حتى يقرر الكاشير */
+  async function submit(tableId, body = {}, { ipKey } = {}) {
+    const { table } = await context(tableId);
+    const clientId = checkId(body.clientId, 'clientId');
+    const guestId = checkId(body.guestId, 'guestId');
+    const existing = await C('qr_orders').findOne({ clientId });
+    if (existing) return view(existing);
+    if (await C('qr_blocks').findOne({ guestId })) throw new AppError(403, 'QR_BLOCKED');
+    if (await C('qr_orders').countDocuments({ guestId, status: 'pending' }) >= MAX_PENDING_PER_GUEST) throw new AppError(429, 'QR_TOO_MANY');
+    if (await C('qr_orders').countDocuments({ tableId, status: 'pending' }) >= MAX_PENDING_PER_TABLE) throw new AppError(429, 'QR_TOO_MANY');
+    if (!Array.isArray(body.lines) || !body.lines.length || body.lines.length > MAX_LINES) throw bad('INVALID_LIST', 'lines');
+
+    const cat = await catalog.posCatalog();
+    const variants = new Map(cat.items.flatMap((i) => i.variants.map((v) => [v.id, { v, item: i }])));
+    const mods = new Map(cat.modifiers.map((m) => [m.id, m]));
+    const lines = body.lines.map((l, i) => {
+      const no = String(i + 1);
+      const found = variants.get(checkId(l.variantId, 'variantId'));
+      if (!found) throw bad('UNKNOWN_ITEM', no);
+      const { v, item } = found;
+      if (v.available !== null && v.available <= 0) throw new AppError(409, 'OUT_OF_STOCK', item.name);
+      const qty = int(l.qty, { field: 'qty', min: 1, max: 20 });
+      const optionIds = Array.isArray(l.modifierOptionIds) ? l.modifierOptionIds.map((o) => checkId(o, 'modifierOptionId')) : [];
+      const chosen = [];
+      for (const mid of item.modifierIds ?? []) {
+        const m = mods.get(mid);
+        if (!m) continue;
+        const sel = m.options.filter((o) => optionIds.includes(o.id));
+        if (m.selection === 'single' && sel.length > 1) throw bad('MODIFIER_SINGLE', `${no}:${m.name}`);
+        if (m.required && sel.length === 0) throw bad('MODIFIER_REQUIRED', `${no}:${m.name}`);
+        for (const o of sel) chosen.push({ id: o.id, name: o.name, price: o.price });
+      }
+      if (chosen.length !== new Set(optionIds).size) throw bad('INVALID_MODIFIERS', no);
+      const price = unitPrice(v.price, chosen.map((c) => c.price));
+      return { variantId: v.id, itemName: item.name, variantName: v.name, qty, modifierOptionIds: chosen.map((c) => c.id), modifiers: chosen.map((c) => c.name),
+        note: str(l.note, { field: 'note', max: 120, optional: true }), unitPrice: price, total: price * qty };
+    });
+    const doc = {
+      _id: newId(), clientId, tableId, tableName: table.name, guestId,
+      guestName: str(body.name, { field: 'name', max: 30, optional: true }), note: str(body.note, { field: 'note', max: 200, optional: true }),
+      lines, total: lines.reduce((a, l) => a + l.total, 0), status: 'pending', createdAt: now(), ipKey: ipKey ?? null,
+    };
+    try { await C('qr_orders').insertOne(doc); } catch (e) {
+      if (isDup(e)) return view(await C('qr_orders').findOne({ clientId }));
+      throw e;
+    }
+    return view(doc);
+  }
+
+  const view = ({ ipKey, guestId, ...o }) => out(o);
+
+  /** حالة طلبات الزبون على هذه الطاولة اليوم (ليعرف هل قُبل طلبه) */
+  async function guestOrders(tableId, guestId) {
+    await context(tableId);
+    const since = new Date(now().getTime() - 12 * 3600_000);
+    const rows = await C('qr_orders').find({ tableId, guestId: checkId(guestId, 'guestId'), createdAt: { $gte: since } }).sort({ createdAt: -1 }).limit(10).toArray();
+    return rows.map(view);
+  }
+
+  // ---------------------------------------------------------------- جهة الكاشير
+  async function pending(actor) {
+    requirePerm(actor, 'pos.sell');
+    const rows = await C('qr_orders').find({ status: 'pending' }).sort({ createdAt: 1 }).limit(50).toArray();
+    return rows.map((o) => ({ ...view(o), guest: o.guestId.slice(0, 6) }));
+  }
+
+  async function decide(actor, orderId, accept, reason) {
+    requirePerm(actor, 'pos.sell');
+    const id = checkId(orderId);
+    const settings = await getSettings(db);
+    const set = accept
+      ? { status: 'accepted', number: await nextSeq(db, 'qr'), decidedAt: now(), decidedBy: actor.name,
+        prep: { status: settings.features?.kds ? 'new' : 'served', updatedAt: now() } }
+      : { status: 'rejected', decidedAt: now(), decidedBy: actor.name, reason: str(reason, { field: 'reason', max: 120, optional: true }) };
+    // القرار مرة واحدة: كاشيران يضغطان معاً لا يقبلان الطلب مرتين
+    const r = await C('qr_orders').updateOne({ _id: id, status: 'pending' }, { $set: set });
+    if (!r.matchedCount) throw conflict('QR_ALREADY_DECIDED');
+    const o = await C('qr_orders').findOne({ _id: id });
+    if (accept) await addToTicket(actor, o, settings);
+    await audit({ ...ctx, actor }, accept ? 'qr.accept' : 'qr.reject', { table: o.tableName, total: o.total, reason: set.reason ?? null });
+    return view(o);
+  }
+
+  /** الطلب المقبول يُضاف لتذكرة الطاولة (تُنشأ إن لم تكن)، بأسطر معلّمة أنها وصلت المطبخ */
+  async function addToTicket(actor, o, settings) {
+    const lines = o.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifierOptionIds, discountIds: [], note: l.note ?? null, sentQty: l.qty }));
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const t = await C('tickets').findOne({ tableId: o.tableId });
+      if (t) {
+        const r = await C('tickets').updateOne({ _id: t._id, version: t.version }, {
+          $push: { lines: { $each: lines } }, $inc: { version: 1, displayTotal: o.total }, $set: { updatedAt: now(), updatedBy: actor.name },
+        });
+        if (r.matchedCount) return;
+        continue;
+      }
+      const dine = settings.diningOptions.find((d) => d.id === 'dine_in') ?? settings.diningOptions[0];
+      try {
+        await C('tickets').insertOne({ _id: newId(), name: o.tableName, tableId: o.tableId, note: o.guestName ? `QR: ${o.guestName}` : 'QR', lines, discountIds: [], customerId: null,
+          diningOption: dine.id, displayTotal: o.total, version: 1, createdAt: now(), updatedAt: now(), updatedBy: actor.name, employeeId: actor.id, employeeName: actor.name });
+        return;
+      } catch (e) { if (!isDup(e)) throw e; }
+    }
+    throw conflict('TICKET_CHANGED');
+  }
+
+  /** حظر الزبون (من جهازه): تُرفض طلباته المعلّقة ولا يستطيع الطلب مرة أخرى */
+  async function block(actor, orderId) {
+    requirePerm(actor, 'pos.sell');
+    const o = await C('qr_orders').findOne({ _id: checkId(orderId) });
+    if (!o) throw notFound();
+    try { await C('qr_blocks').insertOne({ _id: newId(), guestId: o.guestId, tableName: o.tableName, guestName: o.guestName ?? null, at: now(), by: actor.name }); } catch (e) { if (!isDup(e)) throw e; }
+    await C('qr_orders').updateMany({ guestId: o.guestId, status: 'pending' }, { $set: { status: 'rejected', reason: 'محظور', decidedAt: now(), decidedBy: actor.name } });
+    await audit({ ...ctx, actor }, 'qr.block', { table: o.tableName, guest: o.guestName ?? null });
+    return { ok: true };
+  }
+
+  async function blocks(actor) {
+    requirePerm(actor, 'pos.sell');
+    return (await C('qr_blocks').find({}).sort({ at: -1 }).limit(100).toArray()).map(({ guestId, ...b }) => out(b));
+  }
+
+  async function unblock(actor, blockId) {
+    requirePerm(actor, 'admin.catalog');
+    const r = await C('qr_blocks').deleteOne({ _id: checkId(blockId) });
+    if (!r.deletedCount) throw notFound();
+    await audit({ ...ctx, actor }, 'qr.unblock', {});
+    return { ok: true };
+  }
+
+  // ---------------------------------------------------------------- شاشة التحضير
+  async function kitchen() {
+    const since = new Date(now().getTime() - 12 * 3600_000);
+    const rows = await C('qr_orders').find({ status: 'accepted', 'prep.status': { $in: ['new', 'preparing', 'ready', 'served'] }, decidedAt: { $gte: since } }).sort({ decidedAt: 1 }).limit(60).toArray();
+    return rows.map((o) => ({
+      id: o._id, qr: true, number: `Q${o.number}`, createdAt: o.decidedAt, prep: o.prep, diningOption: 'طاولة', diningOptionId: 'dine_in',
+      customerName: o.guestName ?? null, ticketName: o.tableName, status: 'paid', lines: o.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: 0, sentQty: 0, modifiers: l.modifiers, note: l.note })),
+    }));
+  }
+
+  return { menu, submit, guestOrders, pending, decide, block, blocks, unblock, kitchen };
+}
+
+return { QR_STATUS, createQr };
+})();
+
 // ---- server/app/index.js
 const __m_server_app_index_js = await (async () => {
 const { dayRange } = __m_shared_format_js;
@@ -4851,8 +5284,10 @@ const { createExpenses } = __m_server_app_expenses_js;
 const { createHr } = __m_server_app_hr_js;
 const { createSales } = __m_server_app_sales_js;
 const { createShifts } = __m_server_app_shifts_js;
+const { createQr } = __m_server_app_qr_js;
 // تجميع الخدمات وواجهة API كدالة نقية: handle(request) → response.
 // خادم Node (server/http.js) والنسخة التجريبية في المتصفح يستخدمان نفس الدالة.
+
 
 
 
@@ -4876,7 +5311,8 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
   const catalog = createCatalog(ctx);
   const sales = createSales(ctx);
   const reports = createReports(ctx);
-  ctx.services = { auth, settings, catalog, sales, reports };
+  const qr = createQr({ ...ctx, catalog });
+  ctx.services = { auth, settings, catalog, sales, reports, qr };
 
   const toRange = async (q) => {
     if (!q.from || !q.to) return {};
@@ -4909,14 +5345,22 @@ function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID
     ['GET', '/api/receipts/:id', (actor, req, p) => sales.getReceipt(actor, p.id)],
     ['POST', '/api/receipts/:id/refund', (actor, req, p) => sales.refund(actor, p.id, req.body)],
 
-    ['GET', '/api/kds', (actor) => sales.kdsList(actor)],
+    ['GET', '/api/kds', async (actor) => [...(await sales.kdsList(actor)), ...(await qr.kitchen())]],
+    // طلبات الطاولات (QR): قرار الكاشير
+    ['GET', '/api/pos/qr', (actor) => qr.pending(actor)],
+    ['POST', '/api/pos/qr/:id/accept', (actor, req, p) => qr.decide(actor, p.id, true)],
+    ['POST', '/api/pos/qr/:id/reject', (actor, req, p) => qr.decide(actor, p.id, false, req.body?.reason)],
+    ['POST', '/api/pos/qr/:id/block', (actor, req, p) => qr.block(actor, p.id)],
+    ['GET', '/api/pos/qr-blocks', (actor) => qr.blocks(actor)],
+    ['DELETE', '/api/pos/qr-blocks/:id', (actor, req, p) => qr.unblock(actor, p.id)],
     ['POST', '/api/kds/:id/advance', (actor, req, p) => sales.kdsAdvance(actor, p.id, req.body)],
+    ['POST', '/api/kds/:id/urgent', (actor, req, p) => sales.kdsUrgent(actor, p.id, req.body)],
 
     ['GET', '/api/tickets', (actor) => sales.listTickets(actor)],
     ['POST', '/api/tickets', (actor, req) => sales.saveTicket(actor, req.body)],
     ['DELETE', '/api/tickets/:id', (actor, req, p) => sales.deleteTicket(actor, p.id)],
 
-    ['GET', '/api/customers', (actor, req) => sales.listCustomers(actor, { search: req.query.search ?? '' })],
+    ['GET', '/api/customers', (actor, req) => sales.listCustomers(actor, { search: req.query.search ?? '', away: req.query.away })],
     ['GET', '/api/customers/:id', (actor, req, p) => sales.getCustomer(actor, p.id)],
     ['POST', '/api/customers', (actor, req) => sales.saveCustomer(actor, req.body)],
 
@@ -5235,7 +5679,7 @@ function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID(), admin
 
   /** نسخة احتياطية كاملة لمقهى (وفروعه) بصيغة JSON، بلا أسرار: لا كلمات مرور ولا رموز ولا جلسات */
   const BACKUP = ['settings', 'employees', 'categories', 'items', 'variants', 'modifiers', 'discounts', 'customers', 'receipts', 'shifts', 'tickets', 'stock_moves',
-    'expenses', 'attendance', 'hr_adjustments', 'leaves', 'hr_awards', 'hr_advances', 'payrolls', 'audit', 'point_moves', 'item_images', 'counters'];
+    'expenses', 'attendance', 'hr_adjustments', 'leaves', 'hr_awards', 'hr_advances', 'payrolls', 'audit', 'point_moves', 'item_images', 'qr_orders', 'qr_blocks', 'counters'];
   async function backup(tenantId, admin) {
     const id = checkId(tenantId);
     const t = await db.collection('tenants').findOne({ _id: id });
@@ -5802,6 +6246,104 @@ function createLeads({ db, now, audit = async () => {} }) {
 return { LEAD_TYPES, LEAD_STATUS, normPhone, createLeads };
 })();
 
+// ---- server/app/qr-links.js
+const __m_server_app_qr_links_js = await (async () => {
+const { randomToken } = __m_server_app_security_js;
+const { AppError, id: checkId } = __m_server_app_core_js;
+// «اطلب من الطاولة» بطبقة المنصة: رمز سري لكل طاولة يدل على مقهاها، والتحقق أن الزبون على شبكة المقهى.
+//
+// الشبكة نفسها = عنوان الإنترنت العام للزبون يطابق عنوان أحد أجهزة المقهى المرتبطة خلال آخر 12 ساعة
+// (كل أجهزة واي فاي المقهى تخرج للإنترنت بعنوان IPv4 واحد، وفي IPv6 تتشارك أول 64 بت من العنوان).
+// فلا يطلب أحد من بيته برابط منسوخ، ولا يرسل طلبات وهمية من خارج المقهى.
+
+
+
+const SEEN_WINDOW_MS = 12 * 3600_000;
+const TOUCH_EVERY_MS = 5 * 60_000;
+const GUEST_PER_IP_HOUR = 30;
+
+function expandV6(s) {
+  const [head, tail] = s.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail !== undefined ? (tail ? tail.split(':') : []) : [];
+  const fill = tail !== undefined ? Array(Math.max(0, 8 - h.length - t.length)).fill('0') : [];
+  return [...h, ...fill, ...t].map((x) => x.replace(/^0+(?=.)/, ''));
+}
+
+/** مفتاح الشبكة لعنوان: IPv4 كما هو، وIPv6 أول 64 بت (البادئة المشتركة لأجهزة الشبكة الواحدة) */
+function ipKey(ip) {
+  let s = String(ip ?? '').trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/%.*$/, '');
+  if (s.startsWith('::ffff:') && s.includes('.')) s = s.slice(7);
+  if (!s) return null;
+  if (s.includes(':')) return `${expandV6(s).slice(0, 4).join(':')}::/64`;
+  return s;
+}
+
+function createQrLinks({ db, now }) {
+  const LINKS = () => db.collection('qr_links');
+  const hits = new Map(); // مفتاح الشبكة → {count, since}
+
+  /** يُستدعى مع كل طلب من جهاز مقهى: يحفظ آخر عنوان شبكة له (كتابة كل 5 دقائق كحد أقصى) */
+  async function touchDevice(device, ip) {
+    const key = ipKey(ip);
+    if (!device || !key) return;
+    const last = device.lastSeenAt ? new Date(device.lastSeenAt).getTime() : 0;
+    if (device.lastNet === key && now().getTime() - last < TOUCH_EVERY_MS) return;
+    await db.collection('devices').updateOne({ _id: device._id }, { $set: { lastNet: key, lastSeenAt: now() } });
+  }
+
+  async function sameNetwork(tenantId, ip) {
+    const key = ipKey(ip);
+    if (!key) return false;
+    const since = new Date(now().getTime() - SEEN_WINDOW_MS);
+    return Boolean(await db.collection('devices').findOne({ tenantId, lastNet: key, lastSeenAt: { $gte: since } }, { projection: { _id: 1 } }));
+  }
+
+  /** رمز الطاولة → مقهاها وطاولتها، مع حد للطلبات من نفس الشبكة */
+  async function resolve(token, ip) {
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(token)) throw new AppError(404, 'QR_UNKNOWN_TABLE');
+    const link = await LINKS().findOne({ token });
+    if (!link) throw new AppError(404, 'QR_UNKNOWN_TABLE');
+    const key = ipKey(ip) ?? 'unknown';
+    const t = Date.now();
+    const h = hits.get(key);
+    if (!h || t - h.since >= 3600_000) { hits.set(key, { count: 1, since: t }); if (hits.size > 5000) hits.clear(); } else if (++h.count > GUEST_PER_IP_HOUR * 10) throw new AppError(429, 'TOO_MANY_ATTEMPTS');
+    if (!(await sameNetwork(link.tenantId, ip))) throw new AppError(403, 'QR_NOT_ON_NETWORK');
+    return { tenantId: link.tenantId, tableId: link.tableId, key };
+  }
+
+  /** رموز طاولات المقهى (تُنشأ للطاولات الجديدة، وتُحذف لطاولات أُزيلت من الخريطة) */
+  async function list(tenantId, tables) {
+    const ids = new Set(tables.map((t) => t.id));
+    await LINKS().deleteMany({ tenantId, tableId: { $nin: [...ids] } });
+    const have = new Map((await LINKS().find({ tenantId }).toArray()).map((l) => [l.tableId, l]));
+    const outList = [];
+    for (const t of tables) {
+      let l = have.get(t.id);
+      if (!l) {
+        l = { _id: `${tenantId}:${t.id}`, tenantId, tableId: t.id, token: randomToken(18), createdAt: now() };
+        try { await LINKS().insertOne(l); } catch { l = await LINKS().findOne({ tenantId, tableId: t.id }); }
+      }
+      outList.push({ tableId: t.id, tableName: t.name, token: l.token });
+    }
+    return outList;
+  }
+
+  /** رمز جديد لطاولة (القديم يتوقف فوراً): إذا صُوّر الرمز وانتشر */
+  async function rotate(tenantId, tableId) {
+    const id = checkId(tableId, 'tableId');
+    const token = randomToken(18);
+    const r = await LINKS().updateOne({ tenantId, tableId: id }, { $set: { token, rotatedAt: now() } });
+    if (!r.matchedCount) throw new AppError(404, 'QR_UNKNOWN_TABLE');
+    return { tableId: id, token };
+  }
+
+  return { touchDevice, sameNetwork, resolve, list, rotate };
+}
+
+return { ipKey, createQrLinks };
+})();
+
 // ---- server/app/platform.js
 const __m_server_app_platform_js = await (async () => {
 const { createApp } = __m_server_app_index_js;
@@ -5812,12 +6354,16 @@ const { createPlatformAdmin } = __m_server_app_platform_admin_js;
 const { createBranches } = __m_server_app_branches_js;
 const { createSubscriptions } = __m_server_app_subscriptions_js;
 const { createLeads } = __m_server_app_leads_js;
+const { createQrLinks } = __m_server_app_qr_links_js;
+const { can } = __m_shared_perms_js;
 // المنصة: حسابات المقاهي، ربط الجهاز بمقهى، وتوجيه كل طلب إلى تطبيق ذلك المقهى فقط.
 //
 // طبقتا دخول:
 //   1) حساب المقهى (بريد + كلمة مرور) — مرة واحدة على كل جهاز. ينشئ "جلسة جهاز" طويلة (كوكي mc_device).
 //   2) رمز الموظف (PIN) — سريع، لكل وردية/موظف، داخل المقهى المرتبط بالجهاز فقط (كوكي mc_session).
 // لذلك لا يمكن تجربة رموز PIN إلا من جهاز سجّل صاحبه الدخول بكلمة المرور.
+
+
 
 
 
@@ -5862,6 +6408,7 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
   const adminSet = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const subs = createSubscriptions({ db, now, newId, admins: adminSet, enabled: approval });
   const leads = createLeads({ db, now, audit: subs.audit });
+  const qrLinks = createQrLinks({ db, now });
   const apps = new Map(); // tenantId → {app, ready}
   // أخطاء الخادم غير المتوقعة تُحفظ (14 يوماً) لتظهر في لوحة المزوّد قبل أن يبلّغ عنها مقهى
   function recordError(e, where = {}) {
@@ -6067,7 +6614,24 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
       if (key === 'POST /api/account/signup') return await signup(req.body, ip);
       if (key === 'POST /api/account/login') return await login(req.body, ip);
 
+      // «اطلب من الطاولة»: الزبون بلا حساب ولا جهاز مرتبط؛ رمز الطاولة + شبكة المقهى نفسها
+      if (req.path.startsWith('/api/qr/')) {
+        const q = req.query ?? {};
+        const link = await qrLinks.resolve(req.method === 'POST' ? req.body?.t : q.t, ip);
+        if (await isDisabled(link.tenantId)) throw new AppError(403, 'QR_DISABLED');
+        // اشتراك المقهى (أو حساب المالك للفرع) لازم يكون فعّالاً حتى يستقبل طلبات الطاولات
+        const owner = await db.collection('accounts').findOne({ $or: [{ tenantId: link.tenantId }, { branches: link.tenantId }] }, { projection: { email: 1, sub: 1 } });
+        if (!['active', 'trial'].includes(subs.stateOf(owner).status)) throw new AppError(403, 'QR_DISABLED');
+        const svc = (await appFor(link.tenantId)).ctx.services.qr;
+        if (key === 'GET /api/qr/menu') return { status: 200, body: await svc.menu(link.tableId) };
+        if (key === 'GET /api/qr/images') return { status: 200, body: await (await appFor(link.tenantId)).ctx.services.catalog.images() };
+        if (key === 'POST /api/qr/order') return { status: 200, body: await svc.submit(link.tableId, req.body, { ipKey: link.key }) };
+        if (key === 'GET /api/qr/status') return { status: 200, body: await svc.guestOrders(link.tableId, q.g) };
+        return { status: 404, body: { error: 'NOT_FOUND' } };
+      }
+
       const device = await resolveDevice(req.deviceToken);
+      if (device) await qrLinks.touchDevice(device, ip).catch(() => {});
 
       if (key === 'POST /api/account/logout') {
         if (device) {
@@ -6111,6 +6675,15 @@ function createPlatform({ db, now = () => new Date(), newId = () => crypto.rando
         if (!actor || actor.role !== 'owner') throw new AppError(403, 'FORBIDDEN', 'account.view');
         const acc = await db.collection('accounts').findOne({ _id: device.accountId }, { projection: { email: 1, name: 1, createdAt: 1 } });
         return { status: 200, body: { email: acc?.email ?? null, name: acc?.name ?? null } };
+      }
+      // رموز QR لطاولات الخريطة (من الإدارة): عرضها للطباعة، وتغيير رمز طاولة
+      if (key === 'GET /api/admin/qr-links' || key === 'POST /api/admin/qr-links/rotate') {
+        const actor = await app.ctx.services.auth.resolve(req.token);
+        if (!actor || !can(actor.role, 'admin.catalog')) throw new AppError(403, 'FORBIDDEN', 'admin.catalog');
+        if (key === 'POST /api/admin/qr-links/rotate') return { status: 200, body: await qrLinks.rotate(device.tenantId, req.body?.tableId) };
+        const st = await db.collection('settings').findOne({ _id: `${device.tenantId}:store` }, { projection: { floor: 1 } });
+        const tables = (st?.floor?.tables ?? []).filter((t) => t.kind === 'table');
+        return { status: 200, body: await qrLinks.list(device.tenantId, tables) };
       }
       if (req.path === '/api/setup') return { status: 404, body: { error: 'NOT_FOUND' } };
       return await app.handle(req);
@@ -6655,6 +7228,9 @@ function bindEvents(root) {
     const el = e.target.closest('[data-action]');
     if (!el || el.disabled) return;
     if (el.dataset.action === 'modal-back' && e.target !== el) return;
+    // رابط داخل عنصر قابل للنقر (مثل واتساب داخل صف): يفتح الرابط ولا يشغّل إجراء الصف
+    const link = e.target.closest('a[href]');
+    if (link && link !== el && el.contains(link)) return;
     e.preventDefault();
     run(el.dataset.action, el, e);
   });
@@ -7316,6 +7892,7 @@ return { FLOOR_W, FLOOR_H, floorTables, hasFloor, floorMap, floorLegend, install
 // ---- public/js/views/pos.js
 const __m_public_js_views_pos_js = await (async () => {
 const { calculateTicket, unitPrice } = __m_shared_calc_js;
+const { loyaltyOf, nextTier, tierOf } = __m_shared_loyalty_js;
 const { esc, money, parseAmount, pct, time } = __m_shared_format_js;
 const { del, get, post, uid } = __m_public_js_api_js;
 const { icon } = __m_public_js_icons_js;
@@ -7326,6 +7903,7 @@ const { itemEmoji } = __m_public_js_emoji_js;
 const { floorLegend, floorMap, floorTables, hasFloor } = __m_public_js_floor_js;
 const { discardFailed, failedSales, pendingSales, queueSale, rememberBootstrap, retryFailed, savedBootstrap } = __m_public_js_offline_js;
 // شاشة البيع: الأصناف ← التذكرة ← الدفع. الحساب للعرض بنفس كود الخادم (shared/calc.js).
+
 
 
 
@@ -7590,6 +8168,7 @@ function ticketPane(s) {
     return `<li class="line ${s.pos.flashKey === l.key ? 'flash' : ''}" data-action="pos-line" data-key="${l.key}" role="button" tabindex="0">
       <div class="l-body"><div class="l-name">${esc(l.itemName)}</div>${sub ? `<div class="l-sub">${esc(sub)}</div>` : ''}
         ${l.note ? `<div class="l-sub">✎ ${esc(l.note)}</div>` : ''}
+        ${l.sentQty ? `<div class="l-sent">${icon('cup', 'sm')} بالمطبخ${l.sentQty < l.qty ? ` ${l.sentQty} من ${l.qty}` : ''}</div>` : ''}
         ${l.discountIds.length ? `<div class="l-disc">${l.discountIds.map((d) => esc(discountById(d)?.name ?? '')).join('، ')}</div>` : ''}
         <div class="l-total num">${discounted ? `<s>${money(calc.gross, { symbol: false })}</s> ` : ''}${money(discounted ? calc.gross - calc.discount : lineUnit(l) * l.qty)}</div></div>
       <div class="l-step" role="group" aria-label="الكمية">
@@ -7607,6 +8186,7 @@ function ticketPane(s) {
       <div class="ticket-title">
         <h2>${cart.ticket ? esc(cart.ticket.name) : 'طلب جديد'}</h2>
         <span class="spacer"></span>
+        ${s.settings.features.qr ? `<button class="btn sm ${s.qrPending?.length ? 'qr-alert' : ''}" data-action="qr-inbox">${icon('table', 'sm')} طلبات الطاولات${s.qrPending?.length ? ` (${s.qrPending.length})` : ''}</button>` : ''}
         ${s.settings.features.openTickets && can('pos.tickets') ? `<button class="btn sm" data-action="pos-tickets">${icon('ticket', 'sm')} التذاكر${s.ticketsCount ? ` (${s.ticketsCount})` : ''}</button>` : ''}
         <button class="icon-btn" data-action="pos-clear" title="مسح الطلب" ${cart.lines.length ? '' : 'disabled'}>${icon('trash', 'sm')}</button>
         <button class="icon-btn" data-action="ticket-toggle" title="إخفاء نافذة الطلب" aria-label="إخفاء نافذة الطلب">${icon('arrow', 'sm')}</button>
@@ -7637,7 +8217,28 @@ function ticketPane(s) {
 }
 
 // ---------------------------------------------------------------- النوافذ
+/** مستوى الزبون وما يبقى للترقية (من إعدادات الولاء) */
+function tierInfo(s, c) {
+  const L = loyaltyOf(s.settings);
+  const t = tierOf(c.totalSpent ?? 0, L.tiers);
+  const n = nextTier(c.totalSpent ?? 0, L.tiers);
+  return { pill: `<span class="pill tier-${esc(t.id)}">${esc(t.name)}${t.bonusBp ? ` +${t.bonusBp / 100}%` : ''}</span>`, next: n ? ` · باقي ${money(n.remaining)} للمستوى ${esc(n.tier.name)}` : '' };
+}
+
 const modals = {
+  'qr-inbox'(s) {
+    const list = s.qrPending ?? [];
+    const tz = s.settings?.tzOffsetMin ?? 180;
+    return modalFrame({ title: 'طلبات الطاولات', sub: 'من رمز QR على الطاولة. القبول يضيف الطلب لتذكرة الطاولة ويرسله للتحضير.', cls: 'wide', body: list.length ? list.map((o) => `
+      <article class="qr-card"><header><b>${icon('table', 'sm')} ${esc(o.tableName)}</b>${o.guestName ? `<span>${icon('user', 'sm')} ${esc(o.guestName)}</span>` : ''}<span class="muted small">${time(o.createdAt, tz)}</span><span class="spacer"></span><b class="num">${money(o.total)}</b></header>
+        <ul>${o.lines.map((l) => `<li><b class="num">${l.qty}×</b> ${esc(l.itemName)}${l.variantName ? ` <span class="muted">${esc(l.variantName)}</span>` : ''}${l.modifiers.length ? `<div class="muted small">${l.modifiers.map(esc).join(' · ')}</div>` : ''}${l.note ? `<div class="small" style="color:var(--warn)">✎ ${esc(l.note)}</div>` : ''}</li>`).join('')}</ul>
+        ${o.note ? `<p class="small" style="margin:0">ملاحظة: ${esc(o.note)}</p>` : ''}
+        <div class="row wrap"><button class="btn primary" data-action="qr-accept" data-id="${o.id}">${icon('check', 'sm')} قبول وإرسال للتحضير</button>
+          <button class="btn" data-action="qr-reject" data-id="${o.id}">رفض</button><span class="spacer"></span>
+          <button class="btn sm danger" data-action="qr-block" data-id="${o.id}">${icon('lock', 'sm')} حظر هذا الزبون</button></div></article>`).join('')
+      : `<div class="empty">${icon('table')}<p>لا طلبات تنتظر. تصل هنا كل 10 ثوانٍ.</p></div>` });
+  },
+
   item(s) {
     const m = s.modal;
     const item = itemById(m.itemId);
@@ -7709,10 +8310,10 @@ const modals = {
     const current = cart.customer;
     const list = (m.results ?? []).map((c) => `<tr class="click" data-action="customer-pick" data-id="${c.id}">
       <td><b>${esc(c.name)}</b><div class="muted small">${esc(c.phone ?? '')}</div></td>
-      <td class="num">${c.visits} زيارة</td><td class="num">${loyalty ? `${c.points} نقطة` : ''}</td></tr>`).join('');
+      <td class="num">${c.visits} زيارة</td><td>${loyalty ? tierInfo(s, c).pill : ''}</td><td class="num">${loyalty ? `${c.points} نقطة` : ''}</td></tr>`).join('');
     const body = current ? `
       <div class="card pad row wrap"><div class="avatar">${esc(current.name.slice(0, 1))}</div>
-        <div><b>${esc(current.name)}</b><div class="muted small">${current.points} نقطة متاحة</div></div><span class="spacer"></span>
+        <div><b>${esc(current.name)}</b> ${loyalty ? tierInfo(s, current).pill : ''}<div class="muted small">${current.points} نقطة متاحة${loyalty ? tierInfo(s, current).next : ''}</div></div><span class="spacer"></span>
         <button class="btn sm danger" data-action="customer-remove">إزالة</button></div>
       ${loyalty && current.points > 0 ? `<form class="stack" data-form="customer-points">
         ${field('استبدال نقاط (1 نقطة = 1 د.ع)', `<input class="amount-input" name="points" id="cust-points" inputmode="numeric" value="${cart.pointsRedeemed || ''}" placeholder="0">`, `بحد أقصى ${Math.min(current.points, cartTotals({ ...cart, pointsRedeemed: 0 }).net)} نقطة`)}
@@ -7806,11 +8407,12 @@ function doneView(m) {
 }
 
 // ---------------------------------------------------------------- الإجراءات
-function cartLineFrom({ item, variant, optionIds, qty, note, discountIds = [], key }) {
+function cartLineFrom({ item, variant, optionIds, qty, note, discountIds = [], key, sentQty = 0 }) {
   const mods = item.modifierIds.map(modifierById).filter(Boolean).flatMap((g) => g.options.filter((o) => optionIds.includes(o.id)));
   return {
     key: key ?? uid(), itemId: item.id, itemName: item.name, variantId: variant.id, variantName: variant.name, price: variant.price,
     modifiers: mods.map((o) => ({ id: o.id, name: o.name, price: o.price })), qty, note: note || '', discountIds,
+    ...(sentQty ? { sentQty } : {}), // ما وصل المطبخ من طلب طاولة QR مقبول
   };
 }
 
@@ -7979,6 +8581,27 @@ on({
   },
 
   // ---- التذاكر المفتوحة
+  'qr-inbox': () => { openModal({ type: 'qr-inbox' }); loadQr().catch(() => {}); },
+  'qr-accept': (el) => busy(async () => {
+    const o = await post(`/api/pos/qr/${el.dataset.id}/accept`, {});
+    toast(`قُبل طلب ${o.tableName} وأُرسل للتحضير`, 'ok');
+    state.ticketsCount = (await get('/api/tickets')).length;
+    await loadQr();
+  }),
+  'qr-reject': (el) => busy(async () => {
+    const m = state.modal;
+    if (m.confirmReject !== el.dataset.id) { m.confirmReject = el.dataset.id; toast('اضغط «رفض» مرة ثانية للتأكيد'); return; }
+    await post(`/api/pos/qr/${el.dataset.id}/reject`, { reason: null });
+    toast('رُفض الطلب');
+    await loadQr();
+  }),
+  'qr-block': (el) => busy(async () => {
+    const m = state.modal;
+    if (m.confirmBlock !== el.dataset.id) { m.confirmBlock = el.dataset.id; toast('اضغط «حظر» مرة ثانية: يُرفض طلبه ولا يستطيع الطلب من جهازه مرة أخرى'); return; }
+    await post(`/api/pos/qr/${el.dataset.id}/block`, {});
+    toast('حُظر الزبون', 'ok');
+    await loadQr();
+  }),
   'pos-tickets': async () => {
     openModal({ type: 'tickets' });
     try { state.modal.list = await get('/api/tickets'); render(); } catch (e) { fail(e); }
@@ -8006,7 +8629,7 @@ on({
       const item = state.catalog.items.find((i) => i.variants.some((v) => v.id === l.variantId));
       if (!item) { missing += 1; continue; }
       const variant = item.variants.find((v) => v.id === l.variantId);
-      lines.push(cartLineFrom({ item, variant, optionIds: l.modifierOptionIds, qty: l.qty, note: l.note, discountIds: l.discountIds }));
+      lines.push(cartLineFrom({ item, variant, optionIds: l.modifierOptionIds, qty: l.qty, note: l.note, discountIds: l.discountIds, sentQty: l.sentQty ?? 0 }));
     }
     state.pos.cart = { lines, discountIds: t.discountIds, customer: null, pointsRedeemed: 0, diningOption: t.diningOption ?? state.settings.diningOptions[0].id,
       ticket: { id: t.id, version: t.version, name: t.name, note: t.note, tableId: t.tableId ?? null } };
@@ -8060,7 +8683,7 @@ on({
     const cart = state.pos.cart;
     const body = {
       clientId: m.clientId,
-      lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), note: l.note || null, discountIds: l.discountIds })),
+      lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), note: l.note || null, discountIds: l.discountIds, ...(l.sentQty ? { sentQty: Math.min(l.sentQty, l.qty) } : {}) })),
       discountIds: cart.discountIds, customerId: cart.customer?.id ?? null, pointsRedeemed: cart.pointsRedeemed,
       diningOption: cart.diningOption, ticketId: cart.ticket?.id ?? null, ticketName: cart.ticket?.name ?? null,
       clientTotal: m.total, payments: payments.map((p) => ({ typeId: p.typeId, amount: p.amount, tendered: p.tendered })),
@@ -8102,7 +8725,7 @@ async function saveTicket(data) {
     const cart = state.pos.cart;
     const body = {
       id: cart.ticket?.id, version: cart.ticket?.version, name: data.name, note: data.note || null, tableId: data.tableId || null,
-      lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), discountIds: l.discountIds, note: l.note || null })),
+      lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), discountIds: l.discountIds, note: l.note || null, ...(l.sentQty ? { sentQty: Math.min(l.sentQty, l.qty) } : {}) })),
       discountIds: cart.discountIds, customerId: cart.customer?.id ?? null, diningOption: cart.diningOption, displayTotal: cartTotals().total,
     };
     await post('/api/tickets', body);
@@ -8131,6 +8754,23 @@ async function enter() {
     const b = await get('/api/pos/bootstrap');
     Object.assign(state, { settings: b.settings, catalog: b.catalog, shift: b.shift, ticketsCount: b.ticketsCount });
   }
+  startQrPolling();
+}
+
+// ---------------------------------------------------------------- طلبات الطاولات (QR): تصل للكاشير وينتظر قراره
+let qrTimer = null;
+async function loadQr() {
+  if (!state.settings?.features?.qr || !can('pos.sell') || state.online === false) { state.qrPending = []; return; }
+  const before = new Set((state.qrPending ?? []).map((o) => o.id));
+  state.qrPending = await get('/api/pos/qr');
+  if (state.qrPending.some((o) => !before.has(o.id))) toast(`طلب جديد من ${state.qrPending.find((o) => !before.has(o.id)).tableName}`, 'ok');
+  render();
+}
+function startQrPolling() {
+  clearInterval(qrTimer);
+  if (!state.settings?.features?.qr) return;
+  loadQr().catch(() => {});
+  qrTimer = setInterval(() => { if (state.employee && state.settings?.features?.qr) loadQr().catch(() => {}); else clearInterval(qrTimer); }, 10_000);
 }
 
 return { loadBootstrap, cartTotals, routes, modals, enter };
@@ -8144,7 +8784,9 @@ const { icon } = __m_public_js_icons_js;
 const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
 const { printHtml } = __m_public_js_views_receipts_js;
 const { openCancel } = __m_public_js_views_cancel_js;
+const { loyaltyOf, nextTier, tierOf } = __m_shared_loyalty_js;
 // شاشة التحضير (KDS)، الوردية وإدارة النقد، والعملاء.
+
 
 
 
@@ -8154,37 +8796,65 @@ const { openCancel } = __m_public_js_views_cancel_js;
 
 const PREP = { new: ['جديد', 'بدء التحضير'], preparing: ['قيد التحضير', 'جاهز'], ready: ['جاهز للتسليم', 'تم التسليم'] };
 const LATE_MIN = 8;
+/** عدد البطاقات بالصفحة حسب عرض الشاشة (بلا تمرير على الآيباد) */
+const kdsPerPage = () => { const w = globalThis.innerWidth ?? 1366; return w >= 1600 ? 5 : w >= 1180 ? 4 : w >= 860 ? 3 : w >= 600 ? 2 : 99; };
 let kdsTimer = null;
 
 const routes = {
   kds(s) {
     const all = s.view.kds;
-    const list = all?.filter((o) => o.prep.status !== 'served');
-    const served = (all ?? []).filter((o) => o.prep.status === 'served');
     const tz = s.settings?.tzOffsetMin ?? 180;
-    const counts = { new: 0, preparing: 0, ready: 0 };
-    for (const o of list ?? []) counts[o.prep.status] += 1;
     const canCancel = can('pos.cancel') || can('pos.refund');
-    const cards = (list ?? []).map((o) => {
-      const mins = Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000);
-      const late = o.prep.status !== 'ready' && mins >= LATE_MIN;
-      return `<article class="kds-card ${o.prep.status} ${late ? 'late' : ''}">
-        <header><b class="num">#${o.number}</b><span>${esc(o.diningOption ?? '')}</span><span class="spacer"></span><span class="num small">${time(o.createdAt, tz)} · ${mins} د</span></header>
-        ${o.customerName || o.ticketName ? `<div class="who small">${esc(o.ticketName ?? o.customerName)}</div>` : ''}
-        <ul>${o.lines.map((l) => `<li class="${l.refundedQty >= l.qty ? 'void' : ''}"><b class="num">${l.qty}×</b><div><b>${esc(l.name)}</b> ${esc(l.variant ?? '')}
-          ${l.modifiers.length ? `<div class="muted small">${l.modifiers.map(esc).join(' · ')}</div>` : ''}${l.note ? `<div class="small" style="color:var(--warn)">✎ ${esc(l.note)}</div>` : ''}</div></li>`).join('')}</ul>
-        <div class="kds-actions"><button class="btn ${o.prep.status === 'ready' ? 'primary' : 'olive'}" data-action="kds-advance" data-id="${o.id}" data-from="${o.prep.status}">${PREP[o.prep.status][1]}</button>
-          ${canCancel && o.lines.some((l) => l.refundedQty < l.qty) ? `<button class="btn danger" data-action="kds-cancel" data-id="${o.id}" aria-label="إلغاء أو استرجاع الطلب #${o.number}">${icon('refund', 'sm')} إلغاء</button>` : ''}</div>
+    if (all === undefined) return '<div class="page"><p class="muted">جارٍ التحميل…</p></div>';
+    const nowMs = Date.now();
+    // ما وصل المطبخ من قبل (طلب طاولة QR دُفع لاحقاً) لا يُعرض مرة ثانية
+    const orders = all.map((o) => ({ ...o, lines: o.lines.map((l) => ({ ...l, show: l.qty - (l.sentQty ?? 0) })).filter((l) => l.show > 0) })).filter((o) => o.lines.length).map((o) => {
+      const mins = Math.floor((nowMs - new Date(o.createdAt).getTime()) / 60000);
+      const done = o.prep.status === 'served';
+      const late = !done && o.prep.status !== 'ready' && mins >= LATE_MIN;
+      return { ...o, mins, done, late, urgent: !done && !!o.prep.urgent };
+    });
+    const active = orders.filter((o) => !o.done);
+    const counts = { all: active.length, urgent: active.filter((o) => o.urgent).length, late: active.filter((o) => o.late).length,
+      new: active.filter((o) => o.prep.status === 'new').length, done: orders.filter((o) => o.done).length };
+    const f = s.view.kdsFilter ?? 'all';
+    const pick = { all: active, urgent: active.filter((o) => o.urgent), late: active.filter((o) => o.late), new: active.filter((o) => o.prep.status === 'new'), done: orders.filter((o) => o.done) }[f] ?? active;
+    // العاجل أولاً، ثم المتأخر، ثم الأقدم
+    const list = f === 'done' ? pick : [...pick].sort((a, b) => (b.urgent - a.urgent) || (b.late - a.late) || (new Date(a.createdAt) - new Date(b.createdAt)));
+    const per = kdsPerPage();
+    const pages = Math.max(1, Math.ceil(list.length / per));
+    const page = Math.min(s.view.kdsPage ?? 0, pages - 1);
+    const shown = list.slice(page * per, page * per + per);
+    const CHIPS = [['all', 'جميع الطلبات'], ['urgent', 'عاجل'], ['late', 'متأخر'], ['new', 'جديد'], ['done', 'مكتمل']];
+    const card = (o) => {
+      const tone = o.done ? 'done' : o.late ? 'late' : o.urgent ? 'urgent' : o.prep.status;
+      const where = o.ticketName ? ['table', o.ticketName] : [o.diningOptionId === 'takeaway' ? 'sale' : o.diningOptionId === 'delivery' ? 'arrow' : 'cup', o.diningOption ?? ''];
+      const state = o.done ? 'سُلّم' : o.late ? 'متأخر' : PREP[o.prep.status][0];
+      const action = o.done ? '' : o.prep.status === 'ready'
+        ? `<button class="kd-go" data-action="kds-advance" data-id="${o.id}" data-from="ready" data-to="served">تم التسليم</button>`
+        : `<button class="kd-go" data-action="kds-advance" data-id="${o.id}" data-from="${o.prep.status}" data-to="ready">جاهز</button>`;
+      return `<article class="kd-card ${tone}">
+        <header><b>رقم #${o.number}</b><span class="kd-time">${icon('clock', 'sm')} ${time(o.createdAt, tz)}${o.done ? '' : ` · ${o.mins} د`}</span></header>
+        <div class="kd-sub"><span>${icon(where[0], 'sm')} ${esc(where[1])}</span>${o.qr ? '<span class="kd-flag qr">QR</span>' : ''}${o.urgent ? `<span class="kd-flag">${icon('bolt', 'sm')} عاجل</span>` : ''}<span class="kd-state">${state}</span></div>
+        ${o.customerName ? `<div class="kd-who">${icon('user', 'sm')} ${esc(o.customerName)}</div>` : ''}
+        <ul class="kd-lines">${o.lines.map((l) => `<li class="${l.refundedQty >= l.qty ? 'void' : ''}">
+          <div class="kd-line"><b>${esc(l.name)}${l.variant ? ` <small>${esc(l.variant)}</small>` : ''}</b><span class="kd-qty">×${l.show}</span></div>
+          ${l.modifiers.length ? `<div class="kd-box add"><span class="kd-tag">إضافة</span><ul>${l.modifiers.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>` : ''}
+          ${l.note ? `<div class="kd-box note"><span class="kd-tag">ملاحظة</span><ul><li>${esc(l.note)}</li></ul></div>` : ''}</li>`).join('')}</ul>
+        <footer>${action}
+          <div class="kd-tools">${o.done ? '' : `<button class="icon-btn ${o.urgent ? 'on' : ''}" data-action="kds-urgent" data-id="${o.id}" data-v="${o.urgent ? '0' : '1'}" aria-label="${o.urgent ? 'إلغاء العاجل' : 'تعليم كعاجل'}" title="عاجل">${icon('bolt', 'sm')}</button>`}
+          ${o.prep.status === 'new' ? `<button class="btn sm" data-action="kds-advance" data-id="${o.id}" data-from="new" data-to="preparing">بدء التحضير</button>` : ''}
+          ${canCancel && !o.qr && o.lines.some((l) => l.refundedQty < l.qty) ? `<button class="icon-btn danger" data-action="kds-cancel" data-id="${o.id}" aria-label="إلغاء الطلب #${o.number}" title="إلغاء">${icon('refund', 'sm')}</button>` : ''}</div></footer>
       </article>`;
-    }).join('');
-    return `<div class="page" style="max-width:none">
-      <div class="page-head"><h1>التحضير</h1>
-        <span class="pill petrol">جديد ${counts.new}</span><span class="pill olive">قيد التحضير ${counts.preparing}</span><span class="pill ok">جاهز ${counts.ready}</span>
-        <button class="btn sm" data-action="kds-refresh">${icon('clock', 'sm')} تحديث</button></div>
-      ${list === undefined ? '<p class="muted">جارٍ التحميل…</p>' : list.length ? `<div class="kds">${cards}</div>` : `<div class="card empty">${icon('cup')}<h2>لا طلبات قيد التحضير</h2><p>تظهر الطلبات هنا فور الدفع، وتتحدث كل 10 ثوانٍ.</p></div>`}
-      ${served.length && canCancel ? `<section class="kds-served"><h3 class="small muted">سُلّم مؤخراً — ألغِ الطلب إن لم يستلمه الزبون</h3>
-        <div class="row wrap" style="gap:8px">${served.map((o) => `<div class="served-chip"><b class="num">#${o.number}</b><span class="small muted">${time(o.createdAt, tz)} · ${o.lines.reduce((a, l) => a + l.qty - l.refundedQty, 0)} صنف</span>
-          <button class="btn sm danger" data-action="kds-cancel" data-id="${o.id}" aria-label="إلغاء الطلب #${o.number}">${icon('refund', 'sm')} إلغاء</button></div>`).join('')}</div></section>` : ''}
+    };
+    return `<div class="kd">
+      <div class="kd-head"><h1>شاشة التحضير</h1>
+        <div class="kd-chips">${CHIPS.map(([k, t]) => `<button class="${f === k ? 'on' : ''} ${k}" data-action="kds-filter" data-k="${k}">${t} <b>${counts[k]}</b></button>`).join('')}</div>
+        <button class="icon-btn" data-action="kds-refresh" aria-label="تحديث">${icon('clock', 'sm')}</button></div>
+      ${shown.length ? `<div class="kd-grid" style="--per:${per}">${shown.map(card).join('')}</div>`
+        : `<div class="card empty">${icon('cup')}<h2>${f === 'all' ? 'لا طلبات قيد التحضير' : 'لا طلبات هنا'}</h2><p>تظهر الطلبات هنا فور الدفع، وتتحدث كل 10 ثوانٍ.</p></div>`}
+      ${pages > 1 ? `<nav class="kd-pager" aria-label="صفحات الطلبات"><button class="icon-btn" data-action="kds-page" data-d="-1" ${page === 0 ? 'disabled' : ''} aria-label="السابق">${icon('arrow', 'sm')}</button>
+        <span>${page + 1} / ${pages}</span><button class="icon-btn" data-action="kds-page" data-d="1" ${page >= pages - 1 ? 'disabled' : ''} aria-label="التالي">${icon('back', 'sm')}</button></nav>` : ''}
     </div>`;
   },
 
@@ -8231,16 +8901,29 @@ const routes = {
 
   customers(s) {
     const v = s.view.customers ?? {};
-    const loyalty = s.settings?.loyalty?.enabled;
+    const L = loyaltyOf(s.settings);
+    const loyalty = L.enabled;
     const tz = s.settings?.tzOffsetMin ?? 180;
+    const away = !!v.away;
+    const days = (d) => (d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400_000) : null);
+    // رسالة ترجّع الزبون الغائب: باسمه ونقاطه (رقم عراقي 07… يصير 9647…)
+    const wa = (c) => {
+      const n = String(c.phone ?? '').replace(/\D/g, '').replace(/^0/, '964');
+      const msg = `هلا ${c.name}، اشتاقينالك بـ${s.settings?.name ?? 'مقهانا'} ☕${loyalty && c.points ? ` عندك ${c.points} نقطة تنتظرك، تگدر تستبدلها بزيارتك الجاية.` : ''} نشوفك قريب!`;
+      return n.length >= 10 ? `https://wa.me/${n}?text=${encodeURIComponent(msg)}` : null;
+    };
+    const tierPill = (c) => { const t = tierOf(c.totalSpent, L.tiers); return `<span class="pill tier-${esc(t.id)}">${esc(t.name)}</span>`; };
     return `<div class="page">
       <div class="page-head"><h1>العملاء</h1><button class="btn primary" data-action="customer-new">${icon('plus', 'sm')} عميل جديد</button></div>
-      <div class="toolbar"><input type="search" id="cu-search" placeholder="ابحث بالاسم أو الهاتف" value="${esc(v.search ?? '')}" data-input="customers-search" autocomplete="off"></div>
+      <div class="toolbar"><div class="seg"><button class="${away ? '' : 'on'}" data-action="customers-away" data-v="0">الكل</button><button class="${away ? 'on' : ''}" data-action="customers-away" data-v="1">الغائبون (${L.awayDays} يوم+)</button></div>
+        ${away ? '' : `<input type="search" id="cu-search" placeholder="ابحث بالاسم أو الهاتف" value="${esc(v.search ?? '')}" data-input="customers-search" autocomplete="off">`}</div>
+      ${away ? `<p class="muted small" style="margin:0">زبائن زاروا من قبل وما رجعوا من ${L.awayDays} يوم أو أكثر. أرسل لهم رسالة واتساب ترجّعهم${loyalty ? ' وتذكّرهم بنقاطهم' : ''}.</p>` : ''}
       <div class="table-wrap"><table>
-        <thead><tr><th>العميل</th><th>الهاتف</th><th class="num">الزيارات</th><th class="num">إجمالي الإنفاق</th>${loyalty ? '<th class="num">النقاط</th>' : ''}<th>آخر زيارة</th></tr></thead>
+        <thead><tr><th>العميل</th><th>الهاتف</th><th class="num">الزيارات</th><th class="num">إجمالي الإنفاق</th>${loyalty ? '<th>المستوى</th><th class="num">النقاط</th>' : ''}<th>آخر زيارة</th>${away ? '<th></th>' : ''}</tr></thead>
         <tbody>${(v.list ?? []).map((c) => `<tr class="click" data-action="customer-edit" data-id="${c.id}"><td><b>${esc(c.name)}</b>${c.note ? `<div class="muted small">${esc(c.note)}</div>` : ''}</td>
           <td dir="ltr" style="text-align:end">${esc(c.phone ?? '')}</td><td class="num">${c.visits}</td><td class="num">${money(c.totalSpent)}</td>
-          ${loyalty ? `<td class="num"><span class="pill olive">${c.points}</span></td>` : ''}<td class="muted small">${c.lastVisitAt ? dateTime(c.lastVisitAt, tz) : '—'}</td></tr>`).join('')
+          ${loyalty ? `<td>${tierPill(c)}</td><td class="num"><span class="pill olive">${c.points}</span></td>` : ''}<td class="muted small">${c.lastVisitAt ? `${dateTime(c.lastVisitAt, tz)}${away ? `<div>قبل ${days(c.lastVisitAt)} يوم</div>` : ''}` : '—'}</td>
+          ${away ? `<td>${wa(c) ? `<a class="btn sm" href="${wa(c)}" target="_blank" rel="noopener" data-stop>${icon('chat', 'sm')} واتساب</a>` : ''}</td>` : ''}</tr>`).join('')
           || `<tr><td colspan="6"><div class="empty">${icon('users')}<p>${v.list ? 'لا عملاء مطابقين' : 'جارٍ التحميل…'}</p></div></td></tr>`}</tbody>
       </table></div>
     </div>`;
@@ -8329,7 +9012,11 @@ async function enter() {
 }
 
 async function loadKds() { state.view.kds = await get('/api/kds'); render(); }
-async function loadCustomers() { state.view.customers.list = await get('/api/customers', { search: state.view.customers.search }); render(); }
+async function loadCustomers() {
+  const v = state.view.customers;
+  v.list = await get('/api/customers', v.away ? { away: '1' } : { search: v.search });
+  render();
+}
 
 on({
   'kds-refresh': () => loadKds().catch(fail),
@@ -8337,8 +9024,11 @@ on({
     const o = (state.view.kds ?? []).find((x) => x.id === el.dataset.id);
     if (o) openCancel(o, { source: 'kds', after: loadKds });
   },
+  'kds-filter': (el) => { state.view.kdsFilter = el.dataset.k; state.view.kdsPage = 0; render(); },
+  'kds-page': (el) => { state.view.kdsPage = Math.max(0, (state.view.kdsPage ?? 0) + Number(el.dataset.d)); render(); },
+  'kds-urgent': (el) => busy(async () => { await post(`/api/kds/${el.dataset.id}/urgent`, { urgent: el.dataset.v === '1' }); await loadKds(); }),
   'kds-advance': (el) => busy(async () => {
-    const r = await post(`/api/kds/${el.dataset.id}/advance`, { from: el.dataset.from });
+    const r = await post(`/api/kds/${el.dataset.id}/advance`, { from: el.dataset.from, ...(el.dataset.to ? { to: el.dataset.to } : {}) });
     if (r.status === 'served') toast('سُلّم الطلب', 'ok');
     await loadKds();
   }),
@@ -8382,6 +9072,7 @@ on({
     state.modal = null;
     render();
   },
+  'customers-away': (el) => { const v = state.view.customers; v.away = el.dataset.v === '1'; v.list = null; render(); loadCustomers().catch(fail); },
   'customers-search': (el) => {
     const v = state.view.customers;
     v.search = el.value;
@@ -8399,6 +9090,235 @@ on({
 });
 
 return { routes, shiftReportText, modals, enter };
+})();
+
+// ---- shared/qrcode.js
+const __m_shared_qrcode_js = await (async () => {
+
+// مولّد رمز QR بلا مكتبات (نمط البايت، تصحيح أخطاء M، الإصدارات 1–40): يرجع مصفوفة مربعات تُرسم SVG.
+// مبني على الخوارزمية المرجعية لـ Project Nayuki (MIT). يُستخدم لرموز طاولات «اطلب من الطاولة».
+
+const ECC_PER_BLOCK_M = [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28];
+const BLOCKS_M = [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49];
+const FORMAT_M = 0; // بتات مستوى التصحيح M في معلومات الصيغة
+
+function rawModules(ver) {
+  let r = (16 * ver + 128) * ver + 64;
+  if (ver >= 2) {
+    const n = Math.floor(ver / 7) + 2;
+    r -= (25 * n - 10) * n - 55;
+    if (ver >= 7) r -= 36;
+  }
+  return r;
+}
+const dataCodewords = (ver) => Math.floor(rawModules(ver) / 8) - ECC_PER_BLOCK_M[ver] * BLOCKS_M[ver];
+
+// ---- حقل غالوا GF(256) وتصحيح ريد-سولومون
+function rsMul(x, y) {
+  let z = 0;
+  for (let i = 7; i >= 0; i--) {
+    z = (z << 1) ^ ((z >>> 7) * 0x11d);
+    z ^= ((y >>> i) & 1) * x;
+  }
+  return z & 0xff;
+}
+function rsDivisor(degree) {
+  const result = new Array(degree).fill(0);
+  result[degree - 1] = 1;
+  let root = 1;
+  for (let i = 0; i < degree; i++) {
+    for (let j = 0; j < result.length; j++) {
+      result[j] = rsMul(result[j], root);
+      if (j + 1 < result.length) result[j] ^= result[j + 1];
+    }
+    root = rsMul(root, 0x02);
+  }
+  return result;
+}
+function rsRemainder(data, divisor) {
+  const result = divisor.map(() => 0);
+  for (const b of data) {
+    const factor = b ^ result.shift();
+    result.push(0);
+    divisor.forEach((coef, i) => { result[i] ^= rsMul(coef, factor); });
+  }
+  return result;
+}
+
+function utf8(text) {
+  if (typeof TextEncoder !== 'undefined') return [...new TextEncoder().encode(text)];
+  return [...Buffer.from(text, 'utf8')];
+}
+
+/** يرجع { size, modules: boolean[][] } لنص (رابط الطاولة) */
+function qrMatrix(text) {
+  const bytes = utf8(text);
+  let ver = 1;
+  for (; ver <= 40; ver++) {
+    const ccBits = ver <= 9 ? 8 : 16;
+    if (4 + ccBits + bytes.length * 8 <= dataCodewords(ver) * 8) break;
+  }
+  if (ver > 40) throw new Error('QR_TOO_LONG');
+  const ccBits = ver <= 9 ? 8 : 16;
+  const bits = [];
+  const put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  put(0x4, 4); // نمط البايت
+  put(bytes.length, ccBits);
+  for (const b of bytes) put(b, 8);
+  const capacity = dataCodewords(ver) * 8;
+  put(0, Math.min(4, capacity - bits.length));
+  put(0, (8 - (bits.length % 8)) % 8);
+  for (let pad = 0xec; bits.length < capacity; pad ^= 0xec ^ 0x11) put(pad, 8);
+  const data = [];
+  for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+
+  // الكتل وتصحيح الأخطاء ثم التشابك
+  const numBlocks = BLOCKS_M[ver];
+  const eccLen = ECC_PER_BLOCK_M[ver];
+  const raw = Math.floor(rawModules(ver) / 8);
+  const shortBlocks = numBlocks - (raw % numBlocks);
+  const shortLen = Math.floor(raw / numBlocks);
+  const divisor = rsDivisor(eccLen);
+  const blocks = [];
+  for (let i = 0, k = 0; i < numBlocks; i++) {
+    const dat = data.slice(k, k + shortLen - eccLen + (i < shortBlocks ? 0 : 1));
+    k += dat.length;
+    const ecc = rsRemainder(dat, divisor);
+    if (i < shortBlocks) dat.push(0);
+    blocks.push(dat.concat(ecc));
+  }
+  const codewords = [];
+  for (let i = 0; i < blocks[0].length; i++) {
+    blocks.forEach((b, j) => { if (i !== shortLen - eccLen || j >= shortBlocks) codewords.push(b[i]); });
+  }
+
+  // رسم الأنماط الثابتة
+  const size = ver * 4 + 17;
+  const mod = Array.from({ length: size }, () => new Array(size).fill(false));
+  const fn = Array.from({ length: size }, () => new Array(size).fill(false));
+  const set = (x, y, dark) => { mod[y][x] = dark; fn[y][x] = true; };
+  for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+  const finder = (cx, cy) => {
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const d = Math.max(Math.abs(dx), Math.abs(dy));
+      const x = cx + dx; const y = cy + dy;
+      if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4);
+    }
+  };
+  finder(3, 3); finder(size - 4, 3); finder(3, size - 4);
+  const align = [];
+  if (ver > 1) {
+    const n = Math.floor(ver / 7) + 2;
+    const step = ver === 32 ? 26 : Math.ceil((ver * 4 + 4) / (n * 2 - 2)) * 2;
+    align.push(6);
+    for (let pos = size - 7; align.length < n; pos -= step) align.splice(1, 0, pos);
+  }
+  align.forEach((a, i) => align.forEach((b, j) => {
+    if ((i === 0 && j === 0) || (i === 0 && j === align.length - 1) || (i === align.length - 1 && j === 0)) return;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(a + dx, b + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+  }));
+  const drawFormat = (mask) => {
+    const data5 = (FORMAT_M << 3) | mask;
+    let rem = data5;
+    for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+    const f = ((data5 << 10) | rem) ^ 0x5412;
+    const bit = (i) => ((f >>> i) & 1) !== 0;
+    for (let i = 0; i <= 5; i++) set(8, i, bit(i));
+    set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8));
+    for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+    for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i));
+    for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i));
+    set(8, size - 8, true);
+  };
+  drawFormat(0);
+  if (ver >= 7) {
+    let rem = ver;
+    for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+    const v = (ver << 12) | rem;
+    for (let i = 0; i < 18; i++) {
+      const b = ((v >>> i) & 1) !== 0;
+      const a = size - 11 + (i % 3); const c = Math.floor(i / 3);
+      set(a, c, b); set(c, a, b);
+    }
+  }
+
+  // وضع البيانات بالتعرّج
+  let i = 0;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let vert = 0; vert < size; vert++) {
+      for (let j = 0; j < 2; j++) {
+        const x = right - j;
+        const upward = ((right + 1) & 2) === 0;
+        const y = upward ? size - 1 - vert : vert;
+        if (!fn[y][x] && i < codewords.length * 8) {
+          mod[y][x] = ((codewords[i >>> 3] >>> (7 - (i & 7))) & 1) !== 0;
+          i++;
+        }
+      }
+    }
+  }
+
+  // اختيار القناع الأقل عقوبة
+  const MASKS = [
+    (x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x) => x % 3 === 0, (x, y) => (x + y) % 3 === 0,
+    (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => ((x * y) % 2) + ((x * y) % 3) === 0,
+    (x, y) => (((x * y) % 2) + ((x * y) % 3)) % 2 === 0, (x, y) => (((x + y) % 2) + ((x * y) % 3)) % 2 === 0,
+  ];
+  const applyMask = (m) => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!fn[y][x] && MASKS[m](x, y)) mod[y][x] = !mod[y][x]; };
+  const penalty = () => {
+    let p = 0;
+    const runs = (get) => {
+      for (let a = 0; a < size; a++) {
+        let run = 1;
+        for (let b = 1; b <= size; b++) {
+          if (b < size && get(a, b) === get(a, b - 1)) run++;
+          else { if (run >= 5) p += run - 2; run = 1; }
+        }
+      }
+    };
+    runs((y, x) => mod[y][x]); runs((x, y) => mod[y][x]);
+    for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) {
+      const c = mod[y][x];
+      if (c === mod[y][x + 1] && c === mod[y + 1][x] && c === mod[y + 1][x + 1]) p += 3;
+    }
+    const pat = (get) => {
+      for (let a = 0; a < size; a++) for (let b = 0; b + 10 < size; b++) {
+        const s = Array.from({ length: 11 }, (_, k) => get(a, b + k));
+        const core = s[0] && !s[1] && s[2] && s[3] && s[4] && !s[5] && s[6];
+        if (core && !s[7] && !s[8] && !s[9] && !s[10]) p += 40;
+        const core2 = s[4] && !s[5] && s[6] && s[7] && s[8] && !s[9] && s[10];
+        if (core2 && !s[0] && !s[1] && !s[2] && !s[3]) p += 40;
+      }
+    };
+    pat((y, x) => mod[y][x]); pat((x, y) => mod[y][x]);
+    let dark = 0;
+    for (const row of mod) for (const c of row) if (c) dark++;
+    const total = size * size;
+    p += (Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1) * 10;
+    return p;
+  };
+  let best = 0; let bestP = Infinity;
+  for (let m = 0; m < 8; m++) {
+    applyMask(m); drawFormat(m);
+    const p = penalty();
+    if (p < bestP) { bestP = p; best = m; }
+    applyMask(m);
+  }
+  applyMask(best); drawFormat(best);
+  return { size, modules: mod };
+}
+
+/** رمز QR كصورة SVG (هامش 4 مربعات كما يتطلب المعيار) */
+function qrSvg(text, { px = 220, dark = '#0b2a26', light = '#ffffff' } = {}) {
+  const { size, modules } = qrMatrix(text);
+  const q = 4; const n = size + q * 2;
+  let d = '';
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (modules[y][x]) d += `M${x + q} ${y + q}h1v1h-1z`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}" width="${px}" height="${px}" shape-rendering="crispEdges" role="img" aria-label="رمز QR"><rect width="${n}" height="${n}" fill="${light}"/><path d="${d}" fill="${dark}"/></svg>`;
+}
+
+return { qrMatrix, qrSvg };
 })();
 
 // ---- public/js/views/site.js
@@ -9597,6 +10517,8 @@ return { loadMe, clockButton, routes, enter, loadHr, hrPage, modals };
 // ---- public/js/views/admin.js
 const __m_public_js_views_admin_js = await (async () => {
 const { formatMilli } = __m_shared_calc_js;
+const { loyaltyOf } = __m_shared_loyalty_js;
+const { qrSvg } = __m_shared_qrcode_js;
 const { dateTime, esc, localDate, money, parseAmount, pct, time } = __m_shared_format_js;
 const { ROLES } = __m_shared_perms_js;
 const { del, get, post, put, uid } = __m_public_js_api_js;
@@ -9610,6 +10532,8 @@ const { FLOOR_H, FLOOR_W, floorMap, installFloorEditor } = __m_public_js_floor_j
 const { hrPage, loadHr } = __m_public_js_views_hr_js;
 const { busy, can, fail, field, modalFrame, on, openModal, render, state, toast } = __m_public_js_ui_js;
 // لوحة الإدارة (Back Office): المتابعة، التقارير، الأصناف، التصنيفات، الإضافات، الخصومات، المخزون، الموظفون، الورديات، الإعدادات.
+
+
 
 
 
@@ -9709,6 +10633,7 @@ const PAGES = {
       <button class="btn" data-action="floor-add" data-kind="table" data-shape="rect">${icon('plus', 'sm')} طاولة مربعة</button>
       <button class="btn" data-action="floor-add" data-kind="table" data-shape="round">${icon('plus', 'sm')} طاولة دائرية</button>
       <button class="btn" data-action="floor-add" data-kind="zone" data-shape="rect">${icon('plus', 'sm')} منطقة (بار، مدخل…)</button>
+      ${s.settings?.features?.qr ? `<button class="btn" data-action="qr-links" ${ed?.dirty ? 'disabled title="احفظ الخريطة أولاً"' : ''}>${icon('table', 'sm')} رموز QR للطاولات</button>` : ''}
       <button class="btn primary" data-action="floor-save" ${ed?.dirty && !s.busy ? '' : 'disabled'}>${icon('check', 'sm')} حفظ الخريطة</button></div>`;
     if (!ed) return `${head}<p class="muted">جارٍ التحميل…</p>`;
     const t = ed.tables.find((x) => x.id === ed.selected);
@@ -9970,7 +10895,21 @@ const PAGES = {
             <label class="check"><input type="checkbox" name="loyaltyEnabled" ${st.loyalty.enabled ? 'checked' : ''}> برنامج النقاط</label>
             ${field('نسبة النقاط %', `<input name="loyaltyRate" id="st-loyalty" inputmode="decimal" value="${st.loyalty.rateBp / 100}">`, 'من المبلغ المدفوع. 1 نقطة = 1 د.ع عند الاستبدال')}
             ${field('تنبيه فرق الصندوق (د.ع)', `<input name="cashVarianceAlert" id="st-var" inputmode="numeric" value="${st.cashVarianceAlert}">`, 'فوقه تُطلب ملاحظة عند الإغلاق')}
-          </div></section>
+          </div>
+          ${(() => {
+            const L = loyaltyOf(st);
+            const tiers = [...L.tiers, ...Array(Math.max(0, 2 - L.tiers.length)).fill(null)].slice(0, 3);
+            return `<h3 style="margin-top:6px">مستويات الولاء</h3>
+          <p class="muted small" style="margin:0">الزبون يترقّى وحده حسب إجمالي صرفه، وكل مستوى يزيد نقاطه بنسبة. المستوى الأول «برونزي» للجميع.</p>
+          <div class="grid-3">
+            ${field('نقاط الترحيب', `<input name="welcomePoints" id="st-welcome" inputmode="numeric" value="${L.welcomePoints}">`, 'تنضاف للزبون الجديد أول تسجيل')}
+            ${field('الغياب بعد (يوم)', `<input name="awayDays" id="st-away" inputmode="numeric" value="${L.awayDays}">`, 'قائمة «الغائبون» في صفحة العملاء')}
+          </div>
+          ${tiers.map((t, i) => `<div class="grid-3">
+            ${field(`المستوى ${i + 2}`, `<input name="tier_name_${i}" id="st-tier-n-${i}" maxlength="20" value="${esc(t?.name ?? '')}" placeholder="${['فضي', 'ذهبي', 'ماسي'][i]}">`)}
+            ${field('من صرف (د.ع)', `<input name="tier_min_${i}" id="st-tier-m-${i}" inputmode="numeric" value="${t?.minSpent ?? ''}" placeholder="${[150000, 500000, 1500000][i]}">`)}
+            ${field('زيادة النقاط %', `<input name="tier_bonus_${i}" id="st-tier-b-${i}" inputmode="decimal" value="${t ? t.bonusBp / 100 : ''}" placeholder="${[25, 50, 100][i]}">`)}</div>`).join('')}`;
+          })()}</section>
         <section class="card pad stack"><h2>طرق الدفع</h2>
           ${st.paymentTypes.map((p, i) => `<div class="row wrap"><input name="pt_name_${i}" id="pt-name-${i}" value="${esc(p.name)}" style="flex:1;min-width:140px" aria-label="اسم طريقة الدفع">
             <select name="pt_kind_${i}" id="pt-kind-${i}" style="width:auto" aria-label="النوع"><option value="cash" ${p.kind === 'cash' ? 'selected' : ''}>نقد (يدخل الدرج)</option><option value="card" ${p.kind === 'card' ? 'selected' : ''}>بطاقة</option><option value="other" ${p.kind === 'other' ? 'selected' : ''}>محفظة/أخرى</option></select>
@@ -9979,7 +10918,8 @@ const PAGES = {
         <section class="card pad stack"><h2>أنواع الطلب والميزات</h2>
           ${field('أنواع الطلب (مفصولة بفاصلة)', `<input name="dining" id="st-dining" value="${esc(st.diningOptions.map((d) => d.name).join('، '))}">`)}
           <label class="check"><input type="checkbox" name="kds" ${st.features.kds ? 'checked' : ''}> شاشة التحضير للباريستا</label>
-          <label class="check"><input type="checkbox" name="openTickets" ${st.features.openTickets ? 'checked' : ''}> التذاكر المفتوحة (حفظ الطلبات للطاولات)</label></section>
+          <label class="check"><input type="checkbox" name="openTickets" ${st.features.openTickets ? 'checked' : ''}> التذاكر المفتوحة (حفظ الطلبات للطاولات)</label>
+          <label class="check"><input type="checkbox" name="qr" ${st.features.qr ? 'checked' : ''}> الطلب من الطاولة (QR): الزبون يطلب من موبايله وهو على واي فاي المقهى، والكاشير يقبل أو يرفض</label></section>
         <div><button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ الإعدادات</button></div>
       </form>
       ${accountCard(s, a.account)}`;
@@ -10120,7 +11060,19 @@ function reportTable(tab, r) {
 }
 
 // ---------------------------------------------------------------- النوافذ
+const qrUrl = (token) => `${location.origin}/#/q/${token}`;
 const modals = {
+  'qr-links'(s) {
+    const m = s.modal;
+    if (!m.list) return modalFrame({ title: 'رموز QR للطاولات', body: '<p class="muted">جارٍ التحميل…</p>' });
+    return modalFrame({ title: 'رموز QR للطاولات', sub: 'اطبع رمز كل طاولة وألصقه عليها. الطلب يشتغل بس من موبايل متصل بواي فاي المقهى.', cls: 'wide', body: `
+      <div class="row wrap"><button class="btn primary" data-action="qr-print">${icon('print', 'sm')} طباعة كل الرموز</button>
+        <span class="muted small">إذا انتشرت صورة رمز طاولة، اضغط «رمز جديد» فيتوقف القديم فوراً.</span></div>
+      <div class="qr-grid">${m.list.map((l) => `<figure class="qr-tile">${qrSvg(qrUrl(l.token), { px: 160 })}<figcaption><b>${esc(l.tableName)}</b>
+        <button class="btn sm" data-action="qr-rotate" data-id="${esc(l.tableId)}">رمز جديد</button></figcaption></figure>`).join('') || '<p class="muted">أضف طاولات للخريطة واحفظها أولاً.</p>'}</div>
+      ${m.blocks?.length ? `<h3>زبائن محظورون</h3><div class="table-wrap"><table><tbody>${m.blocks.map((b) => `<tr><td>${esc(b.guestName ?? 'زبون')}</td><td class="small">${esc(b.tableName ?? '')}</td><td class="small">${dateTime(b.at, s.settings?.tzOffsetMin)} · ${esc(b.by ?? '')}</td>
+        <td><button class="btn sm" data-action="qr-unblock" data-id="${b.id}">إلغاء الحظر</button></td></tr>`).join('')}</tbody></table></div>` : ''}` });
+  },
   'item-form'(s) {
     const m = s.modal;
     const it = m.item;
@@ -10497,6 +11449,30 @@ on({
     Object.assign(ed, { selected: null, dirty: true });
     render();
   },
+  'qr-links': () => busy(async () => {
+    openModal({ type: 'qr-links' });
+    const [list, blocks] = await Promise.all([get('/api/admin/qr-links'), get('/api/pos/qr-blocks').catch(() => [])]);
+    if (state.modal?.type === 'qr-links') Object.assign(state.modal, { list, blocks });
+  }),
+  'qr-rotate': (el) => busy(async () => {
+    const m = state.modal;
+    if (m.confirmRotate !== el.dataset.id) { m.confirmRotate = el.dataset.id; toast('اضغط مرة ثانية: الرمز المطبوع القديم يتوقف وتحتاج تطبع الجديد'); return; }
+    const r = await post('/api/admin/qr-links/rotate', { tableId: el.dataset.id });
+    m.list = m.list.map((l) => (l.tableId === r.tableId ? { ...l, token: r.token } : l));
+    m.confirmRotate = null;
+    toast('صار للطاولة رمز جديد، اطبعه', 'ok');
+  }),
+  'qr-unblock': (el) => busy(async () => {
+    await del(`/api/pos/qr-blocks/${el.dataset.id}`);
+    state.modal.blocks = state.modal.blocks.filter((b) => b.id !== el.dataset.id);
+    toast('أُلغي الحظر', 'ok');
+  }),
+  'qr-print': () => {
+    const m = state.modal;
+    const shop = esc(state.settings?.name ?? '');
+    printHtml(m.list.map((l) => `<div class="qr-print"><div class="qr-shop">${shop}</div><div class="qr-table">${esc(l.tableName)}</div>
+      ${qrSvg(qrUrl(l.token), { px: 220 })}<div class="qr-hint">امسح الرمز واطلب من طاولتك<br>(على واي فاي المقهى)</div></div>`).join(''), 'رموز الطاولات');
+  },
   'floor-save': () => busy(async () => {
     const ed = A().floor;
     const floor = await put('/api/admin/floor', { tables: ed.tables });
@@ -10779,11 +11755,18 @@ on({
       name: d.name, address: d.address, phone: d.phone, reportPhone: d.reportPhone ?? '',
       receipt: { header: d.header, footer: d.footer, showCustomer: d.showCustomer },
       tax: { mode: d.taxMode, rateBp: d.taxMode === 'none' ? 0 : percentToBp(d.taxRate), name: d.taxName || 'ضريبة' },
-      loyalty: { enabled: d.loyaltyEnabled, rateBp: percentToBp(d.loyaltyRate) },
+      loyalty: {
+        enabled: d.loyaltyEnabled, rateBp: percentToBp(d.loyaltyRate),
+        welcomePoints: num(d.welcomePoints || '0', 'نقاط الترحيب'), awayDays: num(d.awayDays || '30', 'أيام الغياب'),
+        tiers: [0, 1, 2].filter((i) => String(d[`tier_name_${i}`] ?? '').trim()).map((i) => ({
+          id: ['silver', 'gold', 'diamond'][i], name: d[`tier_name_${i}`].trim(),
+          minSpent: num(d[`tier_min_${i}`], `حد المستوى ${i + 2}`), bonusBp: percentToBp(d[`tier_bonus_${i}`] || '0'),
+        })),
+      },
       cashVarianceAlert: num(d.cashVarianceAlert, 'تنبيه الفرق'),
       paymentTypes: st.paymentTypes.map((p, i) => ({ id: p.id, name: d[`pt_name_${i}`], kind: d[`pt_kind_${i}`], active: d[`pt_active_${i}`] })),
       diningOptions: names.map((n, i) => ({ id: st.diningOptions.find((x) => x.name === n)?.id ?? `d${i}${Date.now().toString(36)}`, name: n })),
-      features: { kds: d.kds, openTickets: d.openTickets },
+      features: { kds: d.kds, openTickets: d.openTickets, qr: d.qr },
     };
     A().settings = await put('/api/admin/settings', body);
     state.settings = A().settings;
@@ -11529,6 +12512,211 @@ on({
 return { loadSubscription, subscriptionBanner, subscriptionView };
 })();
 
+// ---- public/js/views/qr-guest.js
+const __m_public_js_views_qr_guest_js = await (async () => {
+const { unitPrice } = __m_shared_calc_js;
+const { esc, money } = __m_shared_format_js;
+const { get, post } = __m_public_js_api_js;
+const { icon } = __m_public_js_icons_js;
+const { mark } = __m_public_js_brand_js;
+const { itemEmoji } = __m_public_js_emoji_js;
+const { busy, on, render, state, toast } = __m_public_js_ui_js;
+// صفحة الزبون «اطلب من الطاولة» (#/q/<رمز الطاولة>): القائمة، اختيار الحجم والإضافات، السلة، الإرسال، وحالة الطلب.
+// بلا حساب: معرّف عشوائي للجهاز في التخزين المحلي (يستخدمه الكاشير للحظر). الخادم يسعّر ويتحقق من شبكة المقهى.
+
+
+
+
+
+
+
+
+const G = () => state.qrg ?? (state.qrg = { token: null, menu: undefined, error: null, cat: null, cart: [], sheet: null, review: false, orders: [], images: {}, clientId: null });
+const uidv = () => crypto.randomUUID();
+function guestId() {
+  try {
+    let g = localStorage.getItem('mc_guest');
+    if (!g || !/^[A-Za-z0-9_-]{8,64}$/.test(g)) { g = uidv(); localStorage.setItem('mc_guest', g); }
+    return g;
+  } catch { return (G().gid ??= uidv()); }
+}
+
+const ERR = {
+  QR_NOT_ON_NETWORK: ['wifi', 'اتصل بواي فاي المقهى', 'الطلب من الطاولة يشتغل بس من موبايل متصل بشبكة المقهى. اتصل بالواي فاي وارجع اضغط «حاول مرة ثانية».'],
+  QR_DISABLED: ['alert', 'الطلب من الطاولة غير متاح الآن', 'تگدر تطلب من الكاشير مباشرة.'],
+  QR_UNKNOWN_TABLE: ['table', 'هذا الرمز قديم', 'امسح الرمز الموجود على طاولتك من جديد، أو اسأل الكاشير.'],
+  QR_BLOCKED: ['lock', 'ما تگدر تطلب من هذا الجهاز', 'تواصل ويا الكاشير.'],
+  TOO_MANY_ATTEMPTS: ['clock', 'محاولات كثيرة', 'انتظر شوية وارجع حاول.'],
+};
+
+let timer = null;
+async function enterGuest(token) {
+  const g = G();
+  if (g.token !== token) Object.assign(g, { token, menu: undefined, error: null, cart: [], orders: [], sheet: null, review: false });
+  clearInterval(timer);
+  await loadMenu();
+  timer = setInterval(() => { if (location.hash.startsWith('#/q/')) loadStatus().catch(() => {}); else clearInterval(timer); }, 10_000);
+}
+
+async function loadMenu() {
+  const g = G();
+  try {
+    g.menu = await get('/api/qr/menu', { t: g.token });
+    g.error = null;
+    g.cat ??= g.menu.categories.find((c) => g.menu.items.some((i) => i.categoryId === c.id))?.id ?? null;
+    loadStatus().catch(() => {});
+    if (g.menu.items.some((i) => i.imageV)) get('/api/qr/images', { t: g.token }).then((im) => { g.images = im; render(); }).catch(() => {});
+  } catch (e) { g.menu = null; g.error = e.code ?? 'NETWORK'; }
+  render();
+}
+async function loadStatus() {
+  const g = G();
+  if (!g.menu) return;
+  g.orders = await get('/api/qr/status', { t: g.token, g: guestId() });
+  render();
+}
+
+const modsOf = (item) => (G().menu.modifiers ?? []).filter((m) => item.modifierIds.includes(m.id));
+const lineTotal = (l) => unitPrice(l.price, l.options.map((o) => o.price)) * l.qty;
+const cartTotal = () => G().cart.reduce((a, l) => a + lineTotal(l), 0);
+const imgOf = (item) => { const im = G().images[item.id]; return im && im.v === item.imageV ? im.src : null; };
+
+const STATUS = { pending: ['بانتظار تأكيد الكاشير', 'warn'], accepted: ['انقبل وصار يتحضّر', 'ok'], rejected: ['ما انقبل', 'bad'] };
+
+function guestView() {
+  const g = G();
+  if (g.menu === undefined) return '<div class="qg qg-center"><p class="muted">جارٍ تحميل القائمة…</p></div>';
+  if (!g.menu) {
+    const [ic, title, text] = ERR[g.error] ?? ['alert', 'تعذّر تحميل القائمة', 'تأكد من الاتصال وحاول مرة ثانية.'];
+    return `<div class="qg qg-center"><div class="qg-msg"><span class="qg-ic">${icon(ic)}</span><h1>${title}</h1><p>${text}</p>
+      <button class="qg-btn" data-action="qg-retry">حاول مرة ثانية</button></div></div>`;
+  }
+  const m = g.menu;
+  const items = m.items.filter((i) => i.categoryId === g.cat);
+  const count = g.cart.reduce((a, l) => a + l.qty, 0);
+  return `<div class="qg">
+    <header class="qg-head">${mark()}<div><b>${esc(m.shop.name)}</b><span>${icon('table', 'sm')} ${esc(m.table.name)}</span></div></header>
+    ${g.orders.length ? `<section class="qg-orders">${g.orders.slice(0, 3).map((o) => `<div class="qg-order ${STATUS[o.status]?.[1] ?? ''}"><b>${STATUS[o.status]?.[0] ?? o.status}${o.number ? ` · #Q${o.number}` : ''}</b>
+      <span>${o.lines.reduce((a, l) => a + l.qty, 0)} صنف · ${money(o.total)}${o.reason ? ` · ${esc(o.reason)}` : ''}</span></div>`).join('')}</section>` : ''}
+    <nav class="qg-cats">${m.categories.filter((c) => m.items.some((i) => i.categoryId === c.id)).map((c) => `<button class="${g.cat === c.id ? 'on' : ''}" data-action="qg-cat" data-id="${c.id}">${esc(c.name)}</button>`).join('')}</nav>
+    <main class="qg-items">${items.map((i) => {
+      const out = i.variants.every((v) => v.soldOut);
+      const from = Math.min(...i.variants.map((v) => v.price));
+      const src = imgOf(i);
+      return `<button class="qg-item ${out ? 'out' : ''}" data-action="qg-open" data-id="${i.id}" ${out ? 'disabled' : ''}>
+        <span class="qg-pic" style="--c: var(--tile-${esc(i.color ?? 'olive')}, #0a7c55)">${src ? `<img src="${src}" alt="">` : `<span>${esc(itemEmoji(i, m.categories.find((c) => c.id === i.categoryId)?.name))}</span>`}</span>
+        <span class="qg-name"><b>${esc(i.name)}</b><small>${out ? 'نفد' : `${i.variants.length > 1 ? 'من ' : ''}${money(from)}`}</small></span>
+        <span class="qg-plus">${icon(out ? 'x' : 'plus', 'sm')}</span></button>`;
+    }).join('') || '<p class="muted">لا أصناف هنا</p>'}</main>
+    ${count ? `<div class="qg-bar"><button data-action="qg-review"><span class="qg-count">${count}</span> سلتك <b>${money(cartTotal())}</b></button></div>` : ''}
+    ${g.sheet ? itemSheet(g) : ''}${g.review ? reviewSheet(g) : ''}
+  </div>`;
+}
+
+function itemSheet(g) {
+  const sh = g.sheet;
+  const item = g.menu.items.find((i) => i.id === sh.itemId);
+  const v = item.variants.find((x) => x.id === sh.variantId);
+  const groups = modsOf(item);
+  const opts = groups.flatMap((gr) => gr.options).filter((o) => sh.options.includes(o.id));
+  const total = unitPrice(v.price, opts.map((o) => o.price)) * sh.qty;
+  return `<div class="qg-scrim" data-action="qg-close"></div><section class="qg-sheet" role="dialog" aria-label="${esc(item.name)}">
+    <header><b>${esc(item.name)}</b><button class="qg-x" data-action="qg-close" aria-label="إغلاق">${icon('x', 'sm')}</button></header>
+    ${item.variants.length > 1 ? `<h3>الحجم</h3><div class="qg-choices">${item.variants.map((x) => `<button class="${x.id === sh.variantId ? 'on' : ''}" data-action="qg-variant" data-id="${x.id}" ${x.soldOut ? 'disabled' : ''}>${esc(x.name || 'عادي')}<small>${x.soldOut ? 'نفد' : money(x.price)}</small></button>`).join('')}</div>` : ''}
+    ${groups.map((gr) => `<h3>${esc(gr.name)}${gr.required ? ' <span class="qg-req">مطلوب</span>' : gr.selection === 'single' ? '' : ' <span class="muted">(اختياري)</span>'}</h3>
+      <div class="qg-choices">${gr.options.map((o) => `<button class="${sh.options.includes(o.id) ? 'on' : ''}" data-action="qg-opt" data-g="${gr.id}" data-id="${o.id}">${esc(o.name)}${o.price ? `<small>+${money(o.price)}</small>` : ''}</button>`).join('')}</div>`).join('')}
+    <h3>ملاحظة</h3><input id="qg-note" maxlength="120" placeholder="مثلاً: سكر قليل" value="${esc(sh.note ?? '')}" data-input="qg-note">
+    <footer><div class="qg-step"><button data-action="qg-qty" data-d="-1" aria-label="أقل">${icon('minus', 'sm')}</button><b>${sh.qty}</b><button data-action="qg-qty" data-d="1" aria-label="أكثر">${icon('plus', 'sm')}</button></div>
+      <button class="qg-btn" data-action="qg-add">أضف للسلة · ${money(total)}</button></footer></section>`;
+}
+
+function reviewSheet(g) {
+  return `<div class="qg-scrim" data-action="qg-close"></div><section class="qg-sheet" role="dialog" aria-label="سلتك">
+    <header><b>سلتك</b><button class="qg-x" data-action="qg-close" aria-label="إغلاق">${icon('x', 'sm')}</button></header>
+    <ul class="qg-cart">${g.cart.map((l, i) => `<li><div><b>${esc(l.itemName)}</b>${l.variantName ? ` <small>${esc(l.variantName)}</small>` : ''}
+      ${l.options.length ? `<div class="muted small">${l.options.map((o) => esc(o.name)).join(' · ')}</div>` : ''}${l.note ? `<div class="small">✎ ${esc(l.note)}</div>` : ''}</div>
+      <div class="qg-step sm"><button data-action="qg-line" data-i="${i}" data-d="-1" aria-label="أقل">${icon(l.qty > 1 ? 'minus' : 'trash', 'sm')}</button><b>${l.qty}</b><button data-action="qg-line" data-i="${i}" data-d="1" aria-label="أكثر">${icon('plus', 'sm')}</button></div>
+      <b class="num">${money(lineTotal(l))}</b></li>`).join('')}</ul>
+    <form data-form="qg-send" class="qg-form" data-keep>
+      <input name="name" id="qg-name" maxlength="30" placeholder="اسمك (اختياري)" autocomplete="given-name">
+      <input name="note" id="qg-onote" maxlength="200" placeholder="ملاحظة للطلب (اختياري)">
+      <button class="qg-btn" type="submit" ${state.busy ? 'disabled' : ''}>أرسل الطلب · ${money(cartTotal())}</button>
+      <p class="muted small">يوصل طلبك للكاشير، ومن يقبله يبدأ التحضير. الدفع عند الكاشير.</p></form></section>`;
+}
+
+on({
+  'qg-retry': () => { G().menu = undefined; render(); loadMenu(); },
+  'qg-cat': (el) => { G().cat = el.dataset.id; render(); },
+  'qg-open': (el) => {
+    const g = G();
+    const item = g.menu.items.find((i) => i.id === el.dataset.id);
+    const v = item.variants.find((x) => !x.soldOut) ?? item.variants[0];
+    // الاختيار الأول من كل مجموعة مطلوبة جاهز مسبقاً
+    const options = modsOf(item).filter((m) => m.required).map((m) => m.options[0]?.id).filter(Boolean);
+    g.sheet = { itemId: item.id, variantId: v.id, options, qty: 1, note: '' };
+    render();
+  },
+  'qg-close': () => { const g = G(); g.sheet = null; g.review = false; render(); },
+  'qg-variant': (el) => { G().sheet.variantId = el.dataset.id; render(); },
+  'qg-opt': (el) => {
+    const g = G();
+    const gr = g.menu.modifiers.find((m) => m.id === el.dataset.g);
+    const sh = g.sheet;
+    const id = el.dataset.id;
+    if (gr.selection === 'single') {
+      const others = gr.options.map((o) => o.id);
+      const had = sh.options.includes(id);
+      sh.options = sh.options.filter((x) => !others.includes(x));
+      if (!had || gr.required) sh.options.push(id);
+    } else sh.options = sh.options.includes(id) ? sh.options.filter((x) => x !== id) : [...sh.options, id];
+    render();
+  },
+  'qg-note': (el) => { if (G().sheet) G().sheet.note = el.value; },
+  'qg-qty': (el) => { const sh = G().sheet; sh.qty = Math.min(20, Math.max(1, sh.qty + Number(el.dataset.d))); render(); },
+  'qg-add': () => {
+    const g = G();
+    const sh = g.sheet;
+    const item = g.menu.items.find((i) => i.id === sh.itemId);
+    const missing = modsOf(item).find((m) => m.required && !m.options.some((o) => sh.options.includes(o.id)));
+    if (missing) { toast(`اختر ${missing.name}`, 'bad'); return; }
+    const v = item.variants.find((x) => x.id === sh.variantId);
+    const options = modsOf(item).flatMap((m) => m.options).filter((o) => sh.options.includes(o.id));
+    g.cart.push({ variantId: v.id, itemName: item.name, variantName: v.name, price: v.price, options, qty: sh.qty, note: sh.note?.trim() || null });
+    g.sheet = null;
+    toast('انضاف للسلة', 'ok');
+    render();
+  },
+  'qg-review': () => { G().review = true; G().clientId ??= uidv(); render(); },
+  'qg-line': (el) => {
+    const g = G();
+    const l = g.cart[Number(el.dataset.i)];
+    l.qty += Number(el.dataset.d);
+    if (l.qty <= 0) g.cart.splice(Number(el.dataset.i), 1);
+    else l.qty = Math.min(20, l.qty);
+    if (!g.cart.length) g.review = false;
+    render();
+  },
+  'qg-send': (_el, _e, d) => busy(async () => {
+    const g = G();
+    g.clientId ??= uidv();
+    try {
+      await post('/api/qr/order', {
+        t: g.token, guestId: guestId(), clientId: g.clientId, name: d.name || null, note: d.note || null,
+        lines: g.cart.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.options.map((o) => o.id), note: l.note })),
+      });
+    } catch (e) {
+      if (ERR[e.code]) { g.menu = null; g.error = e.code; render(); return; }
+      throw e;
+    }
+    Object.assign(g, { cart: [], review: false, clientId: null });
+    toast('وصل طلبك للكاشير', 'ok');
+    await loadStatus();
+  }),
+});
+
+return { enterGuest, guestView };
+})();
+
 // ---- public/js/app.js
 const __m_public_js_app_js = await (async () => {
 const { esc, time } = __m_shared_format_js;
@@ -11548,7 +12736,9 @@ const hr = __m_public_js_views_hr_js;
 const kiosk = __m_public_js_views_kiosk_js;
 const subscription = __m_public_js_views_subscription_js;
 const site = __m_public_js_views_site_js;
+const qrGuest = __m_public_js_views_qr_guest_js;
 // التشغيل، التوجيه، شاشتا الإعداد والدخول، والهيكل العام.
+
 
 
 
@@ -11594,6 +12784,7 @@ function parseHash() {
 async function navigate() {
   const { route, sub, id } = parseHash();
   if (route === 'platform') { state.modal = null; render(); return platform.enterPlatform(); }
+  if (route === 'q') { state.modal = null; render(); return qrGuest.enterGuest(sub); } // زبون يطلب من طاولته (رمز QR)
   if (route === 'site' || (route === 'book' && state.shop)) { state.modal = null; return render(); } // الموقع وصفحة الحجز من أي جهاز (معاينة من لوحة المزوّد)
   if (!state.employee) { state.authPage = route; state.modal = null; return render(); }
   const name = route || defaultRoute();
@@ -11617,6 +12808,7 @@ const views = {
     if (!s.ready) return '<div class="auth-panel" style="height:100%"><p class="muted">جارٍ التحميل…</p></div>';
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
     if (parseHash().route === 'platform') return platform.platformView(s);
+    if (parseHash().route === 'q') return qrGuest.guestView(s);
     if (parseHash().route === 'site') return site.siteView(s);
     if (parseHash().route === 'book' && s.shop) return site.bookView(s);
     if (s.shop?.disabled) return account.disabledView(s);
@@ -11767,7 +12959,7 @@ async function boot() {
     state.shop = s.shop;
     state.authPage = parseHash().route;
     state.ready = true;
-    if (parseHash().route === 'platform') await navigate();
+    if (['platform', 'q'].includes(parseHash().route)) await navigate();
     else if (s.employee) await loadSession(s.employee);
     else render();
   } catch (e) {

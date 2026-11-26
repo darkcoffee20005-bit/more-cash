@@ -14,6 +14,7 @@ import * as hr from './views/hr.js';
 import * as kiosk from './views/kiosk.js';
 import * as subscription from './views/subscription.js';
 import * as site from './views/site.js';
+import * as qrGuest from './views/qr-guest.js';
 import { mark } from './brand.js';
 import { flushSales, initOffline, rememberSession, savedSession } from './offline.js';
 
@@ -44,6 +45,7 @@ function parseHash() {
 export async function navigate() {
   const { route, sub, id } = parseHash();
   if (route === 'platform') { state.modal = null; render(); return platform.enterPlatform(); }
+  if (route === 'q') { state.modal = null; render(); return qrGuest.enterGuest(sub); } // زبون يطلب من طاولته (رمز QR)
   if (route === 'site' || (route === 'book' && state.shop)) { state.modal = null; return render(); } // الموقع وصفحة الحجز من أي جهاز (معاينة من لوحة المزوّد)
   if (!state.employee) { state.authPage = route; state.modal = null; return render(); }
   const name = route || defaultRoute();
@@ -67,6 +69,7 @@ export const views = {
     if (!s.ready) return '<div class="auth-panel" style="height:100%"><p class="muted">جارٍ التحميل…</p></div>';
     if (s.fatal) return `<div class="auth-panel" style="height:100%"><div class="card pad stack" style="max-width:520px">${icon('alert')}<h2>لا يمكن تشغيل النظام الآن</h2><p>${esc(s.fatal)}</p><button class="btn primary" data-action="reload">إعادة المحاولة</button></div></div>`;
     if (parseHash().route === 'platform') return platform.platformView(s);
+    if (parseHash().route === 'q') return qrGuest.guestView(s);
     if (parseHash().route === 'site') return site.siteView(s);
     if (parseHash().route === 'book' && s.shop) return site.bookView(s);
     if (s.shop?.disabled) return account.disabledView(s);
@@ -217,7 +220,7 @@ export async function boot() {
     state.shop = s.shop;
     state.authPage = parseHash().route;
     state.ready = true;
-    if (parseHash().route === 'platform') await navigate();
+    if (['platform', 'q'].includes(parseHash().route)) await navigate();
     else if (s.employee) await loadSession(s.employee);
     else render();
   } catch (e) {

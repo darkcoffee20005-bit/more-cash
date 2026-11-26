@@ -20,7 +20,8 @@ export const routes = {
     const canCancel = can('pos.cancel') || can('pos.refund');
     if (all === undefined) return '<div class="page"><p class="muted">جارٍ التحميل…</p></div>';
     const nowMs = Date.now();
-    const orders = all.map((o) => {
+    // ما وصل المطبخ من قبل (طلب طاولة QR دُفع لاحقاً) لا يُعرض مرة ثانية
+    const orders = all.map((o) => ({ ...o, lines: o.lines.map((l) => ({ ...l, show: l.qty - (l.sentQty ?? 0) })).filter((l) => l.show > 0) })).filter((o) => o.lines.length).map((o) => {
       const mins = Math.floor((nowMs - new Date(o.createdAt).getTime()) / 60000);
       const done = o.prep.status === 'served';
       const late = !done && o.prep.status !== 'ready' && mins >= LATE_MIN;
@@ -47,16 +48,16 @@ export const routes = {
         : `<button class="kd-go" data-action="kds-advance" data-id="${o.id}" data-from="${o.prep.status}" data-to="ready">جاهز</button>`;
       return `<article class="kd-card ${tone}">
         <header><b>رقم #${o.number}</b><span class="kd-time">${icon('clock', 'sm')} ${time(o.createdAt, tz)}${o.done ? '' : ` · ${o.mins} د`}</span></header>
-        <div class="kd-sub"><span>${icon(where[0], 'sm')} ${esc(where[1])}</span>${o.urgent ? `<span class="kd-flag">${icon('bolt', 'sm')} عاجل</span>` : ''}<span class="kd-state">${state}</span></div>
+        <div class="kd-sub"><span>${icon(where[0], 'sm')} ${esc(where[1])}</span>${o.qr ? '<span class="kd-flag qr">QR</span>' : ''}${o.urgent ? `<span class="kd-flag">${icon('bolt', 'sm')} عاجل</span>` : ''}<span class="kd-state">${state}</span></div>
         ${o.customerName ? `<div class="kd-who">${icon('user', 'sm')} ${esc(o.customerName)}</div>` : ''}
         <ul class="kd-lines">${o.lines.map((l) => `<li class="${l.refundedQty >= l.qty ? 'void' : ''}">
-          <div class="kd-line"><b>${esc(l.name)}${l.variant ? ` <small>${esc(l.variant)}</small>` : ''}</b><span class="kd-qty">×${l.qty}</span></div>
+          <div class="kd-line"><b>${esc(l.name)}${l.variant ? ` <small>${esc(l.variant)}</small>` : ''}</b><span class="kd-qty">×${l.show}</span></div>
           ${l.modifiers.length ? `<div class="kd-box add"><span class="kd-tag">إضافة</span><ul>${l.modifiers.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>` : ''}
           ${l.note ? `<div class="kd-box note"><span class="kd-tag">ملاحظة</span><ul><li>${esc(l.note)}</li></ul></div>` : ''}</li>`).join('')}</ul>
         <footer>${action}
           <div class="kd-tools">${o.done ? '' : `<button class="icon-btn ${o.urgent ? 'on' : ''}" data-action="kds-urgent" data-id="${o.id}" data-v="${o.urgent ? '0' : '1'}" aria-label="${o.urgent ? 'إلغاء العاجل' : 'تعليم كعاجل'}" title="عاجل">${icon('bolt', 'sm')}</button>`}
           ${o.prep.status === 'new' ? `<button class="btn sm" data-action="kds-advance" data-id="${o.id}" data-from="new" data-to="preparing">بدء التحضير</button>` : ''}
-          ${canCancel && o.lines.some((l) => l.refundedQty < l.qty) ? `<button class="icon-btn danger" data-action="kds-cancel" data-id="${o.id}" aria-label="إلغاء الطلب #${o.number}" title="إلغاء">${icon('refund', 'sm')}</button>` : ''}</div></footer>
+          ${canCancel && !o.qr && o.lines.some((l) => l.refundedQty < l.qty) ? `<button class="icon-btn danger" data-action="kds-cancel" data-id="${o.id}" aria-label="إلغاء الطلب #${o.number}" title="إلغاء">${icon('refund', 'sm')}</button>` : ''}</div></footer>
       </article>`;
     };
     return `<div class="kd">

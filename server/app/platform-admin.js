@@ -96,7 +96,7 @@ export function createPlatformAdmin({ db, now, newId = () => crypto.randomUUID()
 
   /** نسخة احتياطية كاملة لمقهى (وفروعه) بصيغة JSON، بلا أسرار: لا كلمات مرور ولا رموز ولا جلسات */
   const BACKUP = ['settings', 'employees', 'categories', 'items', 'variants', 'modifiers', 'discounts', 'customers', 'receipts', 'shifts', 'tickets', 'stock_moves',
-    'expenses', 'attendance', 'hr_adjustments', 'leaves', 'hr_awards', 'hr_advances', 'payrolls', 'audit', 'point_moves', 'item_images', 'counters'];
+    'expenses', 'attendance', 'hr_adjustments', 'leaves', 'hr_awards', 'hr_advances', 'payrolls', 'audit', 'point_moves', 'item_images', 'qr_orders', 'qr_blocks', 'counters'];
   async function backup(tenantId, admin) {
     const id = checkId(tenantId);
     const t = await db.collection('tenants').findOne({ _id: id });

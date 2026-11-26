@@ -264,6 +264,7 @@ function ticketPane(s) {
     return `<li class="line ${s.pos.flashKey === l.key ? 'flash' : ''}" data-action="pos-line" data-key="${l.key}" role="button" tabindex="0">
       <div class="l-body"><div class="l-name">${esc(l.itemName)}</div>${sub ? `<div class="l-sub">${esc(sub)}</div>` : ''}
         ${l.note ? `<div class="l-sub">✎ ${esc(l.note)}</div>` : ''}
+        ${l.sentQty ? `<div class="l-sent">${icon('cup', 'sm')} بالمطبخ${l.sentQty < l.qty ? ` ${l.sentQty} من ${l.qty}` : ''}</div>` : ''}
         ${l.discountIds.length ? `<div class="l-disc">${l.discountIds.map((d) => esc(discountById(d)?.name ?? '')).join('، ')}</div>` : ''}
         <div class="l-total num">${discounted ? `<s>${money(calc.gross, { symbol: false })}</s> ` : ''}${money(discounted ? calc.gross - calc.discount : lineUnit(l) * l.qty)}</div></div>
       <div class="l-step" role="group" aria-label="الكمية">
@@ -281,6 +282,7 @@ function ticketPane(s) {
       <div class="ticket-title">
         <h2>${cart.ticket ? esc(cart.ticket.name) : 'طلب جديد'}</h2>
         <span class="spacer"></span>
+        ${s.settings.features.qr ? `<button class="btn sm ${s.qrPending?.length ? 'qr-alert' : ''}" data-action="qr-inbox">${icon('table', 'sm')} طلبات الطاولات${s.qrPending?.length ? ` (${s.qrPending.length})` : ''}</button>` : ''}
         ${s.settings.features.openTickets && can('pos.tickets') ? `<button class="btn sm" data-action="pos-tickets">${icon('ticket', 'sm')} التذاكر${s.ticketsCount ? ` (${s.ticketsCount})` : ''}</button>` : ''}
         <button class="icon-btn" data-action="pos-clear" title="مسح الطلب" ${cart.lines.length ? '' : 'disabled'}>${icon('trash', 'sm')}</button>
         <button class="icon-btn" data-action="ticket-toggle" title="إخفاء نافذة الطلب" aria-label="إخفاء نافذة الطلب">${icon('arrow', 'sm')}</button>
@@ -320,6 +322,19 @@ function tierInfo(s, c) {
 }
 
 export const modals = {
+  'qr-inbox'(s) {
+    const list = s.qrPending ?? [];
+    const tz = s.settings?.tzOffsetMin ?? 180;
+    return modalFrame({ title: 'طلبات الطاولات', sub: 'من رمز QR على الطاولة. القبول يضيف الطلب لتذكرة الطاولة ويرسله للتحضير.', cls: 'wide', body: list.length ? list.map((o) => `
+      <article class="qr-card"><header><b>${icon('table', 'sm')} ${esc(o.tableName)}</b>${o.guestName ? `<span>${icon('user', 'sm')} ${esc(o.guestName)}</span>` : ''}<span class="muted small">${time(o.createdAt, tz)}</span><span class="spacer"></span><b class="num">${money(o.total)}</b></header>
+        <ul>${o.lines.map((l) => `<li><b class="num">${l.qty}×</b> ${esc(l.itemName)}${l.variantName ? ` <span class="muted">${esc(l.variantName)}</span>` : ''}${l.modifiers.length ? `<div class="muted small">${l.modifiers.map(esc).join(' · ')}</div>` : ''}${l.note ? `<div class="small" style="color:var(--warn)">✎ ${esc(l.note)}</div>` : ''}</li>`).join('')}</ul>
+        ${o.note ? `<p class="small" style="margin:0">ملاحظة: ${esc(o.note)}</p>` : ''}
+        <div class="row wrap"><button class="btn primary" data-action="qr-accept" data-id="${o.id}">${icon('check', 'sm')} قبول وإرسال للتحضير</button>
+          <button class="btn" data-action="qr-reject" data-id="${o.id}">رفض</button><span class="spacer"></span>
+          <button class="btn sm danger" data-action="qr-block" data-id="${o.id}">${icon('lock', 'sm')} حظر هذا الزبون</button></div></article>`).join('')
+      : `<div class="empty">${icon('table')}<p>لا طلبات تنتظر. تصل هنا كل 10 ثوانٍ.</p></div>` });
+  },
+
   item(s) {
     const m = s.modal;
     const item = itemById(m.itemId);
@@ -488,11 +503,12 @@ function doneView(m) {
 }
 
 // ---------------------------------------------------------------- الإجراءات
-function cartLineFrom({ item, variant, optionIds, qty, note, discountIds = [], key }) {
+function cartLineFrom({ item, variant, optionIds, qty, note, discountIds = [], key, sentQty = 0 }) {
   const mods = item.modifierIds.map(modifierById).filter(Boolean).flatMap((g) => g.options.filter((o) => optionIds.includes(o.id)));
   return {
     key: key ?? uid(), itemId: item.id, itemName: item.name, variantId: variant.id, variantName: variant.name, price: variant.price,
     modifiers: mods.map((o) => ({ id: o.id, name: o.name, price: o.price })), qty, note: note || '', discountIds,
+    ...(sentQty ? { sentQty } : {}), // ما وصل المطبخ من طلب طاولة QR مقبول
   };
 }
 
@@ -661,6 +677,27 @@ on({
   },
 
   // ---- التذاكر المفتوحة
+  'qr-inbox': () => { openModal({ type: 'qr-inbox' }); loadQr().catch(() => {}); },
+  'qr-accept': (el) => busy(async () => {
+    const o = await post(`/api/pos/qr/${el.dataset.id}/accept`, {});
+    toast(`قُبل طلب ${o.tableName} وأُرسل للتحضير`, 'ok');
+    state.ticketsCount = (await get('/api/tickets')).length;
+    await loadQr();
+  }),
+  'qr-reject': (el) => busy(async () => {
+    const m = state.modal;
+    if (m.confirmReject !== el.dataset.id) { m.confirmReject = el.dataset.id; toast('اضغط «رفض» مرة ثانية للتأكيد'); return; }
+    await post(`/api/pos/qr/${el.dataset.id}/reject`, { reason: null });
+    toast('رُفض الطلب');
+    await loadQr();
+  }),
+  'qr-block': (el) => busy(async () => {
+    const m = state.modal;
+    if (m.confirmBlock !== el.dataset.id) { m.confirmBlock = el.dataset.id; toast('اضغط «حظر» مرة ثانية: يُرفض طلبه ولا يستطيع الطلب من جهازه مرة أخرى'); return; }
+    await post(`/api/pos/qr/${el.dataset.id}/block`, {});
+    toast('حُظر الزبون', 'ok');
+    await loadQr();
+  }),
   'pos-tickets': async () => {
     openModal({ type: 'tickets' });
     try { state.modal.list = await get('/api/tickets'); render(); } catch (e) { fail(e); }
@@ -688,7 +725,7 @@ on({
       const item = state.catalog.items.find((i) => i.variants.some((v) => v.id === l.variantId));
       if (!item) { missing += 1; continue; }
       const variant = item.variants.find((v) => v.id === l.variantId);
-      lines.push(cartLineFrom({ item, variant, optionIds: l.modifierOptionIds, qty: l.qty, note: l.note, discountIds: l.discountIds }));
+      lines.push(cartLineFrom({ item, variant, optionIds: l.modifierOptionIds, qty: l.qty, note: l.note, discountIds: l.discountIds, sentQty: l.sentQty ?? 0 }));
     }
     state.pos.cart = { lines, discountIds: t.discountIds, customer: null, pointsRedeemed: 0, diningOption: t.diningOption ?? state.settings.diningOptions[0].id,
       ticket: { id: t.id, version: t.version, name: t.name, note: t.note, tableId: t.tableId ?? null } };
@@ -742,7 +779,7 @@ on({
     const cart = state.pos.cart;
     const body = {
       clientId: m.clientId,
-      lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), note: l.note || null, discountIds: l.discountIds })),
+      lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), note: l.note || null, discountIds: l.discountIds, ...(l.sentQty ? { sentQty: Math.min(l.sentQty, l.qty) } : {}) })),
       discountIds: cart.discountIds, customerId: cart.customer?.id ?? null, pointsRedeemed: cart.pointsRedeemed,
       diningOption: cart.diningOption, ticketId: cart.ticket?.id ?? null, ticketName: cart.ticket?.name ?? null,
       clientTotal: m.total, payments: payments.map((p) => ({ typeId: p.typeId, amount: p.amount, tendered: p.tendered })),
@@ -784,7 +821,7 @@ async function saveTicket(data) {
     const cart = state.pos.cart;
     const body = {
       id: cart.ticket?.id, version: cart.ticket?.version, name: data.name, note: data.note || null, tableId: data.tableId || null,
-      lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), discountIds: l.discountIds, note: l.note || null })),
+      lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifiers.map((x) => x.id), discountIds: l.discountIds, note: l.note || null, ...(l.sentQty ? { sentQty: Math.min(l.sentQty, l.qty) } : {}) })),
       discountIds: cart.discountIds, customerId: cart.customer?.id ?? null, diningOption: cart.diningOption, displayTotal: cartTotals().total,
     };
     await post('/api/tickets', body);
@@ -813,4 +850,21 @@ export async function enter() {
     const b = await get('/api/pos/bootstrap');
     Object.assign(state, { settings: b.settings, catalog: b.catalog, shift: b.shift, ticketsCount: b.ticketsCount });
   }
+  startQrPolling();
+}
+
+// ---------------------------------------------------------------- طلبات الطاولات (QR): تصل للكاشير وينتظر قراره
+let qrTimer = null;
+async function loadQr() {
+  if (!state.settings?.features?.qr || !can('pos.sell') || state.online === false) { state.qrPending = []; return; }
+  const before = new Set((state.qrPending ?? []).map((o) => o.id));
+  state.qrPending = await get('/api/pos/qr');
+  if (state.qrPending.some((o) => !before.has(o.id))) toast(`طلب جديد من ${state.qrPending.find((o) => !before.has(o.id)).tableName}`, 'ok');
+  render();
+}
+function startQrPolling() {
+  clearInterval(qrTimer);
+  if (!state.settings?.features?.qr) return;
+  loadQr().catch(() => {});
+  qrTimer = setInterval(() => { if (state.employee && state.settings?.features?.qr) loadQr().catch(() => {}); else clearInterval(qrTimer); }, 10_000);
 }

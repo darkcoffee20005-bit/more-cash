@@ -11,6 +11,7 @@ import { createExpenses } from './expenses.js';
 import { createHr } from './hr.js';
 import { createSales } from './sales.js';
 import { createShifts } from './shifts.js';
+import { createQr } from './qr.js';
 
 export function createApp({ db, now = () => new Date(), newId = () => crypto.randomUUID(), pepper = null, log = console, readInvoice = null }) {
   const ctx = { db, now, newId, pepper, log, readInvoice };
@@ -23,7 +24,8 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
   const catalog = createCatalog(ctx);
   const sales = createSales(ctx);
   const reports = createReports(ctx);
-  ctx.services = { auth, settings, catalog, sales, reports };
+  const qr = createQr({ ...ctx, catalog });
+  ctx.services = { auth, settings, catalog, sales, reports, qr };
 
   const toRange = async (q) => {
     if (!q.from || !q.to) return {};
@@ -56,7 +58,14 @@ export function createApp({ db, now = () => new Date(), newId = () => crypto.ran
     ['GET', '/api/receipts/:id', (actor, req, p) => sales.getReceipt(actor, p.id)],
     ['POST', '/api/receipts/:id/refund', (actor, req, p) => sales.refund(actor, p.id, req.body)],
 
-    ['GET', '/api/kds', (actor) => sales.kdsList(actor)],
+    ['GET', '/api/kds', async (actor) => [...(await sales.kdsList(actor)), ...(await qr.kitchen())]],
+    // طلبات الطاولات (QR): قرار الكاشير
+    ['GET', '/api/pos/qr', (actor) => qr.pending(actor)],
+    ['POST', '/api/pos/qr/:id/accept', (actor, req, p) => qr.decide(actor, p.id, true)],
+    ['POST', '/api/pos/qr/:id/reject', (actor, req, p) => qr.decide(actor, p.id, false, req.body?.reason)],
+    ['POST', '/api/pos/qr/:id/block', (actor, req, p) => qr.block(actor, p.id)],
+    ['GET', '/api/pos/qr-blocks', (actor) => qr.blocks(actor)],
+    ['DELETE', '/api/pos/qr-blocks/:id', (actor, req, p) => qr.unblock(actor, p.id)],
     ['POST', '/api/kds/:id/advance', (actor, req, p) => sales.kdsAdvance(actor, p.id, req.body)],
     ['POST', '/api/kds/:id/urgent', (actor, req, p) => sales.kdsUrgent(actor, p.id, req.body)],
 

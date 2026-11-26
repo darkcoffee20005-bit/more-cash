@@ -19,6 +19,8 @@ export async function ensureIndexes(db) {
     ix('platform_audit', { at: -1 }, { name: 'by_date' }),
     ix('leads', { status: 1, createdAt: -1 }, { name: 'by_status' }),
 
+    ix('qr_links', { tenantId: 1, tableId: 1 }, { unique: true, name: 'uniq_table' }),
+    ix('qr_links', { token: 1 }, { name: 'by_token' }),
     // ---- بيانات كل مقهى
     ix('receipts', t({ number: 1 }), { unique: true, name: 'uniq_number' }),
     ix('receipts', t({ clientId: 1 }), { unique: true, name: 'uniq_client_id' }),
@@ -57,6 +59,10 @@ export async function ensureIndexes(db) {
     ix('employees', t({ pinLookup: 1 }), { unique: true, name: 'uniq_active_pin', partialFilterExpression: { active: true } }),
     ix('tickets', t({ updatedAt: -1 }), { name: 'by_updated' }),
     ix('tickets', t({ tableId: 1 }), { unique: true, name: 'uniq_table', partialFilterExpression: { tableId: { $exists: true } } }),
+    ix('qr_orders', t({ clientId: 1 }), { unique: true, name: 'uniq_client' }),
+    ix('qr_orders', t({ status: 1, createdAt: 1 }), { name: 'by_status' }),
+    ix('qr_orders', t({ tableId: 1, guestId: 1, createdAt: -1 }), { name: 'by_guest' }),
+    ix('qr_blocks', t({ guestId: 1 }), { unique: true, name: 'uniq_guest' }),
     ix('sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl' }),
     ix('audit', t({ at: -1 }), { name: 'by_date' }),
     ix('expenses', t({ day: -1 }), { name: 'by_day' }),

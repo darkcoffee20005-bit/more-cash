@@ -12,6 +12,8 @@ import { createPlatformAdmin } from './platform-admin.js';
 import { createBranches } from './branches.js';
 import { createSubscriptions } from './subscriptions.js';
 import { createLeads } from './leads.js';
+import { createQrLinks } from './qr-links.js';
+import { can } from '../../shared/perms.js';
 
 const DEVICE_DAYS = 90;
 const MAX_FAILS = 5;
@@ -48,6 +50,7 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
   const adminSet = new Set(admins.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
   const subs = createSubscriptions({ db, now, newId, admins: adminSet, enabled: approval });
   const leads = createLeads({ db, now, audit: subs.audit });
+  const qrLinks = createQrLinks({ db, now });
   const apps = new Map(); // tenantId → {app, ready}
   // أخطاء الخادم غير المتوقعة تُحفظ (14 يوماً) لتظهر في لوحة المزوّد قبل أن يبلّغ عنها مقهى
   function recordError(e, where = {}) {
@@ -253,7 +256,24 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
       if (key === 'POST /api/account/signup') return await signup(req.body, ip);
       if (key === 'POST /api/account/login') return await login(req.body, ip);
 
+      // «اطلب من الطاولة»: الزبون بلا حساب ولا جهاز مرتبط؛ رمز الطاولة + شبكة المقهى نفسها
+      if (req.path.startsWith('/api/qr/')) {
+        const q = req.query ?? {};
+        const link = await qrLinks.resolve(req.method === 'POST' ? req.body?.t : q.t, ip);
+        if (await isDisabled(link.tenantId)) throw new AppError(403, 'QR_DISABLED');
+        // اشتراك المقهى (أو حساب المالك للفرع) لازم يكون فعّالاً حتى يستقبل طلبات الطاولات
+        const owner = await db.collection('accounts').findOne({ $or: [{ tenantId: link.tenantId }, { branches: link.tenantId }] }, { projection: { email: 1, sub: 1 } });
+        if (!['active', 'trial'].includes(subs.stateOf(owner).status)) throw new AppError(403, 'QR_DISABLED');
+        const svc = (await appFor(link.tenantId)).ctx.services.qr;
+        if (key === 'GET /api/qr/menu') return { status: 200, body: await svc.menu(link.tableId) };
+        if (key === 'GET /api/qr/images') return { status: 200, body: await (await appFor(link.tenantId)).ctx.services.catalog.images() };
+        if (key === 'POST /api/qr/order') return { status: 200, body: await svc.submit(link.tableId, req.body, { ipKey: link.key }) };
+        if (key === 'GET /api/qr/status') return { status: 200, body: await svc.guestOrders(link.tableId, q.g) };
+        return { status: 404, body: { error: 'NOT_FOUND' } };
+      }
+
       const device = await resolveDevice(req.deviceToken);
+      if (device) await qrLinks.touchDevice(device, ip).catch(() => {});
 
       if (key === 'POST /api/account/logout') {
         if (device) {
@@ -297,6 +317,15 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
         if (!actor || actor.role !== 'owner') throw new AppError(403, 'FORBIDDEN', 'account.view');
         const acc = await db.collection('accounts').findOne({ _id: device.accountId }, { projection: { email: 1, name: 1, createdAt: 1 } });
         return { status: 200, body: { email: acc?.email ?? null, name: acc?.name ?? null } };
+      }
+      // رموز QR لطاولات الخريطة (من الإدارة): عرضها للطباعة، وتغيير رمز طاولة
+      if (key === 'GET /api/admin/qr-links' || key === 'POST /api/admin/qr-links/rotate') {
+        const actor = await app.ctx.services.auth.resolve(req.token);
+        if (!actor || !can(actor.role, 'admin.catalog')) throw new AppError(403, 'FORBIDDEN', 'admin.catalog');
+        if (key === 'POST /api/admin/qr-links/rotate') return { status: 200, body: await qrLinks.rotate(device.tenantId, req.body?.tableId) };
+        const st = await db.collection('settings').findOne({ _id: `${device.tenantId}:store` }, { projection: { floor: 1 } });
+        const tables = (st?.floor?.tables ?? []).filter((t) => t.kind === 'table');
+        return { status: 200, body: await qrLinks.list(device.tenantId, tables) };
       }
       if (req.path === '/api/setup') return { status: 404, body: { error: 'NOT_FOUND' } };
       return await app.handle(req);

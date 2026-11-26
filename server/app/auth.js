@@ -217,7 +217,7 @@ export function createSettings(ctx) {
       if (!Array.isArray(list) || list.length === 0 || list.length > 8) throw bad('INVALID_LIST', 'diningOptions');
       set.diningOptions = list.map((d) => ({ id: checkId(d.id, 'diningOptions.id'), name: str(d.name, { field: 'diningOptions.name', min: 1, max: 20 }) }));
     }
-    if ('features' in input) set.features = { kds: bool(input.features?.kds), openTickets: bool(input.features?.openTickets) };
+    if ('features' in input) set.features = { kds: bool(input.features?.kds), openTickets: bool(input.features?.openTickets), qr: bool(input.features?.qr) };
     if ('receipt' in input) {
       set.receipt = {
         header: str(input.receipt?.header, { field: 'receipt.header', max: 200 }),

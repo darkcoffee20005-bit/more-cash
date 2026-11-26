@@ -67,6 +67,8 @@ export function createSales(ctx) {
         itemId: item._id, itemName: item.name, variantId: v._id, variantName: v.name, categoryId: item.categoryId, categoryName: cat?.name ?? '',
         qty, unitPrice: unitPrice(v.price, chosen.map((c) => c.price)), modifiers: chosen,
         note: str(l.note, { field: 'note', max: 120, optional: true }),
+        // ما وصل المطبخ مسبقاً (طلب طاولة QR مقبول): لا يظهر مرة ثانية في شاشة التحضير
+        sentQty: Math.min(qty, int(l.sentQty ?? 0, { field: `lines.${no}.sentQty`, min: 0, max: 999 })),
         discounts: pickDiscounts(l.discountIds ?? []),
       };
     });
@@ -156,7 +158,7 @@ export function createSales(ctx) {
         modifiers: l.modifiers.map(({ modifierName, name, price }) => ({ group: modifierName, name, price })),
         discounts: l.discounts.map((d) => d.name), note: l.note,
         gross: calc.gross, discount: calc.discount, net: calc.net, tax: calc.tax, total: calc.total,
-        cost: await lineCost(l), refundedQty: 0,
+        cost: await lineCost(l), refundedQty: 0, ...(l.sentQty ? { sentQty: l.sentQty } : {}),
       });
     }
 
@@ -182,7 +184,7 @@ export function createSales(ctx) {
         taxMode: t.totals.taxMode, total: t.totals.total, cost: lines.reduce((a, l) => a + l.cost, 0),
       },
       payments, refundTotal: 0,
-      prep: { status: settings.features?.kds ? 'new' : 'served', updatedAt: now() },
+      prep: { status: settings.features?.kds && t.lines.some((l) => l.qty > (l.sentQty ?? 0)) ? 'new' : 'served', updatedAt: now() },
       effectsPending: true,
     };
 
@@ -503,7 +505,7 @@ export function createSales(ctx) {
     return [...rows, ...served].map((r) => ({
       id: r._id, number: r.number, createdAt: r.createdAt, prep: r.prep, diningOption: r.diningOption, diningOptionId: r.diningOptionId ?? null, customerName: r.customerName,
       ticketName: r.ticketName, employeeName: r.employeeName, status: r.status, paymentTypeId: r.payments[0]?.typeId ?? null,
-      lines: r.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: l.refundedQty, total: l.total, modifiers: l.modifiers.map((m) => m.name), note: l.note })),
+      lines: r.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: l.refundedQty, sentQty: l.sentQty ?? 0, total: l.total, modifiers: l.modifiers.map((m) => m.name), note: l.note })),
     }));
   }
 
@@ -512,14 +514,18 @@ export function createSales(ctx) {
     const next = to ?? PREP_FLOW[from];
     if (!PREP_JUMPS[from]?.includes(next)) throw bad('INVALID_CHOICE', 'from');
     // الانتقال مشروط بالحالة الحالية: نقرتان متزامنتان لا تقفزان مرحلتين
-    const r = await C('receipts').updateOne({ _id: checkId(receiptId), 'prep.status': from }, { $set: { 'prep.status': next, 'prep.updatedAt': now(), [`prep.${next}At`]: now() } });
+    const set = { $set: { 'prep.status': next, 'prep.updatedAt': now(), [`prep.${next}At`]: now() } };
+    let r = await C('receipts').updateOne({ _id: checkId(receiptId), 'prep.status': from }, set);
+    if (!r.matchedCount) r = await C('qr_orders').updateOne({ _id: receiptId, status: 'accepted', 'prep.status': from }, set);
     return { advanced: r.matchedCount === 1, status: next };
   }
 
   /** «عاجل»: يقدّم الطلب على غيره في شاشة التحضير */
   async function kdsUrgent(actor, receiptId, { urgent } = {}) {
     requirePerm(actor, 'kds.use');
-    const r = await C('receipts').updateOne({ _id: checkId(receiptId), 'prep.status': { $in: ['new', 'preparing', 'ready'] } }, { $set: { 'prep.urgent': urgent === true } });
+    const q = { _id: checkId(receiptId), 'prep.status': { $in: ['new', 'preparing', 'ready'] } };
+    let r = await C('receipts').updateOne(q, { $set: { 'prep.urgent': urgent === true } });
+    if (!r.matchedCount) r = await C('qr_orders').updateOne(q, { $set: { 'prep.urgent': urgent === true } });
     if (!r.matchedCount) throw notFound();
     return { urgent: urgent === true };
   }
@@ -532,6 +538,7 @@ export function createSales(ctx) {
       modifierOptionIds: Array.isArray(l.modifierOptionIds) ? l.modifierOptionIds.map((o) => checkId(o, 'modifierOptionId')) : [],
       discountIds: Array.isArray(l.discountIds) ? l.discountIds.map((o) => checkId(o, 'discountId')) : [],
       note: str(l.note, { field: 'note', max: 120, optional: true }),
+      ...(l.sentQty ? { sentQty: Math.min(int(l.qty, { field: 'qty', min: 1, max: 999 }), int(l.sentQty, { field: 'sentQty', min: 0, max: 999 })) } : {}),
     }));
   }
 
