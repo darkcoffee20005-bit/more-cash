@@ -1172,6 +1172,24 @@ button.ft:disabled { cursor: not-allowed; opacity: .75; }
 .qg-gate-card .qg-btn { width: 100%; display: inline-flex; justify-content: center; gap: 8px; align-items: center; }
 .qg-alt { color: #8a958f; font-size: .85rem; }
 
+/* صفحة الزبون: بطاقات مربعة، اثنتان بالسطر (2026-11-27) */
+.qg-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 560px) { .qg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.qg-card { position: relative; aspect-ratio: 1 / 1; max-width: 100%; border: 0; padding: 0; border-radius: 20px; overflow: clip; background: var(--c); color: #fff; text-align: start; font: inherit; cursor: pointer; box-shadow: 0 8px 22px rgb(18 48 45 / 12%); display: block; }
+.qg-card:active { transform: scale(.98); }
+.qg-card.out { cursor: default; filter: grayscale(.7); opacity: .6; }
+.qg-card-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.qg-card-emoji { display: grid; place-items: center; font-size: clamp(2.6rem, 14vw, 3.6rem); padding-bottom: 28%; background: radial-gradient(circle at 50% 35%, rgb(255 255 255 / 22%), transparent 60%); }
+.qg-card-info { position: absolute; inset: auto 0 0 0; padding: 26px 10px 10px; display: flex; flex-direction: column; gap: 2px; background: linear-gradient(transparent, rgb(6 30 28 / 78%) 45%); }
+.qg-card-info b { font-family: var(--font-display); font-size: 1rem; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qg-card-info small { font-size: .72rem; color: rgb(255 255 255 / 78%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qg-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 4px; }
+.qg-card-price { font-weight: 800; font-size: .95rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qg-card-price small { font-weight: 600; font-size: .7rem; color: rgb(255 255 255 / 78%); }
+.qg-card-add { width: 32px; height: 32px; border-radius: 50%; background: #b4c83d; color: #0a2c27; display: grid; place-items: center; flex: none; }
+.qg-card-count { position: absolute; top: 8px; inset-inline-start: 8px; background: #b4c83d; color: #0a2c27; font-weight: 800; font-size: .75rem; border-radius: 999px; padding: 3px 9px; }
+.qg-card-out { position: absolute; top: 8px; inset-inline-end: 8px; background: rgb(0 0 0 / 55%); border-radius: 999px; padding: 3px 10px; font-size: .78rem; font-weight: 700; }
+
 </style></head><body><div id="app"></div><div id="print-area" aria-hidden="true"></div><script type="module">
 // ---- server/db/memory.js
 const __m_server_db_memory_js = await (async () => {
@@ -12739,11 +12757,14 @@ function guestView() {
     const prices = [...new Set(i.variants.filter((v) => !v.soldOut).map((v) => v.price))].sort((a, b) => a - b);
     const src = imgOf(i);
     const inCart = g.cart.filter((l) => l.itemName === i.name).reduce((a, l) => a + l.qty, 0);
-    return `<button class="qg-row ${out ? 'out' : ''}" data-action="qg-open" data-id="${i.id}" ${out ? 'disabled' : ''}>
-      <span class="qg-thumb" style="--c: var(--tile-${esc(i.color ?? 'olive')}, #0a7c55)">${src ? `<img src="${src}" alt="">` : `<span>${esc(itemEmoji(i, cats.find((c) => c.id === i.categoryId)?.name))}</span>`}${inCart ? `<i>${inCart}</i>` : ''}</span>
-      <span class="qg-row-text"><b>${esc(i.name)}</b><small>${i.variants.length > 1 ? i.variants.map((v) => esc(v.name)).filter(Boolean).join(' · ') : ''}</small></span>
-      <span class="qg-dots" aria-hidden="true"></span>
-      <span class="qg-price">${out ? '<em>نفد</em>' : `${prices.length > 1 ? '<small>من</small> ' : ''}${money(prices[0])}`}</span></button>`;
+    const sizes = i.variants.length > 1 ? i.variants.map((v) => esc(v.name)).filter(Boolean).join(' · ') : '';
+    return `<button class="qg-card ${out ? 'out' : ''} ${src ? 'has-img' : ''}" data-action="qg-open" data-id="${i.id}" ${out ? 'disabled' : ''} style="--c: var(--tile-${esc(i.color ?? 'olive')}, #0a7c55)" aria-label="${esc(i.name)}">
+      ${src ? `<img class="qg-card-media" src="${src}" alt="">` : `<span class="qg-card-media qg-card-emoji" aria-hidden="true">${esc(itemEmoji(i, cats.find((c) => c.id === i.categoryId)?.name))}</span>`}
+      ${inCart ? `<span class="qg-card-count">${inCart} بالسلة</span>` : ''}
+      ${out ? '<span class="qg-card-out">نفد</span>' : ''}
+      <span class="qg-card-info"><b>${esc(i.name)}</b>${sizes ? `<small>${sizes}</small>` : ''}
+        <span class="qg-card-foot"><span class="qg-card-price">${out ? '—' : `${prices.length > 1 ? '<small>من</small> ' : ''}${money(prices[0])}`}</span>${out ? '' : `<span class="qg-card-add">${icon('plus', 'sm')}</span>`}</span></span>
+    </button>`;
   };
   return `<div class="qg">
     <header class="qg-hero">${mark()}<h1>${esc(m.shop.name)}</h1>
@@ -12753,7 +12774,7 @@ function guestView() {
       <span>${o.lines.reduce((a, l) => a + l.qty, 0)} صنف · ${money(o.total)}${o.reason ? ` · ${esc(o.reason)}` : ''}</span></div></div>`).join('')}</section>` : ''}
     <nav class="qg-cats" aria-label="أقسام المنيو">${cats.map((c) => `<button class="${c.id === (g.activeCat ?? cats[0]?.id) ? 'on' : ''}" data-action="qg-cat" data-id="${c.id}">${esc(c.name)}</button>`).join('')}</nav>
     <main class="qg-menu">${cats.map((c) => `<section class="qg-sec" id="qg-sec-${c.id}" data-cat="${c.id}"><h2><span>${esc(c.name)}</span></h2>
-      <div class="qg-rows">${m.items.filter((i) => i.categoryId === c.id).map(row).join('')}</div></section>`).join('')}
+      <div class="qg-grid">${m.items.filter((i) => i.categoryId === c.id).map(row).join('')}</div></section>`).join('')}
       <p class="qg-foot">${mark()} يعمل بـ مور كاش</p></main>
     ${count ? `<div class="qg-bar"><button data-action="qg-review"><span class="qg-count">${count}</span> عرض السلة <b>${money(cartTotal())}</b></button></div>` : ''}
     ${g.sheet ? itemSheet(g) : ''}${g.review ? reviewSheet(g) : ''}

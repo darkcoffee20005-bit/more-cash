@@ -131,11 +131,14 @@ export function guestView() {
     const prices = [...new Set(i.variants.filter((v) => !v.soldOut).map((v) => v.price))].sort((a, b) => a - b);
     const src = imgOf(i);
     const inCart = g.cart.filter((l) => l.itemName === i.name).reduce((a, l) => a + l.qty, 0);
-    return `<button class="qg-row ${out ? 'out' : ''}" data-action="qg-open" data-id="${i.id}" ${out ? 'disabled' : ''}>
-      <span class="qg-thumb" style="--c: var(--tile-${esc(i.color ?? 'olive')}, #0a7c55)">${src ? `<img src="${src}" alt="">` : `<span>${esc(itemEmoji(i, cats.find((c) => c.id === i.categoryId)?.name))}</span>`}${inCart ? `<i>${inCart}</i>` : ''}</span>
-      <span class="qg-row-text"><b>${esc(i.name)}</b><small>${i.variants.length > 1 ? i.variants.map((v) => esc(v.name)).filter(Boolean).join(' · ') : ''}</small></span>
-      <span class="qg-dots" aria-hidden="true"></span>
-      <span class="qg-price">${out ? '<em>نفد</em>' : `${prices.length > 1 ? '<small>من</small> ' : ''}${money(prices[0])}`}</span></button>`;
+    const sizes = i.variants.length > 1 ? i.variants.map((v) => esc(v.name)).filter(Boolean).join(' · ') : '';
+    return `<button class="qg-card ${out ? 'out' : ''} ${src ? 'has-img' : ''}" data-action="qg-open" data-id="${i.id}" ${out ? 'disabled' : ''} style="--c: var(--tile-${esc(i.color ?? 'olive')}, #0a7c55)" aria-label="${esc(i.name)}">
+      ${src ? `<img class="qg-card-media" src="${src}" alt="">` : `<span class="qg-card-media qg-card-emoji" aria-hidden="true">${esc(itemEmoji(i, cats.find((c) => c.id === i.categoryId)?.name))}</span>`}
+      ${inCart ? `<span class="qg-card-count">${inCart} بالسلة</span>` : ''}
+      ${out ? '<span class="qg-card-out">نفد</span>' : ''}
+      <span class="qg-card-info"><b>${esc(i.name)}</b>${sizes ? `<small>${sizes}</small>` : ''}
+        <span class="qg-card-foot"><span class="qg-card-price">${out ? '—' : `${prices.length > 1 ? '<small>من</small> ' : ''}${money(prices[0])}`}</span>${out ? '' : `<span class="qg-card-add">${icon('plus', 'sm')}</span>`}</span></span>
+    </button>`;
   };
   return `<div class="qg">
     <header class="qg-hero">${mark()}<h1>${esc(m.shop.name)}</h1>
@@ -145,7 +148,7 @@ export function guestView() {
       <span>${o.lines.reduce((a, l) => a + l.qty, 0)} صنف · ${money(o.total)}${o.reason ? ` · ${esc(o.reason)}` : ''}</span></div></div>`).join('')}</section>` : ''}
     <nav class="qg-cats" aria-label="أقسام المنيو">${cats.map((c) => `<button class="${c.id === (g.activeCat ?? cats[0]?.id) ? 'on' : ''}" data-action="qg-cat" data-id="${c.id}">${esc(c.name)}</button>`).join('')}</nav>
     <main class="qg-menu">${cats.map((c) => `<section class="qg-sec" id="qg-sec-${c.id}" data-cat="${c.id}"><h2><span>${esc(c.name)}</span></h2>
-      <div class="qg-rows">${m.items.filter((i) => i.categoryId === c.id).map(row).join('')}</div></section>`).join('')}
+      <div class="qg-grid">${m.items.filter((i) => i.categoryId === c.id).map(row).join('')}</div></section>`).join('')}
       <p class="qg-foot">${mark()} يعمل بـ مور كاش</p></main>
     ${count ? `<div class="qg-bar"><button data-action="qg-review"><span class="qg-count">${count}</span> عرض السلة <b>${money(cartTotal())}</b></button></div>` : ''}
     ${g.sheet ? itemSheet(g) : ''}${g.review ? reviewSheet(g) : ''}
