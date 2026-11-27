@@ -84,7 +84,9 @@ export function initOffline() {
   window.addEventListener('offline', () => { state.online = false; render(); });
   setInterval(() => { if (pendingSales().length) flushSales(); }, 20_000);
   // نسخة التطبيق على الجهاز (Service Worker) — ليس في النسخة التجريبية
+  // بلا تخزين (Safari في «وضع القفل» مثلاً) لا نسجّله، ونزيل أي نسخة قديمة مسجلة حتى لا تعطّل فتح الصفحة
   if ('serviceWorker' in navigator && !globalThis.MORECASH_BACKEND && window.isSecureContext) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    if ('caches' in globalThis) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    else navigator.serviceWorker.getRegistrations?.().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
   }
 }
