@@ -8,7 +8,7 @@ import { mark } from '../brand.js';
 import { itemEmoji } from '../emoji.js';
 import { busy, on, render, state, toast } from '../ui.js';
 
-const G = () => state.qrg ?? (state.qrg = { token: null, menu: undefined, error: null, cat: null, cart: [], sheet: null, review: false, orders: [], images: {}, clientId: null });
+const G = () => state.qrg ?? (state.qrg = { token: null, info: undefined, menu: undefined, error: null, cat: null, cart: [], sheet: null, review: false, orders: [], images: {}, clientId: null });
 const uidv = () => crypto.randomUUID();
 function guestId() {
   try {
@@ -27,20 +27,53 @@ const ERR = {
 };
 
 let timer = null;
+let spyOn = false;
+function markCat(id) {
+  document.querySelectorAll('.qg-cats button').forEach((b) => {
+    const on = b.dataset.id === id;
+    b.classList.toggle('on', on);
+    // تمرير الشريط أفقياً فقط (scrollIntoView هنا يقطع تمرير الصفحة نحو القسم)
+    if (on) { const bar = b.parentElement; bar.scrollTo({ left: b.offsetLeft - (bar.clientWidth - b.clientWidth) / 2, behavior: 'smooth' }); }
+  });
+}
+/** القسم الظاهر يُعلَّم في شريط الأقسام أثناء التمرير (بلا إعادة رسم) */
+function spy() {
+  if (spyOn) return;
+  const root = document.getElementById('app');
+  if (!root) return;
+  spyOn = true;
+  let raf = 0;
+  root.addEventListener('scroll', () => {
+    if (raf || !location.hash.startsWith('#/q/')) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const bar = document.querySelector('.qg-cats');
+      const top = (bar?.getBoundingClientRect().bottom ?? 0) + 8;
+      let current = null;
+      for (const sec of document.querySelectorAll('.qg-sec')) if (sec.getBoundingClientRect().top <= top + 40) current = sec.dataset.cat;
+      current ??= document.querySelector('.qg-sec')?.dataset.cat;
+      if (current && current !== G().activeCat) { G().activeCat = current; markCat(current); }
+    });
+  }, { passive: true });
+}
 export async function enterGuest(token) {
+  spy();
   const g = G();
-  if (g.token !== token) Object.assign(g, { token, menu: undefined, error: null, cart: [], orders: [], sheet: null, review: false });
+  if (g.token !== token) Object.assign(g, { token, info: undefined, menu: undefined, error: null, cart: [], orders: [], sheet: null, review: false });
   clearInterval(timer);
   await loadMenu();
   timer = setInterval(() => { if (location.hash.startsWith('#/q/')) loadStatus().catch(() => {}); else clearInterval(timer); }, 10_000);
 }
 
+// أولاً «info» (تعمل من أي شبكة): اسم المقهى والطاولة والواي فاي، ثم القائمة إن كان على شبكة المقهى
 async function loadMenu() {
   const g = G();
   try {
+    g.info = await get('/api/qr/info', { t: g.token });
+    if (!g.info.enabled) throw Object.assign(new Error(), { code: 'QR_DISABLED' });
+    if (!g.info.onNetwork) throw Object.assign(new Error(), { code: 'QR_NOT_ON_NETWORK' });
     g.menu = await get('/api/qr/menu', { t: g.token });
     g.error = null;
-    g.cat ??= g.menu.categories.find((c) => g.menu.items.some((i) => i.categoryId === c.id))?.id ?? null;
     loadStatus().catch(() => {});
     if (g.menu.items.some((i) => i.imageV)) get('/api/qr/images', { t: g.token }).then((im) => { g.images = im; render(); }).catch(() => {});
   } catch (e) { g.menu = null; g.error = e.code ?? 'NETWORK'; }
@@ -58,34 +91,63 @@ const lineTotal = (l) => unitPrice(l.price, l.options.map((o) => o.price)) * l.q
 const cartTotal = () => G().cart.reduce((a, l) => a + lineTotal(l), 0);
 const imgOf = (item) => { const im = G().images[item.id]; return im && im.v === item.imageV ? im.src : null; };
 
-const STATUS = { pending: ['بانتظار تأكيد الكاشير', 'warn'], accepted: ['انقبل وصار يتحضّر', 'ok'], rejected: ['ما انقبل', 'bad'] };
+const STATUS = { pending: ['بانتظار تأكيد الكاشير', 'warn', 'clock'], accepted: ['انقبل وصار يتحضّر', 'ok', 'check'], rejected: ['ما انقبل', 'bad', 'x'] };
+
+/** شاشة «مو على شبكة المقهى» وباقي الأسباب: مرتبة، بالسبب والخطوات */
+function blockedView(g) {
+  const info = g.info;
+  const shop = info?.shop?.name ? `<div class="qg-brand">${mark()}<b>${esc(info.shop.name)}</b>${info.table?.name ? `<span>${info.table.takeaway ? 'طلب سفري' : esc(info.table.name)}</span>` : ''}</div>` : '';
+  if (g.error === 'QR_NOT_ON_NETWORK') {
+    return `<div class="qg qg-gate">${shop}
+      <div class="qg-gate-card">
+        <svg class="qg-wifi" viewBox="0 0 120 96" aria-hidden="true"><path d="M8 34a74 74 0 0 1 104 0" /><path d="M24 50a52 52 0 0 1 72 0" /><path d="M40 66a30 30 0 0 1 40 0" /><circle cx="60" cy="82" r="7" /></svg>
+        <h1>اتصل بواي فاي المقهى حتى تطلب</h1>
+        <p>حتى نضمن إنّ الطلبات تجي من داخل المقهى، الطلب من الموبايل يشتغل بس على شبكة ${info?.shop?.name ? `<b>${esc(info.shop.name)}</b>` : 'المقهى'}.</p>
+        <ol class="qg-steps">
+          <li><span>1</span><div>افتح <b>الإعدادات ← Wi-Fi</b> بموبايلك</div></li>
+          <li><span>2</span><div>اختار شبكة ${info?.wifi ? `<b class="qg-ssid" dir="auto">${esc(info.wifi)}</b>` : '<b>المقهى</b> (اسألنا عن الاسم وكلمة السر)'}</div></li>
+          <li><span>3</span><div>إذا مشغّل <b>بيانات الموبايل</b>، طفّيها شوية</div></li>
+          <li><span>4</span><div>ارجع هنا واضغط «حاول مرة ثانية»</div></li>
+        </ol>
+        <button class="qg-btn" data-action="qg-retry">${icon('wifi', 'sm')} حاول مرة ثانية</button>
+        <p class="qg-alt">تگدر تطلب من الكاشير مباشرة هم.</p>
+      </div></div>`;
+  }
+  const [ic, title, text] = ERR[g.error] ?? ['alert', 'تعذّر تحميل القائمة', 'تأكد من الاتصال بالإنترنت وحاول مرة ثانية.'];
+  return `<div class="qg qg-gate">${shop}<div class="qg-gate-card"><span class="qg-ic">${icon(ic)}</span><h1>${title}</h1><p>${text}</p>
+    <button class="qg-btn" data-action="qg-retry">حاول مرة ثانية</button></div></div>`;
+}
 
 export function guestView() {
   const g = G();
-  if (g.menu === undefined) return '<div class="qg qg-center"><p class="muted">جارٍ تحميل القائمة…</p></div>';
-  if (!g.menu) {
-    const [ic, title, text] = ERR[g.error] ?? ['alert', 'تعذّر تحميل القائمة', 'تأكد من الاتصال وحاول مرة ثانية.'];
-    return `<div class="qg qg-center"><div class="qg-msg"><span class="qg-ic">${icon(ic)}</span><h1>${title}</h1><p>${text}</p>
-      <button class="qg-btn" data-action="qg-retry">حاول مرة ثانية</button></div></div>`;
-  }
+  if (g.menu === undefined) return '<div class="qg qg-gate"><div class="qg-loading">جارٍ تحميل المنيو…</div></div>';
+  if (!g.menu) return blockedView(g);
   const m = g.menu;
-  const items = m.items.filter((i) => i.categoryId === g.cat);
   const count = g.cart.reduce((a, l) => a + l.qty, 0);
+  const cats = m.categories.filter((c) => m.items.some((i) => i.categoryId === c.id));
+  const takeaway = m.table.takeaway;
+  const row = (i) => {
+    const out = i.variants.every((v) => v.soldOut);
+    const prices = [...new Set(i.variants.filter((v) => !v.soldOut).map((v) => v.price))].sort((a, b) => a - b);
+    const src = imgOf(i);
+    const inCart = g.cart.filter((l) => l.itemName === i.name).reduce((a, l) => a + l.qty, 0);
+    return `<button class="qg-row ${out ? 'out' : ''}" data-action="qg-open" data-id="${i.id}" ${out ? 'disabled' : ''}>
+      <span class="qg-thumb" style="--c: var(--tile-${esc(i.color ?? 'olive')}, #0a7c55)">${src ? `<img src="${src}" alt="">` : `<span>${esc(itemEmoji(i, cats.find((c) => c.id === i.categoryId)?.name))}</span>`}${inCart ? `<i>${inCart}</i>` : ''}</span>
+      <span class="qg-row-text"><b>${esc(i.name)}</b><small>${i.variants.length > 1 ? i.variants.map((v) => esc(v.name)).filter(Boolean).join(' · ') : ''}</small></span>
+      <span class="qg-dots" aria-hidden="true"></span>
+      <span class="qg-price">${out ? '<em>نفد</em>' : `${prices.length > 1 ? '<small>من</small> ' : ''}${money(prices[0])}`}</span></button>`;
+  };
   return `<div class="qg">
-    <header class="qg-head">${mark()}<div><b>${esc(m.shop.name)}</b><span>${icon('table', 'sm')} ${esc(m.table.name)}</span></div></header>
-    ${g.orders.length ? `<section class="qg-orders">${g.orders.slice(0, 3).map((o) => `<div class="qg-order ${STATUS[o.status]?.[1] ?? ''}"><b>${STATUS[o.status]?.[0] ?? o.status}${o.number ? ` · #Q${o.number}` : ''}</b>
-      <span>${o.lines.reduce((a, l) => a + l.qty, 0)} صنف · ${money(o.total)}${o.reason ? ` · ${esc(o.reason)}` : ''}</span></div>`).join('')}</section>` : ''}
-    <nav class="qg-cats">${m.categories.filter((c) => m.items.some((i) => i.categoryId === c.id)).map((c) => `<button class="${g.cat === c.id ? 'on' : ''}" data-action="qg-cat" data-id="${c.id}">${esc(c.name)}</button>`).join('')}</nav>
-    <main class="qg-items">${items.map((i) => {
-      const out = i.variants.every((v) => v.soldOut);
-      const from = Math.min(...i.variants.map((v) => v.price));
-      const src = imgOf(i);
-      return `<button class="qg-item ${out ? 'out' : ''}" data-action="qg-open" data-id="${i.id}" ${out ? 'disabled' : ''}>
-        <span class="qg-pic" style="--c: var(--tile-${esc(i.color ?? 'olive')}, #0a7c55)">${src ? `<img src="${src}" alt="">` : `<span>${esc(itemEmoji(i, m.categories.find((c) => c.id === i.categoryId)?.name))}</span>`}</span>
-        <span class="qg-name"><b>${esc(i.name)}</b><small>${out ? 'نفد' : `${i.variants.length > 1 ? 'من ' : ''}${money(from)}`}</small></span>
-        <span class="qg-plus">${icon(out ? 'x' : 'plus', 'sm')}</span></button>`;
-    }).join('') || '<p class="muted">لا أصناف هنا</p>'}</main>
-    ${count ? `<div class="qg-bar"><button data-action="qg-review"><span class="qg-count">${count}</span> سلتك <b>${money(cartTotal())}</b></button></div>` : ''}
+    <header class="qg-hero">${mark()}<h1>${esc(m.shop.name)}</h1>
+      <p class="qg-where">${takeaway ? `${icon('sale', 'sm')} طلب سفري — استلمه من الكاشير` : `${icon('table', 'sm')} ${esc(m.table.name)}`}</p>
+      <p class="qg-how">اختار من المنيو، أضف للسلة، وأرسل. الدفع عند الكاشير.</p></header>
+    ${g.orders.length ? `<section class="qg-orders">${g.orders.slice(0, 3).map((o) => `<div class="qg-order ${STATUS[o.status]?.[1] ?? ''}"><span class="qg-oi">${icon(STATUS[o.status]?.[2] ?? 'clock', 'sm')}</span><div><b>${STATUS[o.status]?.[0] ?? o.status}${o.number ? ` · رقم طلبك Q${o.number}` : ''}</b>
+      <span>${o.lines.reduce((a, l) => a + l.qty, 0)} صنف · ${money(o.total)}${o.reason ? ` · ${esc(o.reason)}` : ''}</span></div></div>`).join('')}</section>` : ''}
+    <nav class="qg-cats" aria-label="أقسام المنيو">${cats.map((c) => `<button class="${c.id === (g.activeCat ?? cats[0]?.id) ? 'on' : ''}" data-action="qg-cat" data-id="${c.id}">${esc(c.name)}</button>`).join('')}</nav>
+    <main class="qg-menu">${cats.map((c) => `<section class="qg-sec" id="qg-sec-${c.id}" data-cat="${c.id}"><h2><span>${esc(c.name)}</span></h2>
+      <div class="qg-rows">${m.items.filter((i) => i.categoryId === c.id).map(row).join('')}</div></section>`).join('')}
+      <p class="qg-foot">${mark()} يعمل بـ مور كاش</p></main>
+    ${count ? `<div class="qg-bar"><button data-action="qg-review"><span class="qg-count">${count}</span> عرض السلة <b>${money(cartTotal())}</b></button></div>` : ''}
     ${g.sheet ? itemSheet(g) : ''}${g.review ? reviewSheet(g) : ''}
   </div>`;
 }
@@ -115,15 +177,19 @@ function reviewSheet(g) {
       <div class="qg-step sm"><button data-action="qg-line" data-i="${i}" data-d="-1" aria-label="أقل">${icon(l.qty > 1 ? 'minus' : 'trash', 'sm')}</button><b>${l.qty}</b><button data-action="qg-line" data-i="${i}" data-d="1" aria-label="أكثر">${icon('plus', 'sm')}</button></div>
       <b class="num">${money(lineTotal(l))}</b></li>`).join('')}</ul>
     <form data-form="qg-send" class="qg-form" data-keep>
-      <input name="name" id="qg-name" maxlength="30" placeholder="اسمك (اختياري)" autocomplete="given-name">
+      <input name="name" id="qg-name" maxlength="30" placeholder="${g.menu.table.takeaway ? 'اسمك (حتى نناديك من يجهز)' : 'اسمك (اختياري)'}" autocomplete="given-name" ${g.menu.table.takeaway ? 'required minlength="2"' : ''}>
       <input name="note" id="qg-onote" maxlength="200" placeholder="ملاحظة للطلب (اختياري)">
       <button class="qg-btn" type="submit" ${state.busy ? 'disabled' : ''}>أرسل الطلب · ${money(cartTotal())}</button>
-      <p class="muted small">يوصل طلبك للكاشير، ومن يقبله يبدأ التحضير. الدفع عند الكاشير.</p></form></section>`;
+      <p class="muted small">${g.menu.table.takeaway ? 'يوصل طلبك للكاشير، ونناديك باسمك من يجهز. الدفع عند الاستلام.' : 'يوصل طلبك للكاشير، ومن يقبله يبدأ التحضير. الدفع عند الكاشير.'}</p></form></section>`;
 }
 
 on({
   'qg-retry': () => { G().menu = undefined; render(); loadMenu(); },
-  'qg-cat': (el) => { G().cat = el.dataset.id; render(); },
+  'qg-cat': (el) => {
+    document.getElementById(`qg-sec-${el.dataset.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    G().activeCat = el.dataset.id;
+    markCat(el.dataset.id);
+  },
   'qg-open': (el) => {
     const g = G();
     const item = g.menu.items.find((i) => i.id === el.dataset.id);
@@ -175,6 +241,7 @@ on({
   },
   'qg-send': (_el, _e, d) => busy(async () => {
     const g = G();
+    if (g.menu.table.takeaway && String(d.name ?? '').trim().length < 2) { toast('اكتب اسمك حتى نناديك من يجهز طلبك', 'bad'); document.getElementById('qg-name')?.focus(); return; }
     g.clientId ??= uidv();
     try {
       await post('/api/qr/order', {

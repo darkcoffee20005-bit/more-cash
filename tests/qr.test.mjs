@@ -39,7 +39,7 @@ async function setup() {
 test('الطلب من الطاولة: من الشبكة فقط، قبول للتذكرة والتحضير، دفع بلا تكرار، رفض وحظر وتغيير الرمز', async () => {
   const { db, call, ok } = await setup();
   const links = await ok('pos', 'GET', '/api/admin/qr-links');
-  assert.equal(links.length, 2);
+  assert.equal(links.length, 3, 'سفري + طاولتان');
   const t1 = links.find((l) => l.tableId === 't1').token;
   const guest = (path, q = {}, ip = CAFE) => call('guest', 'GET', path, null, { t: t1, ...q }, ip);
   const order = (body, ip = CAFE) => call('guest', 'POST', '/api/qr/order', { t: t1, guestId: 'g-ali', clientId: crypto.randomUUID(), ...body }, null, ip);
@@ -112,4 +112,31 @@ test('الطلب من الطاولة: من الشبكة فقط، قبول للت
   await ok('pos', 'POST', '/api/admin/qr-links/rotate', { tableId: 't1' });
   assert.equal((await guest('/api/qr/menu')).body.error, 'QR_UNKNOWN_TABLE');
   void db;
+});
+
+test('رمز السفري واسم الواي فاي: الاسم مطلوب، تذكرة مستقلة بلا طاولة، ومن خارج الشبكة تظهر معلومات فقط', async () => {
+  const { call, ok } = await setup();
+  await ok('pos', 'PUT', '/api/admin/settings', { features: { kds: true, openTickets: true, qr: true }, qrWifi: 'Zaytoon-Guests' });
+  const links = await ok('pos', 'GET', '/api/admin/qr-links');
+  const tw = links.find((l) => l.takeaway);
+  assert.ok(tw && tw.tableName === 'سفري', 'رمز السفري أول القائمة');
+  const info = (await call('g', 'GET', '/api/qr/info', null, { t: tw.token }, HOME)).body;
+  assert.deepEqual(info, { shop: { name: 'مقهى الزيتون' }, table: { name: 'سفري', takeaway: true }, wifi: 'Zaytoon-Guests', enabled: true, onNetwork: false }, 'من البيت: معلومات بلا قائمة');
+  assert.equal((await call('g', 'GET', '/api/qr/menu', null, { t: tw.token }, HOME)).body.error, 'QR_NOT_ON_NETWORK');
+  assert.equal((await call('g', 'GET', '/api/qr/info', null, { t: tw.token })).body.onNetwork, true);
+
+  const menu = (await call('g', 'GET', '/api/qr/menu', null, { t: tw.token })).body;
+  assert.equal(menu.table.takeaway, true);
+  const water = menu.items.find((i) => i.name === 'ماء');
+  const send = (name) => call('g', 'POST', '/api/qr/order', { t: tw.token, guestId: 'g-1', clientId: crypto.randomUUID(), name, lines: [{ variantId: water.variants[0].id, qty: 2 }] });
+  assert.equal((await send(null)).body.error, 'REQUIRED', 'السفري يحتاج اسم');
+  const o = (await send('مصطفى')).body;
+  await ok('pos', 'POST', `/api/pos/qr/${o.id}/accept`);
+  const t = (await ok('pos', 'GET', '/api/tickets')).find((x) => x.name.startsWith('سفري'));
+  assert.equal(t.name, 'سفري · مصطفى');
+  assert.equal(t.tableId, undefined, 'بلا طاولة');
+  assert.equal(t.diningOption, 'takeaway');
+  const k = (await ok('pos', 'GET', '/api/kds')).find((x) => x.qr);
+  assert.equal(k.diningOption, 'سفري');
+  assert.equal(k.customerName, 'مصطفى');
 });

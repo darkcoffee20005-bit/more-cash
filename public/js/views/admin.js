@@ -386,7 +386,8 @@ const PAGES = {
           ${field('أنواع الطلب (مفصولة بفاصلة)', `<input name="dining" id="st-dining" value="${esc(st.diningOptions.map((d) => d.name).join('، '))}">`)}
           <label class="check"><input type="checkbox" name="kds" ${st.features.kds ? 'checked' : ''}> شاشة التحضير للباريستا</label>
           <label class="check"><input type="checkbox" name="openTickets" ${st.features.openTickets ? 'checked' : ''}> التذاكر المفتوحة (حفظ الطلبات للطاولات)</label>
-          <label class="check"><input type="checkbox" name="qr" ${st.features.qr ? 'checked' : ''}> الطلب من الطاولة (QR): الزبون يطلب من موبايله وهو على واي فاي المقهى، والكاشير يقبل أو يرفض</label></section>
+          <label class="check"><input type="checkbox" name="qr" ${st.features.qr ? 'checked' : ''}> الطلب من الطاولة (QR): الزبون يطلب من موبايله وهو على واي فاي المقهى، والكاشير يقبل أو يرفض</label>
+          ${field('اسم شبكة الواي فاي للزبائن', `<input name="qrWifi" id="st-qr-wifi" maxlength="40" dir="auto" value="${esc(st.qrWifi ?? '')}" placeholder="مثلاً: Zaytoon-Guests">`, 'يظهر للزبون إذا مسح الرمز وهو مو على شبكة المقهى، ويُطبع تحت الرمز')}</section>
         <div><button class="btn primary lg" type="submit" ${s.busy ? 'disabled' : ''}>حفظ الإعدادات</button></div>
       </form>
       ${accountCard(s, a.account)}`;
@@ -535,7 +536,7 @@ export const modals = {
     return modalFrame({ title: 'رموز QR للطاولات', sub: 'اطبع رمز كل طاولة وألصقه عليها. الطلب يشتغل بس من موبايل متصل بواي فاي المقهى.', cls: 'wide', body: `
       <div class="row wrap"><button class="btn primary" data-action="qr-print">${icon('print', 'sm')} طباعة كل الرموز</button>
         <span class="muted small">إذا انتشرت صورة رمز طاولة، اضغط «رمز جديد» فيتوقف القديم فوراً.</span></div>
-      <div class="qr-grid">${m.list.map((l) => `<figure class="qr-tile">${qrSvg(qrUrl(l.token), { px: 160 })}<figcaption><b>${esc(l.tableName)}</b>
+      <div class="qr-grid">${m.list.map((l) => `<figure class="qr-tile ${l.takeaway ? 'takeaway' : ''}">${qrSvg(qrUrl(l.token), { px: 160 })}<figcaption><b>${l.takeaway ? `${icon('sale', 'sm')} سفري` : esc(l.tableName)}</b>
         <button class="btn sm" data-action="qr-rotate" data-id="${esc(l.tableId)}">رمز جديد</button></figcaption></figure>`).join('') || '<p class="muted">أضف طاولات للخريطة واحفظها أولاً.</p>'}</div>
       ${m.blocks?.length ? `<h3>زبائن محظورون</h3><div class="table-wrap"><table><tbody>${m.blocks.map((b) => `<tr><td>${esc(b.guestName ?? 'زبون')}</td><td class="small">${esc(b.tableName ?? '')}</td><td class="small">${dateTime(b.at, s.settings?.tzOffsetMin)} · ${esc(b.by ?? '')}</td>
         <td><button class="btn sm" data-action="qr-unblock" data-id="${b.id}">إلغاء الحظر</button></td></tr>`).join('')}</tbody></table></div>` : ''}` });
@@ -937,8 +938,9 @@ on({
   'qr-print': () => {
     const m = state.modal;
     const shop = esc(state.settings?.name ?? '');
-    printHtml(m.list.map((l) => `<div class="qr-print"><div class="qr-shop">${shop}</div><div class="qr-table">${esc(l.tableName)}</div>
-      ${qrSvg(qrUrl(l.token), { px: 220 })}<div class="qr-hint">امسح الرمز واطلب من طاولتك<br>(على واي فاي المقهى)</div></div>`).join(''), 'رموز الطاولات');
+    const wifi = state.settings?.qrWifi ? `واي فاي: <b dir="auto">${esc(state.settings.qrWifi)}</b>` : 'على واي فاي المقهى';
+    printHtml(m.list.map((l) => `<div class="qr-print"><div class="qr-shop">${shop}</div><div class="qr-table">${l.takeaway ? 'اطلب سفري' : esc(l.tableName)}</div>
+      ${qrSvg(qrUrl(l.token), { px: 220 })}<div class="qr-hint">${l.takeaway ? 'امسح الرمز، اطلب، واستلم طلبك من الكاشير' : 'امسح الرمز واطلب من طاولتك'}<br>${wifi}</div></div>`).join(''), 'رموز الطاولات والسفري');
   },
   'floor-save': () => busy(async () => {
     const ed = A().floor;
@@ -1233,7 +1235,7 @@ on({
       cashVarianceAlert: num(d.cashVarianceAlert, 'تنبيه الفرق'),
       paymentTypes: st.paymentTypes.map((p, i) => ({ id: p.id, name: d[`pt_name_${i}`], kind: d[`pt_kind_${i}`], active: d[`pt_active_${i}`] })),
       diningOptions: names.map((n, i) => ({ id: st.diningOptions.find((x) => x.name === n)?.id ?? `d${i}${Date.now().toString(36)}`, name: n })),
-      features: { kds: d.kds, openTickets: d.openTickets, qr: d.qr },
+      features: { kds: d.kds, openTickets: d.openTickets, qr: d.qr }, qrWifi: d.qrWifi || null,
     };
     A().settings = await put('/api/admin/settings', body);
     state.settings = A().settings;

@@ -259,12 +259,14 @@ export function createPlatform({ db, now = () => new Date(), newId = () => crypt
       // «اطلب من الطاولة»: الزبون بلا حساب ولا جهاز مرتبط؛ رمز الطاولة + شبكة المقهى نفسها
       if (req.path.startsWith('/api/qr/')) {
         const q = req.query ?? {};
-        const link = await qrLinks.resolve(req.method === 'POST' ? req.body?.t : q.t, ip);
+        // «info» بلا شرط الشبكة: حتى تعرض صفحة الزبون اسم المقهى والواي فاي إن لم يكن متصلاً بها
+        const link = await qrLinks.resolve(req.method === 'POST' ? req.body?.t : q.t, ip, { requireNetwork: key !== 'GET /api/qr/info' });
         if (await isDisabled(link.tenantId)) throw new AppError(403, 'QR_DISABLED');
         // اشتراك المقهى (أو حساب المالك للفرع) لازم يكون فعّالاً حتى يستقبل طلبات الطاولات
         const owner = await db.collection('accounts').findOne({ $or: [{ tenantId: link.tenantId }, { branches: link.tenantId }] }, { projection: { email: 1, sub: 1 } });
         if (!['active', 'trial'].includes(subs.stateOf(owner).status)) throw new AppError(403, 'QR_DISABLED');
         const svc = (await appFor(link.tenantId)).ctx.services.qr;
+        if (key === 'GET /api/qr/info') return { status: 200, body: await svc.info(link.tableId, link.onNetwork) };
         if (key === 'GET /api/qr/menu') return { status: 200, body: await svc.menu(link.tableId) };
         if (key === 'GET /api/qr/images') return { status: 200, body: await (await appFor(link.tenantId)).ctx.services.catalog.images() };
         if (key === 'POST /api/qr/order') return { status: 200, body: await svc.submit(link.tableId, req.body, { ipKey: link.key }) };

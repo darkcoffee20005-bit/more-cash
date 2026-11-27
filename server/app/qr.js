@@ -17,9 +17,18 @@ export function createQr(ctx) {
   async function context(tableId) {
     const settings = await getSettings(db);
     if (!settings.features?.qr) throw new AppError(403, 'QR_DISABLED');
+    if (tableId === 'takeaway') return { settings, table: { id: 'takeaway', name: 'سفري', takeaway: true } };
     const table = (settings.floor?.tables ?? []).find((t) => t.id === tableId && t.kind === 'table');
     if (!table) throw new AppError(404, 'QR_UNKNOWN_TABLE');
     return { settings, table };
+  }
+
+  /** ما تعرضه صفحة الزبون قبل القائمة: اسم المقهى والطاولة واسم الواي فاي، وهل هو على شبكة المقهى */
+  async function info(tableId, onNetwork) {
+    const settings = await getSettings(db);
+    const takeaway = tableId === 'takeaway';
+    const table = takeaway ? { name: 'سفري' } : (settings.floor?.tables ?? []).find((t) => t.id === tableId && t.kind === 'table');
+    return { shop: { name: settings.name }, table: { name: table?.name ?? '', takeaway }, wifi: settings.qrWifi ?? null, enabled: !!settings.features?.qr && !!table, onNetwork: !!onNetwork };
   }
 
   /** قائمة الزبون: الأصناف المعروضة للبيع بأسعارها وإضافاتها، والمتوفر فقط قابل للطلب */
@@ -28,7 +37,7 @@ export function createQr(ctx) {
     const cat = await catalog.posCatalog();
     const usedMods = new Set(cat.items.flatMap((i) => i.modifierIds ?? []));
     return {
-      shop: { name: settings.name }, table: { name: table.name },
+      shop: { name: settings.name }, table: { name: table.name, takeaway: !!table.takeaway },
       categories: cat.categories.map((c) => ({ id: c.id, name: c.name, color: c.color })),
       items: cat.items.map((i) => ({
         id: i.id, name: i.name, categoryId: i.categoryId, emoji: i.emoji ?? null, color: i.color ?? null, imageV: i.imageV ?? null, description: i.description ?? null,
@@ -76,9 +85,11 @@ export function createQr(ctx) {
       return { variantId: v.id, itemName: item.name, variantName: v.name, qty, modifierOptionIds: chosen.map((c) => c.id), modifiers: chosen.map((c) => c.name),
         note: str(l.note, { field: 'note', max: 120, optional: true }), unitPrice: price, total: price * qty };
     });
+    // السفري: الاسم مطلوب حتى ينادي الكاشير صاحب الطلب
+    const guestName = str(body.name, { field: 'name', min: table.takeaway ? 2 : 0, max: 30, optional: !table.takeaway });
     const doc = {
-      _id: newId(), clientId, tableId, tableName: table.name, guestId,
-      guestName: str(body.name, { field: 'name', max: 30, optional: true }), note: str(body.note, { field: 'note', max: 200, optional: true }),
+      _id: newId(), clientId, tableId, tableName: table.name, guestId, ...(table.takeaway ? { takeaway: true } : {}),
+      guestName, note: str(body.note, { field: 'note', max: 200, optional: true }),
       lines, total: lines.reduce((a, l) => a + l.total, 0), status: 'pending', createdAt: now(), ipKey: ipKey ?? null,
     };
     try { await C('qr_orders').insertOne(doc); } catch (e) {
@@ -125,6 +136,13 @@ export function createQr(ctx) {
   /** الطلب المقبول يُضاف لتذكرة الطاولة (تُنشأ إن لم تكن)، بأسطر معلّمة أنها وصلت المطبخ */
   async function addToTicket(actor, o, settings) {
     const lines = o.lines.map((l) => ({ variantId: l.variantId, qty: l.qty, modifierOptionIds: l.modifierOptionIds, discountIds: [], note: l.note ?? null, sentQty: l.qty }));
+    // السفري: تذكرة جديدة لكل طلب (بلا طاولة) باسم صاحبه
+    if (o.takeaway) {
+      const dine = settings.diningOptions.find((d) => d.id === 'takeaway') ?? settings.diningOptions[0];
+      await C('tickets').insertOne({ _id: newId(), name: `سفري · ${o.guestName ?? `Q${o.number}`}`.slice(0, 40), note: `QR سفري #Q${o.number}`, lines, discountIds: [], customerId: null,
+        diningOption: dine.id, displayTotal: o.total, version: 1, createdAt: now(), updatedAt: now(), updatedBy: actor.name, employeeId: actor.id, employeeName: actor.name });
+      return;
+    }
     for (let attempt = 0; attempt < 3; attempt++) {
       const t = await C('tickets').findOne({ tableId: o.tableId });
       if (t) {
@@ -173,10 +191,11 @@ export function createQr(ctx) {
     const since = new Date(now().getTime() - 12 * 3600_000);
     const rows = await C('qr_orders').find({ status: 'accepted', 'prep.status': { $in: ['new', 'preparing', 'ready', 'served'] }, decidedAt: { $gte: since } }).sort({ decidedAt: 1 }).limit(60).toArray();
     return rows.map((o) => ({
-      id: o._id, qr: true, number: `Q${o.number}`, createdAt: o.decidedAt, prep: o.prep, diningOption: 'طاولة', diningOptionId: 'dine_in',
-      customerName: o.guestName ?? null, ticketName: o.tableName, status: 'paid', lines: o.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: 0, sentQty: 0, modifiers: l.modifiers, note: l.note })),
+      id: o._id, qr: true, number: `Q${o.number}`, createdAt: o.decidedAt, prep: o.prep,
+      diningOption: o.takeaway ? 'سفري' : 'طاولة', diningOptionId: o.takeaway ? 'takeaway' : 'dine_in',
+      customerName: o.guestName ?? null, ticketName: o.takeaway ? null : o.tableName, status: 'paid', lines: o.lines.map((l) => ({ name: l.itemName, variant: l.variantName, qty: l.qty, refundedQty: 0, sentQty: 0, modifiers: l.modifiers, note: l.note })),
     }));
   }
 
-  return { menu, submit, guestOrders, pending, decide, block, blocks, unblock, kitchen };
+  return { info, menu, submit, guestOrders, pending, decide, block, blocks, unblock, kitchen };
 }

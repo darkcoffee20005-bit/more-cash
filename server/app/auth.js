@@ -154,7 +154,7 @@ export function publicEmployee(emp) {
   return { ...o, roleName: ROLES[emp.role], permissions: permissionsOf(emp.role) };
 }
 
-export const settingsKeys = ['name', 'address', 'phone', 'reportPhone', 'tax', 'loyalty', 'paymentTypes', 'diningOptions', 'features', 'receipt', 'cashVarianceAlert'];
+export const settingsKeys = ['name', 'address', 'phone', 'reportPhone', 'tax', 'loyalty', 'paymentTypes', 'diningOptions', 'features', 'receipt', 'cashVarianceAlert', 'qrWifi'];
 
 export function createSettings(ctx) {
   const { db, now } = ctx;
@@ -173,6 +173,7 @@ export function createSettings(ctx) {
     if ('name' in input) set.name = str(input.name, { field: 'name', min: 2, max: 60 });
     if ('address' in input) set.address = str(input.address, { field: 'address', max: 120 });
     if ('phone' in input) set.phone = str(input.phone, { field: 'phone', max: 30 });
+    if ('qrWifi' in input) set.qrWifi = str(input.qrWifi, { field: 'qrWifi', max: 40, optional: true });
     if ('reportPhone' in input) {
       // رقم واتساب لاستلام تقرير الوردية: يُخزَّن بصيغة دولية بأرقام فقط (07… العراقية → 9647…)
       let d = normalizePin(String(input.reportPhone ?? '')).replace(/\D/g, '');

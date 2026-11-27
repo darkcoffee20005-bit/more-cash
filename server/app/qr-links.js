@@ -7,6 +7,7 @@ import { randomToken } from './security.js';
 import { AppError, id as checkId } from './core.js';
 
 const SEEN_WINDOW_MS = 12 * 3600_000;
+export const TAKEAWAY = 'takeaway';
 const TOUCH_EVERY_MS = 5 * 60_000;
 const GUEST_PER_IP_HOUR = 30;
 
@@ -48,7 +49,7 @@ export function createQrLinks({ db, now }) {
   }
 
   /** رمز الطاولة → مقهاها وطاولتها، مع حد للطلبات من نفس الشبكة */
-  async function resolve(token, ip) {
+  async function resolve(token, ip, { requireNetwork = true } = {}) {
     if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(token)) throw new AppError(404, 'QR_UNKNOWN_TABLE');
     const link = await LINKS().findOne({ token });
     if (!link) throw new AppError(404, 'QR_UNKNOWN_TABLE');
@@ -56,12 +57,15 @@ export function createQrLinks({ db, now }) {
     const t = Date.now();
     const h = hits.get(key);
     if (!h || t - h.since >= 3600_000) { hits.set(key, { count: 1, since: t }); if (hits.size > 5000) hits.clear(); } else if (++h.count > GUEST_PER_IP_HOUR * 10) throw new AppError(429, 'TOO_MANY_ATTEMPTS');
-    if (!(await sameNetwork(link.tenantId, ip))) throw new AppError(403, 'QR_NOT_ON_NETWORK');
-    return { tenantId: link.tenantId, tableId: link.tableId, key };
+    const onNetwork = await sameNetwork(link.tenantId, ip);
+    if (requireNetwork && !onNetwork) throw new AppError(403, 'QR_NOT_ON_NETWORK');
+    return { tenantId: link.tenantId, tableId: link.tableId, key, onNetwork };
   }
 
   /** رموز طاولات المقهى (تُنشأ للطاولات الجديدة، وتُحذف لطاولات أُزيلت من الخريطة) */
   async function list(tenantId, tables) {
+    // رمز «سفري» ثابت لكل مقهى (غير مرتبط بطاولة): يُطبع عند الكاشير أو الباب
+    tables = [{ id: TAKEAWAY, name: 'سفري' }, ...tables];
     const ids = new Set(tables.map((t) => t.id));
     await LINKS().deleteMany({ tenantId, tableId: { $nin: [...ids] } });
     const have = new Map((await LINKS().find({ tenantId }).toArray()).map((l) => [l.tableId, l]));
@@ -72,7 +76,7 @@ export function createQrLinks({ db, now }) {
         l = { _id: `${tenantId}:${t.id}`, tenantId, tableId: t.id, token: randomToken(18), createdAt: now() };
         try { await LINKS().insertOne(l); } catch { l = await LINKS().findOne({ tenantId, tableId: t.id }); }
       }
-      outList.push({ tableId: t.id, tableName: t.name, token: l.token });
+      outList.push({ tableId: t.id, tableName: t.name, token: l.token, takeaway: t.id === TAKEAWAY });
     }
     return outList;
   }
